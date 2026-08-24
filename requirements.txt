@@ -1,0 +1,24 @@
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+sqlalchemy>=2.0.0
+alembic>=1.12.0
+psycopg2-binary>=2.9.9
+asyncpg>=0.29.0
+aiosqlite>=0.19.0
+redis>=5.0.0
+passlib[bcrypt]>=1.7.4
+python-jose[cryptography]>=3.3.0
+python-multipart>=0.0.6
+python-dotenv>=1.0.0
+structlog>=23.2.0
+dependency-injector>=4.41.0
+
+# AI Provider SDKs
+openai>=1.12.0
+anthropic>=0.18.0
+google-generativeai>=0.3.0
+httpx>=0.26.0
+ollama>=0.6.2  # Week 4: Local LLM support
+chromadb>=1.5.9  # Week 4: Vector database

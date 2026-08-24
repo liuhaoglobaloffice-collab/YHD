@@ -1,0 +1,30 @@
+{
+  "requested_plugins": [
+    {
+      "name": "github",
+      "marketplace": "openai-api-curated",
+      "reason": "代码仓库管理、PR审查、Issues处理和CI/CD调试",
+      "priority": "high"
+    },
+    {
+      "name": "browser",
+      "marketplace": "openai-bundled",
+      "reason": "本地开发测试、页面调试和自动化测试",
+      "priority": "high"
+    },
+    {
+      "name": "visualize",
+      "marketplace": "openai-bundled",
+      "reason": "数据可视化、架构图绘制和UI预览",
+      "priority": "medium"
+    },
+    {
+      "name": "codex-app-tools",
+      "marketplace": "openai-bundled",
+      "reason": "Codex应用深度集成工具",
+      "priority": "medium"
+    }
+  ],
+  "installation_note": "这些插件将大大提升代码编写效率",
+  "created_at": "2026-08-24T00:00:00Z"
+}

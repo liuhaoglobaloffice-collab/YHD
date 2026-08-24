@@ -1,0 +1,508 @@
+"""
+Memory System
+
+Short-term, working, and long-term memory management.
+"""
+from datetime import datetime, UTC, timedelta
+from typing import List, Dict, Any, Optional
+from dataclasses import dataclass, field
+from enum import Enum
+
+from ..core.errors import ValidationError, NotFoundError, PermissionDeniedError
+from ..identity.models import User
+from ..identity.rbac import RBACService, Permission
+from ..identity.audit import AuditService, AuditAction
+
+
+class MemoryType(str, Enum):
+    """Memory type"""
+    SHORT_TERM = "short_term"  # Current conversation/session
+    WORKING = "working"  # Current task/workflow
+    LONG_TERM = "long_term"  # Validated persistent knowledge
+
+
+@dataclass
+class Memory:
+    """Memory entry"""
+    id: str
+    memory_type: MemoryType
+    
+    # Content
+    key: str
+    value: Any
+    
+    # Context
+    user_id: str
+    session_id: Optional[str] = None
+    task_id: Optional[str] = None
+    
+    # Source
+    source: str = "user"
+    confidence: float = 1.0
+    
+    # Lifecycle
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    expires_at: Optional[datetime] = None
+    accessed_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    access_count: int = 0
+    
+    # Status
+    is_active: bool = True
+    
+    # Metadata
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary"""
+        return {
+            "id": self.id,
+            "memory_type": self.memory_type.value,
+            "key": self.key,
+            "value": self.value,
+            "user_id": self.user_id,
+            "session_id": self.session_id,
+            "task_id": self.task_id,
+            "source": self.source,
+            "confidence": self.confidence,
+            "created_at": self.created_at.isoformat(),
+            "expires_at": self.expires_at.isoformat() if self.expires_at else None,
+            "accessed_at": self.accessed_at.isoformat(),
+            "access_count": self.access_count,
+            "is_active": self.is_active,
+            "metadata": self.metadata,
+        }
+
+
+class MemoryService:
+    """
+    Memory Service
+    
+    Manages short-term, working, and long-term memory.
+    """
+    
+    # Default expiration times
+    SHORT_TERM_EXPIRATION = timedelta(hours=1)
+    WORKING_EXPIRATION = timedelta(hours=24)
+    # Long-term memory does not expire by default
+    
+    def __init__(
+        self,
+        rbac_service: RBACService,
+        audit_service: AuditService,
+    ):
+        self.rbac = rbac_service
+        self.audit = audit_service
+        
+        # In-memory storage (will be replaced with database/cache)
+        self._memories: Dict[str, Memory] = {}
+        self._user_memories: Dict[str, List[str]] = {}  # user_id -> memory_ids
+        self._session_memories: Dict[str, List[str]] = {}  # session_id -> memory_ids
+        self._task_memories: Dict[str, List[str]] = {}  # task_id -> memory_ids
+    
+    async def store(
+        self,
+        user: User,
+        memory_type: MemoryType,
+        key: str,
+        value: Any,
+        session_id: Optional[str] = None,
+        task_id: Optional[str] = None,
+        source: str = "user",
+        confidence: float = 1.0,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Memory:
+        """
+        Store a memory
+        
+        Args:
+            user: User storing the memory
+            memory_type: Memory type
+            key: Memory key
+            value: Memory value
+            session_id: Session ID (for short-term memory)
+            task_id: Task ID (for working memory)
+            source: Memory source
+            confidence: Confidence level
+            metadata: Additional metadata
+        
+        Returns:
+            Memory: Stored memory
+        
+        Raises:
+            PermissionDeniedError: If user lacks permission
+            ValidationError: If validation fails
+        """
+        # Permission check
+        if not self.rbac.has_permission(user, Permission.KNOWLEDGE_WRITE):
+            await self.audit.log_permission_denied(
+                user_id=user.id,
+                action="store_memory",
+                resource_type="memory",
+            )
+            raise PermissionDeniedError("User lacks KNOWLEDGE_WRITE permission")
+        
+        # Validate key
+        if not key or len(key.strip()) == 0:
+            raise ValidationError("Memory key cannot be empty")
+        
+        # Validate confidence
+        if confidence < 0 or confidence > 1:
+            raise ValidationError("Confidence must be between 0 and 1")
+        
+        # Determine expiration
+        expires_at = None
+        if memory_type == MemoryType.SHORT_TERM:
+            expires_at = datetime.now(UTC) + self.SHORT_TERM_EXPIRATION
+        elif memory_type == MemoryType.WORKING:
+            expires_at = datetime.now(UTC) + self.WORKING_EXPIRATION
+        # Long-term memory does not expire
+        
+        # Generate memory ID
+        memory_id = f"mem_{memory_type.value}_{datetime.now(UTC).timestamp()}_{user.id}"
+        
+        # Create memory
+        memory = Memory(
+            id=memory_id,
+            memory_type=memory_type,
+            key=key,
+            value=value,
+            user_id=user.id,
+            session_id=session_id,
+            task_id=task_id,
+            source=source,
+            confidence=confidence,
+            expires_at=expires_at,
+            metadata=metadata or {},
+        )
+        
+        # Store memory
+        self._memories[memory_id] = memory
+        
+        # Index by user
+        if user.id not in self._user_memories:
+            self._user_memories[user.id] = []
+        self._user_memories[user.id].append(memory_id)
+        
+        # Index by session
+        if session_id:
+            if session_id not in self._session_memories:
+                self._session_memories[session_id] = []
+            self._session_memories[session_id].append(memory_id)
+        
+        # Index by task
+        if task_id:
+            if task_id not in self._task_memories:
+                self._task_memories[task_id] = []
+            self._task_memories[task_id].append(memory_id)
+        
+        # Audit log
+        await self.audit.log(
+            action=AuditAction.CREATE,
+            user_id=user.id,
+            resource_type="memory",
+            resource_id=memory_id,
+            details={
+                "memory_type": memory_type.value,
+                "key": key,
+                "session_id": session_id,
+                "task_id": task_id,
+            }
+        )
+        
+        return memory
+    
+    async def retrieve(
+        self,
+        user: User,
+        key: str,
+        memory_type: Optional[MemoryType] = None,
+        session_id: Optional[str] = None,
+        task_id: Optional[str] = None,
+    ) -> Optional[Memory]:
+        """
+        Retrieve a memory
+        
+        Args:
+            user: User retrieving the memory
+            key: Memory key
+            memory_type: Filter by memory type
+            session_id: Filter by session
+            task_id: Filter by task
+        
+        Returns:
+            Memory: Retrieved memory or None
+        
+        Raises:
+            PermissionDeniedError: If user lacks permission
+        """
+        # Permission check
+        if not self.rbac.has_permission(user, Permission.KNOWLEDGE_READ):
+            await self.audit.log_permission_denied(
+                user_id=user.id,
+                action="retrieve_memory",
+                resource_type="memory",
+            )
+            raise PermissionDeniedError("User lacks KNOWLEDGE_READ permission")
+        
+        # Clean expired memories first
+        self._clean_expired()
+        
+        # Get user memories
+        memory_ids = self._user_memories.get(user.id, [])
+        
+        # Find matching memory
+        for memory_id in memory_ids:
+            memory = self._memories.get(memory_id)
+            if not memory or not memory.is_active:
+                continue
+            
+            # Check key
+            if memory.key != key:
+                continue
+            
+            # Check type
+            if memory_type and memory.memory_type != memory_type:
+                continue
+            
+            # Check session
+            if session_id and memory.session_id != session_id:
+                continue
+            
+            # Check task
+            if task_id and memory.task_id != task_id:
+                continue
+            
+            # Update access
+            memory.accessed_at = datetime.now(UTC)
+            memory.access_count += 1
+            
+            return memory
+        
+        return None
+    
+    async def list_memories(
+        self,
+        user: User,
+        memory_type: Optional[MemoryType] = None,
+        session_id: Optional[str] = None,
+        task_id: Optional[str] = None,
+    ) -> List[Memory]:
+        """
+        List memories
+        
+        Args:
+            user: User requesting the list
+            memory_type: Filter by memory type
+            session_id: Filter by session
+            task_id: Filter by task
+        
+        Returns:
+            List[Memory]: List of memories
+        
+        Raises:
+            PermissionDeniedError: If user lacks permission
+        """
+        # Permission check
+        if not self.rbac.has_permission(user, Permission.KNOWLEDGE_READ):
+            await self.audit.log_permission_denied(
+                user_id=user.id,
+                action="list_memories",
+                resource_type="memory",
+            )
+            raise PermissionDeniedError("User lacks KNOWLEDGE_READ permission")
+        
+        # Clean expired memories first
+        self._clean_expired()
+        
+        # Get user memories
+        memory_ids = self._user_memories.get(user.id, [])
+        
+        memories = []
+        for memory_id in memory_ids:
+            memory = self._memories.get(memory_id)
+            if not memory or not memory.is_active:
+                continue
+            
+            # Apply filters
+            if memory_type and memory.memory_type != memory_type:
+                continue
+            
+            if session_id and memory.session_id != session_id:
+                continue
+            
+            if task_id and memory.task_id != task_id:
+                continue
+            
+            memories.append(memory)
+        
+        return memories
+    
+    async def delete(
+        self,
+        user: User,
+        memory_id: str,
+    ) -> None:
+        """
+        Delete a memory
+        
+        Args:
+            user: User deleting the memory
+            memory_id: Memory ID
+        
+        Raises:
+            NotFoundError: If memory not found
+            PermissionDeniedError: If user lacks permission
+        """
+        # Permission check
+        if not self.rbac.has_permission(user, Permission.KNOWLEDGE_WRITE):
+            await self.audit.log_permission_denied(
+                user_id=user.id,
+                action="delete_memory",
+                resource_type="memory",
+                resource_id=memory_id,
+            )
+            raise PermissionDeniedError("User lacks KNOWLEDGE_WRITE permission")
+        
+        # Find memory
+        memory = self._memories.get(memory_id)
+        if not memory:
+            raise NotFoundError(f"Memory not found: {memory_id}")
+        
+        # Check ownership
+        if memory.user_id != user.id and not self.rbac.is_admin(user):
+            await self.audit.log_permission_denied(
+                user_id=user.id,
+                action="delete_memory",
+                resource_type="memory",
+                resource_id=memory_id,
+            )
+            raise PermissionDeniedError("User cannot delete this memory")
+        
+        # Mark as inactive
+        memory.is_active = False
+        
+        # Audit log
+        await self.audit.log(
+            action=AuditAction.DELETE,
+            user_id=user.id,
+            resource_type="memory",
+            resource_id=memory_id,
+        )
+    
+    async def clear_session(
+        self,
+        user: User,
+        session_id: str,
+    ) -> int:
+        """
+        Clear all memories for a session
+        
+        Args:
+            user: User clearing the session
+            session_id: Session ID
+        
+        Returns:
+            int: Number of memories cleared
+        """
+        # Permission check
+        if not self.rbac.has_permission(user, Permission.KNOWLEDGE_WRITE):
+            await self.audit.log_permission_denied(
+                user_id=user.id,
+                action="clear_session",
+                resource_type="memory",
+            )
+            raise PermissionDeniedError("User lacks KNOWLEDGE_WRITE permission")
+        
+        memory_ids = self._session_memories.get(session_id, [])
+        cleared = 0
+        
+        for memory_id in memory_ids:
+            memory = self._memories.get(memory_id)
+            if not memory or not memory.is_active:
+                continue
+            
+            # Check ownership
+            if memory.user_id != user.id and not self.rbac.is_admin(user):
+                continue
+            
+            memory.is_active = False
+            cleared += 1
+        
+        # Audit log
+        await self.audit.log(
+            action=AuditAction.DELETE,
+            user_id=user.id,
+            resource_type="memory",
+            details={
+                "action": "clear_session",
+                "session_id": session_id,
+                "count": cleared,
+            }
+        )
+        
+        return cleared
+    
+    async def clear_task(
+        self,
+        user: User,
+        task_id: str,
+    ) -> int:
+        """
+        Clear all memories for a task
+        
+        Args:
+            user: User clearing the task
+            task_id: Task ID
+        
+        Returns:
+            int: Number of memories cleared
+        """
+        # Permission check
+        if not self.rbac.has_permission(user, Permission.KNOWLEDGE_WRITE):
+            await self.audit.log_permission_denied(
+                user_id=user.id,
+                action="clear_task",
+                resource_type="memory",
+            )
+            raise PermissionDeniedError("User lacks KNOWLEDGE_WRITE permission")
+        
+        memory_ids = self._task_memories.get(task_id, [])
+        cleared = 0
+        
+        for memory_id in memory_ids:
+            memory = self._memories.get(memory_id)
+            if not memory or not memory.is_active:
+                continue
+            
+            # Check ownership
+            if memory.user_id != user.id and not self.rbac.is_admin(user):
+                continue
+            
+            memory.is_active = False
+            cleared += 1
+        
+        # Audit log
+        await self.audit.log(
+            action=AuditAction.DELETE,
+            user_id=user.id,
+            resource_type="memory",
+            details={
+                "action": "clear_task",
+                "task_id": task_id,
+                "count": cleared,
+            }
+        )
+        
+        return cleared
+    
+    def _clean_expired(self) -> int:
+        """Clean expired memories (internal)"""
+        now = datetime.now(UTC)
+        cleaned = 0
+        
+        for memory in self._memories.values():
+            if memory.is_active and memory.expires_at and memory.expires_at < now:
+                memory.is_active = False
+                cleaned += 1
+        
+        return cleaned

@@ -1,0 +1,263 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.15, pytest-9.1.1, pluggy-1.6.0
+rootdir: D:\LiuHao-AI-OS
+configfile: pyproject.toml
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 482 items / 1 skipped
+
+tests\test_ai\test_agents.py ................                            [  3%]
+tests\test_ai\test_integration.py ..........                             [  5%]
+tests\test_ai\test_orchestrator.py ...............                       [  8%]
+tests\test_ai\test_providers.py ..................                       [ 12%]
+tests\test_ai\test_tools.py .............                                [ 14%]
+tests\test_ai_brain\test_agent_router.py ............                    [ 17%]
+tests\test_ai_brain\test_ai_brain_api.py ................                [ 20%]
+tests\test_ai_brain\test_ai_brain_integration.py ............            [ 23%]
+tests\test_ai_brain\test_command_processor.py ...................        [ 27%]
+tests\test_ai_brain\test_planner.py .............                        [ 29%]
+tests\test_ai_brain\test_workflow_bridge.py .........                    [ 31%]
+tests\test_api\test_database_dependency.py ......                        [ 32%]
+tests\test_api\test_service_integration.py ...s...........               [ 36%]
+tests\test_business\test_models.py ........                              [ 37%]
+tests\test_business\test_registry.py .................                   [ 41%]
+tests\test_business\test_service.py ..........                           [ 43%]
+tests\test_ceo\test_dashboard.py .....                                   [ 44%]
+tests\test_ceo\test_models.py ............                               [ 46%]
+tests\test_core\test_events.py ....                                      [ 47%]
+tests\test_governance\test_approval.py .............                     [ 50%]
+tests\test_governance\test_approval_integration.py ..........            [ 52%]
+tests\test_governance\test_audit_integration.py ........                 [ 54%]
+tests\test_governance\test_risk.py ..........                            [ 56%]
+tests\test_identity\test_audit.py ...................                    [ 60%]
+tests\test_identity\test_governance.py ...............                   [ 63%]
+tests\test_identity\test_rbac.py .....                                   [ 64%]
+tests\test_knowledge\test_company_brain.py ...........                   [ 66%]
+tests\test_knowledge\test_knowledge_retrieval.py .......FFF...FFF        [ 69%]
+tests\test_knowledge\test_memory.py ...........F                         [ 72%]
+tests\test_knowledge\test_processing.py .......                          [ 73%]
+tests\test_knowledge\test_retrieval.py .......                           [ 75%]
+tests\test_migration.py .....                                            [ 76%]
+tests\test_repositories\test_integration.py ...                          [ 76%]
+tests\test_repositories\test_workflow_repository.py .......              [ 78%]
+tests\test_security\test_policy.py .......                               [ 79%]
+tests\test_security\test_rbac_permissions.py ........................... [ 85%]
+....                                                                     [ 86%]
+tests\test_tasks\test_service.py ..........                              [ 88%]
+tests\test_workflow\test_executor.py ......sss.                          [ 90%]
+tests\test_workflow\test_models.py ............                          [ 92%]
+tests\test_workflow\test_service.py .............                        [ 95%]
+tests\test_workforce\test_lifecycle.py ........                          [ 97%]
+tests\test_workforce\test_models.py .......                              [ 98%]
+tests\test_workforce\test_tracking.py ......                             [100%]
+
+============================== warnings summary ===============================
+tests/test_ai_brain/test_ai_brain_api.py::TestAIBrainAPI::test_submit_command_endpoint_exists
+  D:\LiuHao-AI-OS\src\api\schemas.py:28: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    class UserResponse(UserBase):
+
+tests/test_ai_brain/test_ai_brain_api.py::TestAIBrainAPI::test_submit_command_endpoint_exists
+  D:\LiuHao-AI-OS\src\api\schemas.py:77: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    class RoleResponse(BaseModel):
+
+tests/test_ai_brain/test_ai_brain_api.py::TestAIBrainAPI::test_submit_command_endpoint_exists
+  D:\LiuHao-AI-OS\src\api\schemas.py:90: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    class PermissionResponse(BaseModel):
+
+tests/test_ai_brain/test_ai_brain_api.py::TestAIBrainAPI::test_submit_command_endpoint_exists
+  D:\LiuHao-AI-OS\src\api\schemas.py:131: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    class ApprovalRequestResponse(BaseModel):
+
+tests/test_ai_brain/test_ai_brain_api.py::TestAIBrainAPI::test_submit_command_endpoint_exists
+  D:\LiuHao-AI-OS\src\api\schemas.py:164: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    class AuditLogResponse(BaseModel):
+
+tests/test_ai_brain/test_ai_brain_api.py::TestAIBrainAPI::test_submit_command_endpoint_exists
+  D:\LiuHao-AI-OS\src\api\routes\tasks.py:64: PydanticDeprecatedSince20: `min_items` is deprecated and will be removed, use `min_length` instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    agent_ids: List[str] = Field(..., min_items=1)
+
+tests/test_api/test_service_integration.py: 8 warnings
+tests/test_knowledge/test_company_brain.py: 28 warnings
+tests/test_knowledge/test_knowledge_retrieval.py: 40 warnings
+tests/test_knowledge/test_memory.py: 11 warnings
+tests/test_repositories/test_integration.py: 1 warning
+tests/test_repositories/test_workflow_repository.py: 2 warnings
+tests/test_tasks/test_service.py: 17 warnings
+  D:\Lib\site-packages\sqlalchemy\sql\schema.py:3627: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    return util.wrap_callable(lambda ctx: fn(), fn)  # type: ignore
+
+tests/test_ceo/test_models.py::TestCEODashboardData::test_create_ceo_dashboard_data
+  D:\LiuHao-AI-OS\tests\test_ceo\test_models.py:191: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp = datetime.utcnow()
+
+tests/test_ceo/test_models.py::TestCEODashboardData::test_ceo_dashboard_data_serialization
+  D:\LiuHao-AI-OS\tests\test_ceo\test_models.py:247: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_tasks/test_service.py::test_create_task
+tests/test_tasks/test_service.py::test_get_task
+tests/test_tasks/test_service.py::test_list_tasks
+tests/test_tasks/test_service.py::test_list_tasks_by_status
+tests/test_tasks/test_service.py::test_update_task_status
+tests/test_tasks/test_service.py::test_complete_task
+tests/test_tasks/test_service.py::test_fail_task
+tests/test_tasks/test_service.py::test_assign_task
+tests/test_tasks/test_service.py::test_delete_task
+  D:\LiuHao-AI-OS\src\tasks\service.py:134: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    self.event_bus.publish(Event(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_tasks/test_service.py::test_list_tasks_by_status
+tests/test_tasks/test_service.py::test_update_task_status
+  D:\LiuHao-AI-OS\src\tasks\service.py:294: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    self.event_bus.publish(Event(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_workflow/test_executor.py::test_execute_sequential_workflow
+tests/test_workflow/test_executor.py::test_execute_loop_workflow
+tests/test_workflow/test_executor.py::test_list_executions
+  D:\LiuHao-AI-OS\src\workflow\executor.py:217: RuntimeWarning: coroutine 'TaskService.create_task' was never awaited
+    logger.error(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_workflow/test_executor.py::test_execute_parallel_workflow
+  D:\Lib\asyncio\base_events.py:2062: RuntimeWarning: coroutine 'TaskService.create_task' was never awaited
+    handle = None  # Needed to break cycles when an exception occurs.
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=============================== tests coverage ================================
+______________ coverage: platform win32, python 3.13.15-final-0 _______________
+
+Name                                      Stmts   Miss  Cover   Missing
+-----------------------------------------------------------------------
+src\__init__.py                               1      0   100%
+src\ai\__init__.py                            5      0   100%
+src\ai\agent_router.py                       38      4    89%   139-142, 171
+src\ai\agents.py                            139     17    88%   103, 134, 189-203, 267, 271, 275-283
+src\ai\command_processor.py                  77      5    94%   65, 117, 181, 185, 206
+src\ai\models.py                             67      0   100%
+src\ai\orchestrator.py                      260     44    83%   177-180, 242, 294, 343, 351-359, 383, 387-399, 403-417, 511-519, 597-621, 644
+src\ai\planner.py                            74      4    95%   130, 134, 136, 138
+src\ai\providers.py                         389    138    65%   90, 155, 176-177, 179-180, 198-214, 247-262, 266, 292, 352, 363, 387, 396-407, 426, 450-461, 485-546, 550-552, 557, 564-565, 579, 606-607, 628-630, 662-677, 681-722, 738-750, 754-794, 813-827, 831-877
+src\ai\tools.py                             163     14    91%   121, 204, 209-234, 264, 306, 386, 478-481
+src\ai\workflow_bridge.py                    57      2    96%   74, 96
+src\api\dependencies.py                     107     65    39%   43-66, 80-100, 114-119, 142-144, 152-158, 166-172, 180-182, 190-192, 199, 208-216
+src\api\dependencies\__init__.py             17      0   100%
+src\api\dependencies\approval.py             30     16    47%   23, 59-106, 127-155
+src\api\dependencies\database.py             46      3    93%   139-145
+src\api\dependencies\permissions.py          46     27    41%   62-100, 133-160, 188-201
+src\api\factories\__init__.py                 6      0   100%
+src\api\factories\business.py                13      4    69%   44-48
+src\api\factories\knowledge.py               23      9    61%   48-51, 73-75, 96-98, 120-122
+src\api\factories\task.py                     7      1    86%   37
+src\api\factories\workflow.py                 9      2    78%   39-41
+src\api\factories\workforce.py               11      3    73%   41-44
+src\api\routes\__init__.py                   18      0   100%
+src\api\routes\ai_brain.py                  100     52    48%   115-191, 214-248, 276-315, 338-372
+src\api\routes\approvals.py                  80     56    30%   40-67, 82-100, 112-128, 141-164, 177-200, 212-235
+src\api\routes\audit.py                      27     13    52%   37-56, 71-89
+src\api\routes\auth.py                       49     30    39%   36-76, 89-145, 155
+src\api\routes\business.py                   39     14    64%   60-81, 99-106, 121-129, 149-173, 188-192
+src\api\routes\ceo.py                        68     40    41%   45-50, 76-87, 107-115, 136-147, 167-175, 196-207, 227-235
+src\api\routes\health.py                     29     11    62%   28-35, 46, 57-75
+src\api\routes\jarvis.py                     53     24    55%   28-34, 74-108, 122-123, 135-137, 145
+src\api\routes\permissions.py                22      8    64%   31-41, 53-70
+src\api\routes\roles.py                      28     13    54%   26-28, 40-49, 61-75
+src\api\routes\tasks.py                     140     76    46%   93, 131-161, 179-193, 207-215, 230-243, 259-274, 291-316, 333-358, 376-398
+src\api\routes\users.py                      55     35    36%   37-46, 61-66, 79-104, 117-145
+src\api\routes\workflows.py                 139     67    52%   74, 98, 128-150, 165-169, 185-195, 213-243, 262-275, 308-338, 354-362, 379-393, 410-426, 443-459, 476-492
+src\api\routes\workforce.py                 147     81    45%   82, 131-161, 179-194, 210-226, 244-281, 298-333, 349-373, 389-411
+src\api\schemas.py                          103      0   100%
+src\business\__init__.py                      2      0   100%
+src\business\marketing.py                    46     46     0%   11-217
+src\business\models.py                       57      0   100%
+src\business\operations.py                   44     44     0%   11-216
+src\business\registry.py                     74      0   100%
+src\business\research.py                     42     42     0%   11-217
+src\business\sales.py                        46     46     0%   11-224
+src\business\service.py                     114     12    89%   166, 176, 182, 241, 248, 254, 303, 310, 362, 409, 439, 468
+src\ceo\__init__.py                           3      0   100%
+src\ceo\dashboard.py                        121     31    74%   115-117, 126, 132, 141-143, 147-149, 158-163, 185, 208, 236, 313-328, 350-358, 364
+src\ceo\models.py                            46      0   100%
+src\core\__init__.py                          6      0   100%
+src\core\config.py                           66     10    85%   78, 87-90, 95-97, 102, 107, 128
+src\core\di.py                               24      3    88%   62-63, 68
+src\core\errors.py                           70      6    91%   90, 104, 118, 139, 146, 166
+src\core\events.py                          117     22    81%   113-114, 118-125, 136-137, 150-154, 172-173, 182-183, 201-203
+src\core\lifecycle.py                        58     42    28%   24-27, 31-68, 72-97, 101, 111-113, 122-127
+src\core\logging.py                          33     22    33%   21-46, 54-96
+src\database\__init__.py                      4      0   100%
+src\database\base.py                         79     52    34%   50, 52, 58-65, 77-107, 119-130, 145-155, 165-174, 183-190, 200-211, 222-226
+src\database\models.py                      210      0   100%
+src\database\repositories\__init__.py         6      0   100%
+src\database\repositories\business.py        27     12    56%   38-45, 62-68, 85-91, 108-114, 126-132, 145-151
+src\database\repositories\converters.py      70      4    94%   149, 165, 214-215
+src\database\repositories\knowledge.py       86     36    58%   25, 38-44, 57-63, 76-87, 106-113, 130-136, 149-157, 224-230, 247-253, 262-271, 341-358, 418-433
+src\database\repositories\task.py            39     19    51%   36-42, 61-68, 80-86, 103-109, 126-132, 144-149, 162-168, 175, 192-198, 210-216
+src\database\repositories\workflow.py        30      9    70%   69-75, 82, 101-108, 125-131, 148-154
+src\database\repositories\workforce.py       65     38    42%   36-41, 53-58, 67, 79-84, 97-103, 110, 129-136, 148-153, 170-180, 193-221, 228, 247-254, 266-271, 288-299, 316-331
+src\database\repository.py                   62     19    69%   156, 170-173, 185-192, 213-222, 226-227, 231-232, 244-245
+src\governance\__init__.py                    3      0   100%
+src\governance\approval.py                  125     29    77%   21, 24, 119-120, 213, 219-224, 274-279, 342-360, 379-399, 422-423
+src\governance\risk.py                       40      0   100%
+src\identity\__init__.py                      7      0   100%
+src\identity\audit.py                       176      1    99%   475
+src\identity\auth.py                         33     20    39%   21, 27, 41-62, 78-91
+src\identity\database.py                     44     29    34%   23-40, 46-55, 62-67, 72-79, 85-88, 100-101
+src\identity\governance.py                  143     40    72%   20, 22, 71-72, 103-107, 110-111, 208-230, 249-250, 257-258, 275-290, 315-316, 382-399
+src\identity\models.py                      121      9    93%   133, 156, 177-178, 183-185, 207, 243
+src\identity\rbac.py                        166     24    86%   324-325, 328-334, 357-362, 399, 439-443, 452-453, 473, 481, 497-506
+src\jarvis\__init__.py                        6      0   100%
+src\jarvis\service.py                        63     49    22%   45-55, 59-67, 88-136, 140-150, 154
+src\jarvis\speech_recognition.py             27     18    33%   28-30, 41-66, 77-79
+src\jarvis\state_machine.py                  44     25    43%   34-37, 50-64, 68-76, 80, 84-88, 92, 96-98
+src\jarvis\tts.py                            31     22    29%   34-37, 48-71, 83-88
+src\jarvis\wake_word.py                      32     18    44%   37-40, 51-58, 69-82
+src\knowledge\__init__.py                     6      0   100%
+src\knowledge\company_brain.py              165     18    89%   210-215, 219, 288-294, 299, 325-330, 386-393, 398, 402, 533-540, 545, 579-587, 591
+src\knowledge\documents.py                  138     84    39%   58, 111-116, 132-154, 158, 190-267, 271-274, 285-322, 344-376, 399-424, 438-443, 462-491
+src\knowledge\knowledge_retrieval.py        135      9    93%   126-132, 207-209, 340
+src\knowledge\memory.py                     181     22    88%   160-165, 169, 173, 271-276, 290, 294, 338-343, 390-396, 407, 411, 442-447, 495-496, 499, 525-530, 563
+src\knowledge\processing.py                 116     17    85%   49, 116, 123-137, 199, 273-290
+src\knowledge\retrieval.py                  145     29    80%   53, 134-139, 148-151, 192, 196, 228, 241-264, 291, 293, 300, 303, 327-333, 337
+src\main.py                                  21     21     0%   5-50
+src\multi_tenant\__init__.py                  3      3     0%   11-27
+src\multi_tenant\api.py                     135    135     0%   10-393
+src\multi_tenant\migration.py                45     45     0%   13-181
+src\multi_tenant\models.py                  133    133     0%   13-310
+src\multi_tenant\services.py                170    170     0%   11-674
+src\security\__init__.py                      3      0   100%
+src\security\policy.py                      117     46    61%   27-31, 183-204, 245-272, 281-306, 315-338, 357, 375
+src\security\secrets.py                      59     38    36%   47-66, 70, 74, 78, 82, 94-116, 120-121, 131-133, 139-141
+src\tasks\__init__.py                         2      0   100%
+src\tasks\executor.py                        69     69     0%   6-313
+src\tasks\models.py                         111     23    79%   64, 80, 143-151, 155, 165-168, 172-175, 179-181, 185-186, 190
+src\tasks\service.py                        138     36    74%   96, 213, 215, 217, 219, 260-273, 379, 406-434, 447-458
+src\workflow\__init__.py                      2      0   100%
+src\workflow\executor.py                    173     66    62%   227-249, 261-283, 295-322, 336-339, 348, 355, 376, 385, 414, 419-427, 433, 439, 451-455, 463, 473, 479-481, 489-499
+src\workflow\models.py                      138     32    77%   91, 94, 97, 134, 142-145, 149-152, 202, 208-209, 228, 232-253
+src\workflow\service.py                     141     24    83%   115-122, 253-260, 271, 274, 319-326, 351-356, 359-360, 363-364, 371-378, 430-437, 478, 482
+src\workforce\__init__.py                     2      0   100%
+src\workforce\cost.py                        90     18    80%   129-131, 225-226, 254-268, 277-279
+src\workforce\employee.py                    78     38    51%   103, 106, 170-172, 242-278, 302-321, 352-380, 408-436
+src\workforce\lifecycle.py                   79      9    89%   83, 96, 158, 167-168, 171, 231, 240-241
+src\workforce\models.py                     100      0   100%
+src\workforce\performance.py                 62     19    69%   126-128, 205-225, 234-236
+src\workforce\registry.py                    85     32    62%   56, 61, 91, 109-114, 133, 172-181, 208, 211, 214, 220-221, 230-237, 241-248
+-----------------------------------------------------------------------
+TOTAL                                      8232   2813    66%
+Coverage HTML written to dir htmlcov
+=========================== short test summary info ===========================
+FAILED tests/test_knowledge/test_knowledge_retrieval.py::test_build_context
+FAILED tests/test_knowledge/test_knowledge_retrieval.py::test_context_summary
+FAILED tests/test_knowledge/test_knowledge_retrieval.py::test_context_to_dict
+FAILED tests/test_knowledge/test_knowledge_retrieval.py::test_search_creates_audit_log
+FAILED tests/test_knowledge/test_knowledge_retrieval.py::test_context_build_creates_audit_log
+FAILED tests/test_knowledge/test_knowledge_retrieval.py::test_full_knowledge_retrieval_workflow
+FAILED tests/test_knowledge/test_memory.py::TestMemoryService::test_clean_expired
+=========== 7 failed, 471 passed, 5 skipped, 130 warnings in 58.82s ===========

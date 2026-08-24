@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>鎏灏 AI-OS UI 操作平台 - 使用指南</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-gray-100">
+    <!-- 导航栏 -->
+    <nav class="bg-gray-800 border-b border-gray-700 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <h1 class="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
+                            鎏灏 AI-OS
+                        </h1>
+                    </div>
+                    <div class="ml-10 flex items-baseline space-x-4">
+                        <a href="#overview" class="px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition">概览</a>
+                        <a href="#features" class="px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition">功能特性</a>
+                        <a href="#quickstart" class="px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition">快速开始</a>
+                        <a href="#architecture" class="px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition">架构</a>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <a href="http://localhost:3001" target="_blank" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium">
+                        🚀 打开UI控制台
+                    </a>
+                    <a href="http://localhost:8000/docs" target="_blank" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium">
+                        📖 API文档
+                    </a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 主内容 -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        
+        <!-- Hero Section -->
+        <div id="overview" class="text-center mb-16">
+            <h2 class="text-5xl font-bold mb-4 bg-gradient-to-r from-blue-400 via-purple-500 to-pink-500 bg-clip-text text-transparent">
+                鎏灏 AI-OS UI 操作平台
+            </h2>
+            <p class="text-xl text-gray-400 mb-8">
+                企业级 AI 操作系统的可视化控制中心
+            </p>
+            <div class="flex justify-center space-x-4">
+                <div class="px-4 py-2 bg-green-900 text-green-300 rounded-full text-sm font-medium border border-green-700">
+                    ✅ 前端运行中: http://localhost:3001
+                </div>
+                <div class="px-4 py-2 bg-blue-900 text-blue-300 rounded-full text-sm font-medium border border-blue-700">
+                    ✅ 后端运行中: http://localhost:8000
+                </div>
+            </div>
+        </div>
+
+        <!-- 状态卡片 -->
+        <div class="grid grid-cols-4 gap-6 mb-16">
+            <div class="bg-gradient-to-br from-blue-900 to-blue-800 rounded-lg p-6 border border-blue-700">
+                <div class="text-blue-300 text-sm font-medium mb-2">技术栈</div>
+                <div class="text-3xl font-bold text-white mb-1">React 18</div>
+                <div class="text-blue-400 text-xs">TypeScript + Vite</div>
+            </div>
+            <div class="bg-gradient-to-br from-purple-900 to-purple-800 rounded-lg p-6 border border-purple-700">
+                <div class="text-purple-300 text-sm font-medium mb-2">UI框架</div>
+                <div class="text-3xl font-bold text-white mb-1">Tailwind</div>
+                <div class="text-purple-400 text-xs">响应式设计</div>
+            </div>
+            <div class="bg-gradient-to-br from-green-900 to-green-800 rounded-lg p-6 border border-green-700">
+                <div class="text-green-300 text-sm font-medium mb-2">路由系统</div>
+                <div class="text-3xl font-bold text-white mb-1">50+ 页面</div>
+                <div class="text-green-400 text-xs">三级菜单导航</div>
+            </div>
+            <div class="bg-gradient-to-br from-orange-900 to-orange-800 rounded-lg p-6 border border-orange-700">
+                <div class="text-orange-300 text-sm font-medium mb-2">图标库</div>
+                <div class="text-3xl font-bold text-white mb-1">Lucide</div>
+                <div class="text-orange-400 text-xs">现代图标系统</div>
+            </div>
+        </div>
+
+        <!-- 功能特性 -->
+        <div id="features" class="mb-16">
+            <h3 class="text-3xl font-bold mb-8 text-center">✨ 核心功能模块</h3>
+            <div class="grid grid-cols-2 gap-6">
+                <!-- 供应商情报系统 -->
+                <div class="bg-gray-800 rounded-lg p-6 border border-gray-700 hover:border-blue-500 transition">
+                    <div class="flex items-center mb-4">
+                        <div class="p-3 bg-blue-600 rounded-lg mr-4">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-white"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 7h.01"/><path d="M17 7h.01"/><path d="M7 17h.01"/><path d="M17 17h.01"/></svg>
+                        </div>
+                        <div>
+                            <h4 class="text-xl font-bold text-white">供应商情报系统</h4>
+                            <span class="text-xs bg-green-900 text-green-300 px-2 py-1 rounded-full border border-green-700">✨ 新增</span>
+                        </div>
+                    </div>
+                    <ul class="space-y-2 text-gray-400">
+                        <li class="flex items-center"><span class="text-green-500 mr-2">✓</span> 供应商列表管理</li>
+                        <li class="flex items-center"><span class="text-green-500 mr-2">✓</span> 实时搜索过滤</li>
+                        <li class="flex items-center"><span class="text-green-500 mr-2">✓</span> 状态与类型筛选</li>
+                        <li class="flex items-center"><span class="text-green-500 mr-2">✓</span> 风险等级监控</li>
+                        <li class="flex items-center"><span class="text-green-500 mr-2">✓</span> 统计数据展示</li>
+                    </ul>
+                    <div class="mt-4 pt-4 border-t border-gray-700">
+                        <a href="http://localhost:3001/business/supplier/list" target="_blank" class="text-blue-400 hover:text-blue-300 text-sm font-medium">
+                            访问模块 →
+                        </a>
+                    </div>
+                </div>
+
+                <!-- 系统总览 -->
+                <div class="bg-gray-800 rounded-lg p-6 border border-gray-700 hover:border-purple-500 transition">
+                    <div class="flex items-center mb-4">
+                        <div class="p-3 bg-purple-600 rounded-lg mr-4">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-white"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+                        </div>
+                        <div>
+                            <h4 class="text-xl font-bold text-white">系统总览仪表板</h4>
+                            <span class="text-xs text-gray-500">默认主页</span>
+                        </div>
+                    </div>
+                    <ul class="space-y-2 text-gray-400">
+                        <li class="flex items-center"><span class="text-green-500 mr-2">✓</span> 实时监控面板</li>
+                        <li class="flex items-center"><span class="text-green-500 mr-2">✓</span> 性能指标图表</li>
+                        <li class="flex items-center"><span class="text-green-500 mr-2">✓</span> 系统状态概览</li>
+                        <li class="flex items-center"><span class="text-green-500 mr-2">✓</span> 告警通知中心</li>
+                    </ul>
+                    <div class="mt-4 pt-4 border-t border-gray-700">
+                        <a href="http://localhost:3001" target="_blank" class="text-purple-400 hover:text-purple-300 text-sm font-medium">
+                            访问模块 →
+                        </a>
+                    </div>
+                </div>
+
+                <!-- AI 团队管理 -->
+                <div class="bg-gray-800 rounded-lg p-6 border border-gray-700 hover:border-green-500 transition">
+                    <div class="flex items-center mb-4">
+                        <div class="p-3 bg-green-600 rounded-lg mr-4">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-white"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                        </div>
+                        <div>
+                            <h4 class="text-xl font-bold text-white">AI 团队管理</h4>
+                            <span class="text-xs text-gray-500">员工/Agent/Provider</span>
+                        </div>
+                    </div>
+                    <ul class="space-y-2 text-gray-400">
+                        <li class="flex items-center"><span class="text-green-500 mr-2">✓</span> AI员工注册管理</li>
+                        <li class="flex items-center"><span class="text-green-500 mr-2">✓</span> Agent能力配置</li>
+                        <li class="flex items-center"><span class="text-green-500 mr-2">✓</span> Provider模型管理</li>
+                        <li class="flex items-center"><span class="text-green-500 mr-2">✓</span> 绩效评估系统</li>
+                    </ul>
+                    <div class="mt-4 pt-4 border-t border-gray-700">
+                        <a href="http://localhost:3001/ai-team/employees/list" target="_blank" class="text-green-400 hover:text-green-300 text-sm font-medium">
+                            访问模块 →
+                        </a>
+                    </div>
+                </div>
+
+                <!-- 业务运营 -->
+                <div class="bg-gray-800 rounded-lg p-6 border border-gray-700 hover:border-yellow-500 transition">
+                    <div class="flex items-center mb-4">
+                        <div class="p-3 bg-yellow-600 rounded-lg mr-4">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-white"><rect width="20" height="14" x="2" y="7" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+                        </div>
+                        <div>
+                            <h4 class="text-xl font-bold text-white">业务运营中心</h4>
+                            <span class="text-xs text-gray-500">研发/销售/运营</span>
+                        </div>
+                    </div>
+                    <ul class="space-y-2 text-gray-400">
+                        <li class="flex items-center"><span class="text-green-500 mr-2">✓</span> 研发项目管理</li>
+                        <li class="flex items-center"><span class="text-green-500 mr-2">✓</span> 销售线索追踪</li>
+                        <li class="flex items-center"><span class="text-green-500 mr-2">✓</span> 客户关系管理</li>
+                        <li class="flex items-center"><span class="text-green-500 mr-2">✓</span> 运营数据报表</li>
+                    </ul>
+                    <div class="mt-4 pt-4 border-t border-gray-700">
+                        <a href="http://localhost:3001/business/sales/leads" target="_blank" class="text-yellow-400 hover:text-yellow-300 text-sm font-medium">
+                            访问模块 →
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 快速开始 -->
+        <div id="quickstart" class="mb-16">
+            <h3 class="text-3xl font-bold mb-8 text-center">🚀 快速开始</h3>
+            <div class="bg-gray-800 rounded-lg p-8 border border-gray-700">
+                <div class="grid grid-cols-2 gap-8">
+                    <div>
+                        <h4 class="text-xl font-bold text-blue-400 mb-4">1. 访问前端控制台</h4>
+                        <div class="bg-gray-900 rounded-lg p-4 mb-4 border border-gray-700">
+                            <code class="text-green-400">http://localhost:3001</code>
+                        </div>
+                        <p class="text-gray-400 mb-4">打开浏览器访问上述地址，进入登录页面</p>
+                        
+                        <h4 class="text-xl font-bold text-blue-400 mb-4 mt-6">2. 使用测试账号登录</h4>
+                        <div class="bg-gray-900 rounded-lg p-4 border border-gray-700 space-y-2">
+                            <div><span class="text-gray-500">用户名:</span> <code class="text-green-400">admin</code></div>
+                            <div><span class="text-gray-500">密码:</span> <code class="text-green-400">admin123</code></div>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <h4 class="text-xl font-bold text-purple-400 mb-4">3. 探索供应商情报系统</h4>
+                        <ol class="space-y-3 text-gray-400">
+                            <li class="flex items-start">
+                                <span class="inline-flex items-center justify-center w-6 h-6 bg-purple-600 rounded-full text-white text-sm mr-3 flex-shrink-0">1</span>
+                                <span>点击左侧菜单 <strong class="text-white">业务运营</strong></span>
+                            </li>
+                            <li class="flex items-start">
+                                <span class="inline-flex items-center justify-center w-6 h-6 bg-purple-600 rounded-full text-white text-sm mr-3 flex-shrink-0">2</span>
+                                <span>展开 <strong class="text-white">供应商情报</strong> 子菜单</span>
+                            </li>
+                            <li class="flex items-start">
+                                <span class="inline-flex items-center justify-center w-6 h-6 bg-purple-600 rounded-full text-white text-sm mr-3 flex-shrink-0">3</span>
+                                <span>点击 <strong class="text-white">供应商列表</strong></span>
+                            </li>
+                            <li class="flex items-start">
+                                <span class="inline-flex items-center justify-center w-6 h-6 bg-purple-600 rounded-full text-white text-sm mr-3 flex-shrink-0">4</span>
+                                <span>查看供应商数据、使用搜索和筛选功能</span>
+                            </li>
+                        </ol>
+                    </div>
+                </div>
+
+                <div class="mt-8 pt-8 border-t border-gray-700">
+                    <h4 class="text-xl font-bold text-green-400 mb-4">💡 开发者提示</h4>
+                    <div class="grid grid-cols-3 gap-4">
+                        <div class="bg-gray-900 rounded-lg p-4 border border-gray-700">
+                            <div class="text-green-400 font-bold mb-2">启动前端</div>
+                            <code class="text-xs text-gray-400">cd frontend && npm run dev</code>
+                        </div>
+                        <div class="bg-gray-900 rounded-lg p-4 border border-gray-700">
+                            <div class="text-blue-400 font-bold mb-2">启动后端</div>
+                            <code class="text-xs text-gray-400">python start_production.py</code>
+                        </div>
+                        <div class="bg-gray-900 rounded-lg p-4 border border-gray-700">
+                            <div class="text-purple-400 font-bold mb-2">查看API文档</div>
+                            <code class="text-xs text-gray-400">localhost:8000/docs</code>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 架构说明 -->
+        <div id="architecture" class="mb-16">
+            <h3 class="text-3xl font-bold mb-8 text-center">🏗️ 架构说明</h3>
+            <div class="bg-gray-800 rounded-lg p-8 border border-gray-700">
+                <div class="grid grid-cols-2 gap-8">
+                    <div>
+                        <h4 class="text-lg font-bold text-white mb-4 flex items-center">
+                            <span class="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
+                            前端技术栈
+                        </h4>
+                        <ul class="space-y-2 text-gray-400">
+                            <li>• <strong class="text-white">React 18</strong> - 组件化UI框架</li>
+                            <li>• <strong class="text-white">TypeScript</strong> - 类型安全</li>
+                            <li>• <strong class="text-white">Vite</strong> - 快速构建工具</li>
+                            <li>• <strong class="text-white">Tailwind CSS</strong> - 实用优先CSS</li>
+                            <li>• <strong class="text-white">React Router</strong> - 客户端路由</li>
+                            <li>• <strong class="text-white">Zustand</strong> - 状态管理</li>
+                            <li>• <strong class="text-white">Axios</strong> - HTTP客户端</li>
+                            <li>• <strong class="text-white">Lucide React</strong> - 图标库</li>
+                        </ul>
+                    </div>
+                    
+                    <div>
+                        <h4 class="text-lg font-bold text-white mb-4 flex items-center">
+                            <span class="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                            后端技术栈
+                        </h4>
+                        <ul class="space-y-2 text-gray-400">
+                            <li>• <strong class="text-white">FastAPI</strong> - 现代Python Web框架</li>
+                            <li>• <strong class="text-white">SQLAlchemy</strong> - ORM</li>
+                            <li>• <strong class="text-white">Alembic</strong> - 数据库迁移</li>
+                            <li>• <strong class="text-white">Pydantic</strong> - 数据验证</li>
+                            <li>• <strong class="text-white">JWT</strong> - 身份验证</li>
+                            <li>• <strong class="text-white">RBAC</strong> - 权限控制</li>
+                            <li>• <strong class="text-white">SQLite</strong> - 数据库</li>
+                            <li>• <strong class="text-white">Uvicorn</strong> - ASGI服务器</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="mt-8 pt-8 border-t border-gray-700">
+                    <h4 class="text-lg font-bold text-white mb-4">📂 项目结构</h4>
+                    <div class="bg-gray-900 rounded-lg p-6 font-mono text-sm">
+                        <div class="text-blue-400">LiuHao-AI-OS/</div>
+                        <div class="ml-4">
+                            <div class="text-purple-400">├── frontend/          <span class="text-gray-500"># 前端代码</span></div>
+                            <div class="ml-4">
+                                <div class="text-gray-300">├── src/</div>
+                                <div class="text-gray-300">├── public/</div>
+                                <div class="text-gray-300">└── package.json</div>
+                            </div>
+                            <div class="text-purple-400">├── src/               <span class="text-gray-500"># 后端代码</span></div>
+                            <div class="ml-4">
+                                <div class="text-gray-300">├── api/           <span class="text-gray-500"># API路由</span></div>
+                                <div class="text-gray-300">├── business/      <span class="text-gray-500"># 业务逻辑</span></div>
+                                <div class="text-gray-300">├── identity/      <span class="text-gray-500"># 认证授权</span></div>
+                                <div class="text-gray-300">└── database/      <span class="text-gray-500"># 数据库</span></div>
+                            </div>
+                            <div class="text-purple-400">├── tests/             <span class="text-gray-500"># 测试代码</span></div>
+                            <div class="text-purple-400">└── docs/              <span class="text-gray-500"># 文档</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 页脚 -->
+        <div class="text-center text-gray-500 border-t border-gray-800 pt-8">
+            <p class="mb-2">🎉 鎏灏 AI-OS Y1.0 - Week 2 架构检查修正版</p>
+            <p class="text-sm">Powered by React + FastAPI | 最后更新: 2026-08-23</p>
+        </div>
+
+    </div>
+</body>
+</html>

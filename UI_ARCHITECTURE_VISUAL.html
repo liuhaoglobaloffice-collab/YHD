@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>鎏灏 AI-OS UI 操作平台 - 系统架构</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            color: white;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        .subtitle {
+            text-align: center;
+            color: rgba(255,255,255,0.9);
+            font-size: 1.2em;
+            margin-bottom: 40px;
+        }
+        .status-banner {
+            background: #10b981;
+            color: white;
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+            font-size: 1.3em;
+            font-weight: bold;
+            margin-bottom: 40px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        .architecture {
+            background: white;
+            border-radius: 16px;
+            padding: 40px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+            margin-bottom: 40px;
+        }
+        .layer {
+            margin-bottom: 30px;
+            padding: 25px;
+            border-radius: 12px;
+            position: relative;
+        }
+        .layer-title {
+            font-size: 1.4em;
+            font-weight: bold;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+        }
+        .layer-icon {
+            width: 32px;
+            height: 32px;
+            margin-right: 12px;
+            font-size: 1.5em;
+        }
+        .frontend-layer {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .api-layer {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+        }
+        .business-layer {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+        }
+        .data-layer {
+            background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+            color: white;
+        }
+        .components {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .component {
+            background: rgba(255,255,255,0.2);
+            padding: 15px;
+            border-radius: 8px;
+            backdrop-filter: blur(10px);
+        }
+        .component-name {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .component-desc {
+            font-size: 0.9em;
+            opacity: 0.9;
+        }
+        .arrow {
+            text-align: center;
+            font-size: 2em;
+            color: #667eea;
+            margin: 20px 0;
+        }
+        .access-info {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+            margin-bottom: 40px;
+        }
+        .access-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .access-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .access-card h3 {
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+        .access-url {
+            background: rgba(255,255,255,0.2);
+            padding: 12px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            margin: 10px 0;
+            word-break: break-all;
+        }
+        .credentials {
+            background: rgba(255,255,255,0.2);
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+        .cred-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 8px 0;
+        }
+        .features {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+        }
+        .features h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+        }
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .feature-card {
+            padding: 20px;
+            border: 2px solid #667eea;
+            border-radius: 12px;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        .feature-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
+        }
+        .feature-icon {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+        .feature-title {
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 8px;
+        }
+        .feature-desc {
+            color: #666;
+            font-size: 0.95em;
+        }
+        .tech-stack {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+            margin-top: 40px;
+        }
+        .tech-stack h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+        }
+        .tech-columns {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 30px;
+            margin-top: 20px;
+        }
+        .tech-column h3 {
+            color: #764ba2;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+        }
+        .tech-item {
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .tech-name {
+            font-weight: 600;
+            color: #333;
+        }
+        .tech-version {
+            color: #666;
+            font-size: 0.9em;
+        }
+        @media (max-width: 768px) {
+            .tech-columns {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎨 鎏灏 AI-OS</h1>
+        <div class="subtitle">UI 操作平台 - 系统架构与访问指南</div>
+        
+        <div class="status-banner">
+            ✅ 系统运行中 | 前端: localhost:3000 | 后端: localhost:8000
+        </div>
+
+        <div class="access-info">
+            <h2 style="color: #667eea; margin-bottom: 20px;">🚀 快速访问</h2>
+            <div class="access-grid">
+                <div class="access-card">
+                    <h3>🎨 前端 UI</h3>
+                    <div class="access-url">http://localhost:3000</div>
+                    <div class="access-url">http://localhost:3000/business/supplier/list</div>
+                    <div class="credentials">
+                        <div class="cred-row">
+                            <span>用户名:</span>
+                            <span><strong>testuser</strong></span>
+                        </div>
+                        <div class="cred-row">
+                            <span>密码:</span>
+                            <span><strong>testpass123</strong></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="access-card">
+                    <h3>🔌 后端 API</h3>
+                    <div class="access-url">http://localhost:8000</div>
+                    <div class="access-url">http://localhost:8000/docs</div>
+                    <div class="access-url">http://localhost:8000/api/v1/suppliers</div>
+                    <div style="margin-top: 15px; font-size: 0.9em;">
+                        OpenAPI 文档: 60 个端点<br>
+                        Supplier API: 5 个端点
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="architecture">
+            <h2 style="color: #667eea; margin-bottom: 30px; text-align: center; font-size: 2em;">
+                📐 系统架构
+            </h2>
+
+            <div class="layer frontend-layer">
+                <div class="layer-title">
+                    <span class="layer-icon">🎨</span>
+                    前端层 (Frontend) - React + TypeScript
+                </div>
+                <div class="components">
+                    <div class="component">
+                        <div class="component-name">供应商列表页</div>
+                        <div class="component-desc">SupplierListPage.tsx<br>搜索、筛选、统计</div>
+                    </div>
+                    <div class="component">
+                        <div class="component-name">路由系统</div>
+                        <div class="component-desc">React Router 6<br>3 条 supplier 路由</div>
+                    </div>
+                    <div class="component">
+                        <div class="component-name">菜单配置</div>
+                        <div class="component-desc">业务管理<br>供应商情报菜单</div>
+                    </div>
+                    <div class="component">
+                        <div class="component-name">UI 组件</div>
+                        <div class="component-desc">Tailwind CSS<br>Lucide Icons</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="arrow">↓</div>
+
+            <div class="layer api-layer">
+                <div class="layer-title">
+                    <span class="layer-icon">🔌</span>
+                    API 层 (FastAPI) - RESTful Endpoints
+                </div>
+                <div class="components">
+                    <div class="component">
+                        <div class="component-name">Supplier Routes</div>
+                        <div class="component-desc">5 个端点<br>CRUD 操作</div>
+                    </div>
+                    <div class="component">
+                        <div class="component-name">认证中间件</div>
+                        <div class="component-desc">JWT Token<br>Bearer Auth</div>
+                    </div>
+                    <div class="component">
+                        <div class="component-name">权限控制</div>
+                        <div class="component-desc">RBAC<br>require_permission</div>
+                    </div>
+                    <div class="component">
+                        <div class="component-name">审计日志</div>
+                        <div class="component-desc">AuditAction<br>4 个 supplier 事件</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="arrow">↓</div>
+
+            <div class="layer business-layer">
+                <div class="layer-title">
+                    <span class="layer-icon">💼</span>
+                    业务逻辑层 (Business) - Module 48
+                </div>
+                <div class="components">
+                    <div class="component">
+                        <div class="component-name">Supplier CRUD</div>
+                        <div class="component-desc">SupplierCRUD<br>增删改查操作</div>
+                    </div>
+                    <div class="component">
+                        <div class="component-name">数据模型</div>
+                        <div class="component-desc">Supplier Model<br>BusinessType, Status</div>
+                    </div>
+                    <div class="component">
+                        <div class="component-name">业务规则</div>
+                        <div class="component-desc">验证逻辑<br>风险评估</div>
+                    </div>
+                    <div class="component">
+                        <div class="component-name">智能分析</div>
+                        <div class="component-desc">LLM 数据提取<br>供应商情报</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="arrow">↓</div>
+
+            <div class="layer data-layer">
+                <div class="layer-title">
+                    <span class="layer-icon">💾</span>
+                    数据层 (Database) - SQLAlchemy + SQLite
+                </div>
+                <div class="components">
+                    <div class="component">
+                        <div class="component-name">Supplier 表</div>
+                        <div class="component-desc">供应商主表<br>联系信息</div>
+                    </div>
+                    <div class="component">
+                        <div class="component-name">User 表</div>
+                        <div class="component-desc">用户认证<br>角色权限</div>
+                    </div>
+                    <div class="component">
+                        <div class="component-name">Audit 表</div>
+                        <div class="component-desc">审计日志<br>操作记录</div>
+                    </div>
+                    <div class="component">
+                        <div class="component-name">Migration</div>
+                        <div class="component-desc">Alembic<br>数据库版本控制</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="features">
+            <h2>✨ 功能特性</h2>
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">📊</div>
+                    <div class="feature-title">统计面板</div>
+                    <div class="feature-desc">实时显示总供应商数、活跃数、高风险数、本月新增</div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🔍</div>
+                    <div class="feature-title">智能搜索</div>
+                    <div class="feature-desc">按名称、联系人快速搜索，支持模糊匹配</div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🎯</div>
+                    <div class="feature-title">多维筛选</div>
+                    <div class="feature-desc">按状态、业务类型筛选，支持组合条件</div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">⚠️</div>
+                    <div class="feature-title">风险标识</div>
+                    <div class="feature-desc">低/中/高/严重四级风险，颜色可视化</div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">✏️</div>
+                    <div class="feature-title">CRUD 操作</div>
+                    <div class="feature-desc">创建、查看、编辑、删除供应商信息</div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">📱</div>
+                    <div class="feature-title">响应式设计</div>
+                    <div class="feature-desc">桌面和移动端完美适配，Tailwind CSS</div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🔐</div>
+                    <div class="feature-title">权限控制</div>
+                    <div class="feature-desc">基于 RBAC 的细粒度权限管理</div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">📝</div>
+                    <div class="feature-title">审计日志</div>
+                    <div class="feature-desc">所有操作自动记录，可追溯审计</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="tech-stack">
+            <h2>🛠️ 技术栈</h2>
+            <div class="tech-columns">
+                <div>
+                    <h3>前端技术</h3>
+                    <div class="tech-item">
+                        <span class="tech-name">React</span>
+                        <span class="tech-version">18.2.0</span>
+                    </div>
+                    <div class="tech-item">
+                        <span class="tech-name">TypeScript</span>
+                        <span class="tech-version">5.2.2</span>
+                    </div>
+                    <div class="tech-item">
+                        <span class="tech-name">Vite</span>
+                        <span class="tech-version">5.4.21</span>
+                    </div>
+                    <div class="tech-item">
+                        <span class="tech-name">Tailwind CSS</span>
+                        <span class="tech-version">3.3.6</span>
+                    </div>
+                    <div class="tech-item">
+                        <span class="tech-name">React Router</span>
+                        <span class="tech-version">6.20.0</span>
+                    </div>
+                    <div class="tech-item">
+                        <span class="tech-name">Axios</span>
+                        <span class="tech-version">1.6.2</span>
+                    </div>
+                    <div class="tech-item">
+                        <span class="tech-name">Lucide Icons</span>
+                        <span class="tech-version">0.294.0</span>
+                    </div>
+                </div>
+                <div>
+                    <h3>后端技术</h3>
+                    <div class="tech-item">
+                        <span class="tech-name">FastAPI</span>
+                        <span class="tech-version">Latest</span>
+                    </div>
+                    <div class="tech-item">
+                        <span class="tech-name">Uvicorn</span>
+                        <span class="tech-version">Latest</span>
+                    </div>
+                    <div class="tech-item">
+                        <span class="tech-name">SQLAlchemy</span>
+                        <span class="tech-version">2.x</span>
+                    </div>
+                    <div class="tech-item">
+                        <span class="tech-name">Pydantic</span>
+                        <span class="tech-version">2.x</span>
+                    </div>
+                    <div class="tech-item">
+                        <span class="tech-name">SQLite</span>
+                        <span class="tech-version">3.x</span>
+                    </div>
+                    <div class="tech-item">
+                        <span class="tech-name">Alembic</span>
+                        <span class="tech-version">Latest</span>
+                    </div>
+                    <div class="tech-item">
+                        <span class="tech-name">Structlog</span>
+                        <span class="tech-version">Latest</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div style="background: white; border-radius: 16px; padding: 30px; box-shadow: 0 8px 32px rgba(0,0,0,0.2); margin-top: 40px; text-align: center;">
+            <h2 style="color: #667eea; margin-bottom: 20px;">📈 项目状态</h2>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-top: 20px;">
+                <div style="padding: 20px; background: #10b981; color: white; border-radius: 12px;">
+                    <div style="font-size: 2em; margin-bottom: 10px;">✅</div>
+                    <div style="font-weight: bold;">UI 完成</div>
+                    <div style="font-size: 0.9em; margin-top: 5px;">100%</div>
+                </div>
+                <div style="padding: 20px; background: #10b981; color: white; border-radius: 12px;">
+                    <div style="font-size: 2em; margin-bottom: 10px;">✅</div>
+                    <div style="font-weight: bold;">API 完成</div>
+                    <div style="font-size: 0.9em; margin-top: 5px;">100%</div>
+                </div>
+                <div style="padding: 20px; background: #f59e0b; color: white; border-radius: 12px;">
+                    <div style="font-size: 2em; margin-bottom: 10px;">⚠️</div>
+                    <div style="font-weight: bold;">权限配置</div>
+                    <div style="font-size: 0.9em; margin-top: 5px;">待完成</div>
+                </div>
+                <div style="padding: 20px; background: #3b82f6; color: white; border-radius: 12px;">
+                    <div style="font-size: 2em; margin-bottom: 10px;">📋</div>
+                    <div style="font-weight: bold;">文档</div>
+                    <div style="font-size: 0.9em; margin-top: 5px;">完整</div>
+                </div>
+            </div>
+        </div>
+
+        <div style="text-align: center; color: white; margin-top: 40px; padding: 20px;">
+            <p style="font-size: 1.1em; margin-bottom: 10px;">🎯 鎏灏 AI-OS UI 操作平台</p>
+            <p style="opacity: 0.9;">版本: Y1.0 - Week 2 | 更新日期: 2026-08-23</p>
+        </div>
+    </div>
+</body>
+</html>

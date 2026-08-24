@@ -1,0 +1,701 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.15, pytest-9.1.1, pluggy-1.6.0 -- D:\python.exe
+cachedir: .pytest_cache
+rootdir: D:\LiuHao-AI-OS
+configfile: pyproject.toml
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 489 items / 1 skipped
+
+tests/test_ai/test_agents.py::TestAgentConfig::test_agent_config_creation PASSED [  0%]
+tests/test_ai/test_agents.py::TestAgentContext::test_agent_context_creation PASSED [  0%]
+tests/test_ai/test_agents.py::TestAgentExecution::test_agent_execution_creation PASSED [  0%]
+tests/test_ai/test_agents.py::TestAgentRegistry::test_register_agent PASSED [  0%]
+tests/test_ai/test_agents.py::TestAgentRegistry::test_get_nonexistent_agent PASSED [  1%]
+tests/test_ai/test_agents.py::TestAgentRegistry::test_list_all_agents PASSED [  1%]
+tests/test_ai/test_agents.py::TestAgentRegistry::test_list_enabled_agents PASSED [  1%]
+tests/test_ai/test_agents.py::TestCreateDefaultAgents::test_create_default_agents PASSED [  1%]
+tests/test_ai/test_agents.py::TestCreateDefaultAgents::test_default_agents_configuration PASSED [  1%]
+tests/test_ai/test_agents.py::TestAgentRuntime::test_runtime_initialization PASSED [  2%]
+tests/test_ai/test_agents.py::TestAgentRuntime::test_execute_agent_permission_check PASSED [  2%]
+tests/test_ai/test_agents.py::TestAgentRuntime::test_execute_unknown_agent PASSED [  2%]
+tests/test_ai/test_agents.py::TestAgentRuntime::test_execute_disabled_agent PASSED [  2%]
+tests/test_ai/test_agents.py::TestAgentProviderSeparation::test_agent_references_provider PASSED [  2%]
+tests/test_ai/test_agents.py::TestAgentProviderSeparation::test_multiple_agents_can_use_same_provider PASSED [  3%]
+tests/test_ai/test_agents.py::TestAgentSecurityEnforcement::test_inactive_user_cannot_use_agents PASSED [  3%]
+tests/test_ai/test_integration.py::TestStage3Integration::test_provider_to_agent_flow PASSED [  3%]
+tests/test_ai/test_integration.py::TestStage3Integration::test_complete_task_execution_flow PASSED [  3%]
+tests/test_ai/test_integration.py::TestStage3Integration::test_multi_agent_collaboration PASSED [  3%]
+tests/test_ai/test_integration.py::TestStage3Integration::test_security_enforcement_across_stack PASSED [  4%]
+tests/test_ai/test_integration.py::TestStage3Integration::test_provider_not_equal_agent_principle PASSED [  4%]
+tests/test_ai/test_integration.py::TestStage3Integration::test_agent_not_equal_workflow_principle PASSED [  4%]
+tests/test_ai/test_integration.py::TestStage3Integration::test_fail_closed_principle_enforcement PASSED [  4%]
+tests/test_ai/test_integration.py::TestStage3Integration::test_audit_everything_principle PASSED [  4%]
+tests/test_ai/test_integration.py::TestStage3Architecture::test_no_duplicate_modules PASSED [  5%]
+tests/test_ai/test_integration.py::TestStage3Architecture::test_single_source_of_truth PASSED [  5%]
+tests/test_ai/test_orchestrator.py::TestTask::test_task_creation PASSED  [  5%]
+tests/test_ai/test_orchestrator.py::TestTaskStep::test_task_step_creation PASSED [  5%]
+tests/test_ai/test_orchestrator.py::TestTaskPlan::test_task_plan_creation PASSED [  5%]
+tests/test_ai/test_orchestrator.py::TestTaskPlan::test_task_plan_dependency_validation PASSED [  6%]
+tests/test_ai/test_orchestrator.py::TestTaskResult::test_task_result_creation PASSED [  6%]
+tests/test_ai/test_orchestrator.py::TestAIOrchestrator::test_orchestrator_initialization PASSED [  6%]
+tests/test_ai/test_orchestrator.py::TestAIOrchestrator::test_plan_simple_task PASSED [  6%]
+tests/test_ai/test_orchestrator.py::TestAIOrchestrator::test_plan_complex_multi_agent_task PASSED [  6%]
+tests/test_ai/test_orchestrator.py::TestAIOrchestrator::test_execute_sequential_plan PASSED [  7%]
+tests/test_ai/test_orchestrator.py::TestAIOrchestrator::test_execute_parallel_plan PASSED [  7%]
+tests/test_ai/test_orchestrator.py::TestAIOrchestrator::test_execute_hybrid_plan PASSED [  7%]
+tests/test_ai/test_orchestrator.py::TestAIOrchestrator::test_handle_step_failure PASSED [  7%]
+tests/test_ai/test_orchestrator.py::TestAgentWorkflowSeparation::test_agents_provide_capability_orchestrator_coordinates PASSED [  7%]
+tests/test_ai/test_orchestrator.py::TestAgentWorkflowSeparation::test_orchestrator_delegates_to_agents PASSED [  8%]
+tests/test_ai/test_orchestrator.py::TestTaskPriorityHandling::test_critical_priority_tasks PASSED [  8%]
+tests/test_ai/test_providers.py::TestModelRegistry::test_register_model PASSED [  8%]
+tests/test_ai/test_providers.py::TestModelRegistry::test_get_nonexistent_model PASSED [  8%]
+tests/test_ai/test_providers.py::TestModelRegistry::test_list_models_by_provider PASSED [  8%]
+tests/test_ai/test_providers.py::TestProviderConfig::test_provider_config_defaults PASSED [  9%]
+tests/test_ai/test_providers.py::TestProviderRequest::test_provider_request_creation PASSED [  9%]
+tests/test_ai/test_providers.py::TestProviderResponse::test_provider_response_success PASSED [  9%]
+tests/test_ai/test_providers.py::TestProviderGateway::test_gateway_initialization PASSED [  9%]
+tests/test_ai/test_providers.py::TestProviderGateway::test_register_provider PASSED [ 10%]
+tests/test_ai/test_providers.py::TestProviderGateway::test_get_provider_lazy_initialization PASSED [ 10%]
+tests/test_ai/test_providers.py::TestProviderGateway::test_get_unregistered_provider_fails PASSED [ 10%]
+tests/test_ai/test_providers.py::TestProviderGateway::test_provider_status_tracking PASSED [ 10%]
+tests/test_ai/test_providers.py::TestOpenAIProvider::test_openai_provider_initialization PASSED [ 10%]
+tests/test_ai/test_providers.py::TestAnthropicProvider::test_anthropic_provider_initialization PASSED [ 11%]
+tests/test_ai/test_providers.py::TestGoogleProvider::test_google_provider_initialization PASSED [ 11%]
+tests/test_ai/test_providers.py::TestXAIProvider::test_xai_provider_initialization PASSED [ 11%]
+tests/test_ai/test_providers.py::TestDeepSeekProvider::test_deepseek_provider_initialization PASSED [ 11%]
+tests/test_ai/test_providers.py::TestMoonshotProvider::test_moonshot_provider_initialization PASSED [ 11%]
+tests/test_ai/test_providers.py::TestProviderSecurityEnforcement::test_disabled_provider_cannot_be_used PASSED [ 12%]
+tests/test_ai/test_tools.py::TestToolConfig::test_tool_config_creation PASSED [ 12%]
+tests/test_ai/test_tools.py::TestToolExecution::test_execute_tool_permission_check PASSED [ 12%]
+tests/test_ai/test_tools.py::TestToolExecution::test_execute_unknown_tool PASSED [ 12%]
+tests/test_ai/test_tools.py::TestToolExecution::test_execute_disabled_tool PASSED [ 12%]
+tests/test_ai/test_tools.py::TestToolExecution::test_execute_tool_policy_enforcement PASSED [ 13%]
+tests/test_ai/test_tools.py::TestToolExecution::test_execute_tool_requires_approval PASSED [ 13%]
+tests/test_ai/test_tools.py::TestToolExecution::test_execute_tool_with_idempotency_key PASSED [ 13%]
+tests/test_ai/test_tools.py::TestToolRegistry::test_register_tool PASSED [ 13%]
+tests/test_ai/test_tools.py::TestToolRegistry::test_get_nonexistent_tool PASSED [ 13%]
+tests/test_ai/test_tools.py::TestToolRegistry::test_list_tools_by_category PASSED [ 14%]
+tests/test_ai/test_tools.py::TestToolSecurityEnforcement::test_inactive_user_cannot_use_tools PASSED [ 14%]
+tests/test_ai/test_tools.py::TestToolSecurityEnforcement::test_rate_limiting_enforced PASSED [ 14%]
+tests/test_ai/test_tools.py::TestToolAuditLogging::test_tool_execution_logged PASSED [ 14%]
+tests/test_ai_brain/test_agent_router.py::TestAgentRouter::test_router_initialization PASSED [ 14%]
+tests/test_ai_brain/test_agent_router.py::TestAgentRouter::test_route_research_task PASSED [ 15%]
+tests/test_ai_brain/test_agent_router.py::TestAgentRouter::test_route_sales_task PASSED [ 15%]
+tests/test_ai_brain/test_agent_router.py::TestAgentRouter::test_route_marketing_task PASSED [ 15%]
+tests/test_ai_brain/test_agent_router.py::TestAgentRouter::test_route_task_no_agent_specified PASSED [ 15%]
+tests/test_ai_brain/test_agent_router.py::TestAgentRouter::test_route_task_multiple_agents_available PASSED [ 15%]
+tests/test_ai_brain/test_agent_router.py::TestAgentRouter::test_route_task_no_agent_available PASSED [ 16%]
+tests/test_ai_brain/test_agent_router.py::TestAgentRouter::test_route_task_agent_type_mismatch PASSED [ 16%]
+tests/test_ai_brain/test_agent_router.py::TestAgentRouter::test_route_task_inactive_agents_filtered PASSED [ 16%]
+tests/test_ai_brain/test_agent_router.py::TestAgentRouter::test_route_batch_tasks PASSED [ 16%]
+tests/test_ai_brain/test_agent_router.py::TestAgentRouter::test_route_task_with_priority PASSED [ 16%]
+tests/test_ai_brain/test_agent_router.py::TestAgentRouter::test_load_balancing_basic PASSED [ 17%]
+tests/test_ai_brain/test_ai_brain_api.py::TestAIBrainAPI::test_submit_command_endpoint_exists PASSED [ 17%]
+tests/test_ai_brain/test_ai_brain_api.py::TestAIBrainAPI::test_get_command_endpoint_exists PASSED [ 17%]
+tests/test_ai_brain/test_ai_brain_api.py::TestAIBrainAPI::test_list_commands_endpoint_exists PASSED [ 17%]
+tests/test_ai_brain/test_ai_brain_api.py::TestAIBrainAPI::test_cancel_command_endpoint_exists PASSED [ 17%]
+tests/test_ai_brain/test_ai_brain_api.py::TestAIBrainAPI::test_command_request_model PASSED [ 18%]
+tests/test_ai_brain/test_ai_brain_api.py::TestAIBrainAPI::test_command_request_validation PASSED [ 18%]
+tests/test_ai_brain/test_ai_brain_api.py::TestAIBrainAPI::test_command_response_model PASSED [ 18%]
+tests/test_ai_brain/test_ai_brain_api.py::TestAIBrainAPI::test_command_status_response_model PASSED [ 18%]
+tests/test_ai_brain/test_ai_brain_api.py::TestAIBrainAPI::test_submit_command_requires_permission PASSED [ 19%]
+tests/test_ai_brain/test_ai_brain_api.py::TestAIBrainAPI::test_submit_command_generates_audit PASSED [ 19%]
+tests/test_ai_brain/test_ai_brain_api.py::TestAIBrainAPI::test_api_error_handling_invalid_command PASSED [ 19%]
+tests/test_ai_brain/test_ai_brain_api.py::TestAIBrainAPI::test_api_routes_registered PASSED [ 19%]
+tests/test_ai_brain/test_ai_brain_api.py::TestAIBrainAPI::test_openapi_documentation PASSED [ 19%]
+tests/test_ai_brain/test_ai_brain_api.py::TestAIBrainAPI::test_permission_constants PASSED [ 20%]
+tests/test_ai_brain/test_ai_brain_api.py::TestAIBrainAPI::test_audit_actions_defined PASSED [ 20%]
+tests/test_ai_brain/test_ai_brain_api.py::TestAIBrainAPI::test_command_list_filtering PASSED [ 20%]
+tests/test_ai_brain/test_ai_brain_integration.py::TestAIBrainIntegration::test_process_command_end_to_end_mock PASSED [ 20%]
+tests/test_ai_brain/test_ai_brain_integration.py::TestAIBrainIntegration::test_process_chinese_command PASSED [ 20%]
+tests/test_ai_brain/test_ai_brain_integration.py::TestAIBrainIntegration::test_process_english_command PASSED [ 21%]
+tests/test_ai_brain/test_ai_brain_integration.py::TestAIBrainIntegration::test_process_command_with_priority PASSED [ 21%]
+tests/test_ai_brain/test_ai_brain_integration.py::TestAIBrainIntegration::test_get_command_status PASSED [ 21%]
+tests/test_ai_brain/test_ai_brain_integration.py::TestAIBrainIntegration::test_list_commands PASSED [ 21%]
+tests/test_ai_brain/test_ai_brain_integration.py::TestAIBrainIntegration::test_cancel_command PASSED [ 21%]
+tests/test_ai_brain/test_ai_brain_integration.py::TestAIBrainIntegration::test_command_flow_components_exist PASSED [ 22%]
+tests/test_ai_brain/test_ai_brain_integration.py::TestAIBrainIntegration::test_process_complex_multistep_command PASSED [ 22%]
+tests/test_ai_brain/test_ai_brain_integration.py::TestAIBrainIntegration::test_process_command_with_context PASSED [ 22%]
+tests/test_ai_brain/test_ai_brain_integration.py::TestAIBrainIntegration::test_error_handling_invalid_command PASSED [ 22%]
+tests/test_ai_brain/test_ai_brain_integration.py::TestAIBrainIntegration::test_error_handling_null_command PASSED [ 22%]
+tests/test_ai_brain/test_command_processor.py::TestCEOCommandProcessor::test_processor_initialization PASSED [ 23%]
+tests/test_ai_brain/test_command_processor.py::TestCEOCommandProcessor::test_parse_chinese_command_simple PASSED [ 23%]
+tests/test_ai_brain/test_command_processor.py::TestCEOCommandProcessor::test_parse_chinese_command_complex PASSED [ 23%]
+tests/test_ai_brain/test_command_processor.py::TestCEOCommandProcessor::test_parse_english_command PASSED [ 23%]
+tests/test_ai_brain/test_command_processor.py::TestCEOCommandProcessor::test_detect_priority_urgent PASSED [ 23%]
+tests/test_ai_brain/test_command_processor.py::TestCEOCommandProcessor::test_detect_priority_normal PASSED [ 24%]
+tests/test_ai_brain/test_command_processor.py::TestCEOCommandProcessor::test_detect_required_agents_research PASSED [ 24%]
+tests/test_ai_brain/test_command_processor.py::TestCEOCommandProcessor::test_detect_required_agents_sales PASSED [ 24%]
+tests/test_ai_brain/test_command_processor.py::TestCEOCommandProcessor::test_extract_constraints_geography PASSED [ 24%]
+tests/test_ai_brain/test_command_processor.py::TestCEOCommandProcessor::test_extract_constraints_industry PASSED [ 24%]
+tests/test_ai_brain/test_command_processor.py::TestCEOCommandProcessor::test_parse_empty_command PASSED [ 25%]
+tests/test_ai_brain/test_command_processor.py::TestCEOCommandProcessor::test_parse_none_command PASSED [ 25%]
+tests/test_ai_brain/test_command_processor.py::TestCEOCommandProcessor::test_parse_very_long_command PASSED [ 25%]
+tests/test_ai_brain/test_command_processor.py::TestCEOCommandProcessor::test_parse_mixed_language_command PASSED [ 25%]
+tests/test_ai_brain/test_command_processor.py::TestCEOCommandProcessor::test_parse_command_with_numbers PASSED [ 25%]
+tests/test_ai_brain/test_command_processor.py::TestCEOCommandProcessor::test_parse_multistep_command PASSED [ 26%]
+tests/test_ai_brain/test_command_processor.py::TestCEOCommandProcessor::test_parse_command_with_deadline PASSED [ 26%]
+tests/test_ai_brain/test_command_processor.py::TestCEOCommandProcessor::test_consistency_same_command PASSED [ 26%]
+tests/test_ai_brain/test_command_processor.py::TestCEOCommandProcessor::test_parse_business_domain_detection PASSED [ 26%]
+tests/test_ai_brain/test_planner.py::TestIntelligentPlanner::test_planner_initialization PASSED [ 26%]
+tests/test_ai_brain/test_planner.py::TestIntelligentPlanner::test_decompose_simple_goal PASSED [ 27%]
+tests/test_ai_brain/test_planner.py::TestIntelligentPlanner::test_decompose_complex_goal PASSED [ 27%]
+tests/test_ai_brain/test_planner.py::TestIntelligentPlanner::test_decompose_research_goal PASSED [ 27%]
+tests/test_ai_brain/test_planner.py::TestIntelligentPlanner::test_decompose_sales_goal PASSED [ 27%]
+tests/test_ai_brain/test_planner.py::TestIntelligentPlanner::test_decompose_marketing_goal PASSED [ 28%]
+tests/test_ai_brain/test_planner.py::TestIntelligentPlanner::test_decompose_with_priority PASSED [ 28%]
+tests/test_ai_brain/test_planner.py::TestIntelligentPlanner::test_decompose_respects_constraints PASSED [ 28%]
+tests/test_ai_brain/test_planner.py::TestIntelligentPlanner::test_decompose_empty_goal PASSED [ 28%]
+tests/test_ai_brain/test_planner.py::TestIntelligentPlanner::test_task_ordering PASSED [ 28%]
+tests/test_ai_brain/test_planner.py::TestIntelligentPlanner::test_decompose_handles_numbers PASSED [ 29%]
+tests/test_ai_brain/test_planner.py::TestIntelligentPlanner::test_decompose_multi_agent_coordination PASSED [ 29%]
+tests/test_ai_brain/test_planner.py::TestIntelligentPlanner::test_decompose_produces_valid_structure PASSED [ 29%]
+tests/test_ai_brain/test_workflow_bridge.py::TestWorkflowBridge::test_bridge_initialization PASSED [ 29%]
+tests/test_ai_brain/test_workflow_bridge.py::TestWorkflowBridge::test_create_workflow_from_plan PASSED [ 29%]
+tests/test_ai_brain/test_workflow_bridge.py::TestWorkflowBridge::test_create_workflow_empty_plan PASSED [ 30%]
+tests/test_ai_brain/test_workflow_bridge.py::TestWorkflowBridge::test_execute_workflow PASSED [ 30%]
+tests/test_ai_brain/test_workflow_bridge.py::TestWorkflowBridge::test_get_workflow_status PASSED [ 30%]
+tests/test_ai_brain/test_workflow_bridge.py::TestWorkflowBridge::test_create_task_from_step PASSED [ 30%]
+tests/test_ai_brain/test_workflow_bridge.py::TestWorkflowBridge::test_workflow_creation_with_dependencies PASSED [ 30%]
+tests/test_ai_brain/test_workflow_bridge.py::TestWorkflowBridge::test_cancel_workflow PASSED [ 31%]
+tests/test_ai_brain/test_workflow_bridge.py::TestWorkflowBridge::test_workflow_result_aggregation PASSED [ 31%]
+tests/test_api/test_database_dependency.py::test_database_engine_creation PASSED [ 31%]
+tests/test_api/test_database_dependency.py::test_session_factory_creation PASSED [ 31%]
+tests/test_api/test_database_dependency.py::test_async_session_dependency PASSED [ 31%]
+tests/test_api/test_database_dependency.py::test_session_rollback_on_error PASSED [ 32%]
+tests/test_api/test_database_dependency.py::test_multiple_sessions PASSED [ 32%]
+tests/test_api/test_database_dependency.py::test_database_init_and_close PASSED [ 32%]
+tests/test_api/test_rbac_user_permissions.py::test_user_read_permission_exists PASSED [ 32%]
+tests/test_api/test_rbac_user_permissions.py::test_admin_has_user_read_permission PASSED [ 32%]
+tests/test_api/test_rbac_user_permissions.py::test_regular_user_has_user_read_permission PASSED [ 33%]
+tests/test_api/test_rbac_user_permissions.py::test_admin_can_check_user_read_permission PASSED [ 33%]
+tests/test_api/test_rbac_user_permissions.py::test_regular_user_can_check_user_read_permission PASSED [ 33%]
+tests/test_api/test_rbac_user_permissions.py::test_old_plural_users_read_fails PASSED [ 33%]
+tests/test_api/test_rbac_user_permissions.py::test_get_admin_user_permissions PASSED [ 33%]
+tests/test_api/test_service_integration.py::test_business_task_create_integration PASSED [ 34%]
+tests/test_api/test_service_integration.py::test_business_task_update_integration PASSED [ 34%]
+tests/test_api/test_service_integration.py::test_business_task_query_integration PASSED [ 34%]
+tests/test_api/test_service_integration.py::test_business_task_delete_integration SKIPPED [ 34%]
+tests/test_api/test_service_integration.py::test_business_data_persistence_after_restart PASSED [ 34%]
+tests/test_api/test_service_integration.py::test_workflow_create_integration PASSED [ 35%]
+tests/test_api/test_service_integration.py::test_workflow_update_integration PASSED [ 35%]
+tests/test_api/test_service_integration.py::test_workflow_list_integration PASSED [ 35%]
+tests/test_api/test_service_integration.py::test_workflow_delete_integration PASSED [ 35%]
+tests/test_api/test_service_integration.py::test_task_create_integration PASSED [ 35%]
+tests/test_api/test_service_integration.py::test_task_status_update_integration PASSED [ 36%]
+tests/test_api/test_service_integration.py::test_task_complete_integration PASSED [ 36%]
+tests/test_api/test_service_integration.py::test_task_list_by_status_integration PASSED [ 36%]
+tests/test_api/test_service_integration.py::test_employee_create_integration PASSED [ 36%]
+tests/test_api/test_service_integration.py::test_employee_list_integration PASSED [ 37%]
+tests/test_business/test_models.py::test_business_task_creation PASSED   [ 37%]
+tests/test_business/test_models.py::test_business_task_to_dict PASSED    [ 37%]
+tests/test_business/test_models.py::test_business_task_with_assignment PASSED [ 37%]
+tests/test_business/test_models.py::test_business_metrics_creation PASSED [ 37%]
+tests/test_business/test_models.py::test_business_metrics_to_dict PASSED [ 38%]
+tests/test_business/test_models.py::test_business_domain_enum PASSED     [ 38%]
+tests/test_business/test_models.py::test_business_task_status_enum PASSED [ 38%]
+tests/test_business/test_models.py::test_business_task_priority_enum PASSED [ 38%]
+tests/test_business/test_registry.py::test_registry_initialization PASSED [ 38%]
+tests/test_business/test_registry.py::test_register_task PASSED          [ 39%]
+tests/test_business/test_registry.py::test_register_duplicate_task PASSED [ 39%]
+tests/test_business/test_registry.py::test_get_task PASSED               [ 39%]
+tests/test_business/test_registry.py::test_get_nonexistent_task PASSED   [ 39%]
+tests/test_business/test_registry.py::test_update_task PASSED            [ 39%]
+tests/test_business/test_registry.py::test_update_nonexistent_task PASSED [ 40%]
+tests/test_business/test_registry.py::test_delete_task PASSED            [ 40%]
+tests/test_business/test_registry.py::test_delete_nonexistent_task PASSED [ 40%]
+tests/test_business/test_registry.py::test_list_all_tasks PASSED         [ 40%]
+tests/test_business/test_registry.py::test_list_tasks_by_domain PASSED   [ 40%]
+tests/test_business/test_registry.py::test_list_tasks_by_status PASSED   [ 41%]
+tests/test_business/test_registry.py::test_list_tasks_by_priority PASSED [ 41%]
+tests/test_business/test_registry.py::test_list_tasks_by_assigned_employee PASSED [ 41%]
+tests/test_business/test_registry.py::test_count_by_status PASSED        [ 41%]
+tests/test_business/test_registry.py::test_count_by_domain PASSED        [ 41%]
+tests/test_business/test_registry.py::test_get_employee_tasks PASSED     [ 42%]
+tests/test_business/test_service.py::test_create_task PASSED             [ 42%]
+tests/test_business/test_service.py::test_create_task_without_permission PASSED [ 42%]
+tests/test_business/test_service.py::test_create_task_validation PASSED  [ 42%]
+tests/test_business/test_service.py::test_assign_task PASSED             [ 42%]
+tests/test_business/test_service.py::test_start_task PASSED              [ 43%]
+tests/test_business/test_service.py::test_complete_task PASSED           [ 43%]
+tests/test_business/test_service.py::test_fail_task PASSED               [ 43%]
+tests/test_business/test_service.py::test_get_task PASSED                [ 43%]
+tests/test_business/test_service.py::test_list_tasks PASSED              [ 43%]
+tests/test_business/test_service.py::test_get_domain_metrics PASSED      [ 44%]
+tests/test_ceo/test_dashboard.py::TestCEODashboard::test_dashboard_initialization PASSED [ 44%]
+tests/test_ceo/test_dashboard.py::TestCEODashboard::test_get_dashboard PASSED [ 44%]
+tests/test_ceo/test_dashboard.py::TestCEODashboard::test_get_business_overview PASSED [ 44%]
+tests/test_ceo/test_dashboard.py::TestCEODashboard::test_get_ai_team_overview PASSED [ 44%]
+tests/test_ceo/test_dashboard.py::TestCEODashboard::test_dashboard_permission_denied PASSED [ 45%]
+tests/test_ceo/test_models.py::TestSystemOverview::test_create_system_overview PASSED [ 45%]
+tests/test_ceo/test_models.py::TestSystemOverview::test_system_overview_serialization PASSED [ 45%]
+tests/test_ceo/test_models.py::TestBusinessOverview::test_create_business_overview PASSED [ 45%]
+tests/test_ceo/test_models.py::TestBusinessOverview::test_business_overview_zero_tasks PASSED [ 46%]
+tests/test_ceo/test_models.py::TestAITeamOverview::test_create_ai_team_overview PASSED [ 46%]
+tests/test_ceo/test_models.py::TestAITeamOverview::test_ai_team_overview_no_employees PASSED [ 46%]
+tests/test_ceo/test_models.py::TestTaskOverview::test_create_task_overview PASSED [ 46%]
+tests/test_ceo/test_models.py::TestTaskOverview::test_task_overview_empty PASSED [ 46%]
+tests/test_ceo/test_models.py::TestApprovalOverview::test_create_approval_overview PASSED [ 47%]
+tests/test_ceo/test_models.py::TestApprovalOverview::test_approval_overview_zero_requests PASSED [ 47%]
+tests/test_ceo/test_models.py::TestCEODashboardData::test_create_ceo_dashboard_data PASSED [ 47%]
+tests/test_ceo/test_models.py::TestCEODashboardData::test_ceo_dashboard_data_serialization PASSED [ 47%]
+tests/test_core/test_events.py::test_event_bus_publish_subscribe PASSED  [ 47%]
+tests/test_core/test_events.py::test_event_bus_async_handler PASSED      [ 48%]
+tests/test_core/test_events.py::test_event_bus_multiple_subscribers PASSED [ 48%]
+tests/test_core/test_events.py::test_event_bus_unsubscribe PASSED        [ 48%]
+tests/test_governance/test_approval.py::TestApprovalService::test_create_low_risk_approval PASSED [ 48%]
+tests/test_governance/test_approval.py::TestApprovalService::test_create_high_risk_approval PASSED [ 48%]
+tests/test_governance/test_approval.py::TestApprovalService::test_create_critical_risk_approval PASSED [ 49%]
+tests/test_governance/test_approval.py::TestApprovalService::test_approve_request PASSED [ 49%]
+tests/test_governance/test_approval.py::TestApprovalService::test_reject_request PASSED [ 49%]
+tests/test_governance/test_approval.py::TestApprovalService::test_cancel_request PASSED [ 49%]
+tests/test_governance/test_approval.py::TestApprovalService::test_cannot_cancel_others_request PASSED [ 49%]
+tests/test_governance/test_approval.py::TestApprovalService::test_prevent_self_approval_high_risk PASSED [ 50%]
+tests/test_governance/test_approval.py::TestApprovalService::test_cannot_approve_non_pending PASSED [ 50%]
+tests/test_governance/test_approval.py::TestApprovalService::test_check_expired_requests PASSED [ 50%]
+tests/test_governance/test_approval.py::TestApprovalService::test_is_approved PASSED [ 50%]
+tests/test_governance/test_approval.py::TestApprovalService::test_is_not_approved PASSED [ 50%]
+tests/test_governance/test_approval.py::TestApprovalService::test_payload_stored PASSED [ 51%]
+tests/test_governance/test_approval_integration.py::test_auto_approve_low_risk PASSED [ 51%]
+tests/test_governance/test_approval_integration.py::test_delete_requires_approval PASSED [ 51%]
+tests/test_governance/test_approval_integration.py::test_create_approval_request PASSED [ 51%]
+tests/test_governance/test_approval_integration.py::test_approve_request PASSED [ 51%]
+tests/test_governance/test_approval_integration.py::test_reject_request PASSED [ 52%]
+tests/test_governance/test_approval_integration.py::test_self_approval_blocked PASSED [ 52%]
+tests/test_governance/test_approval_integration.py::test_is_approved PASSED [ 52%]
+tests/test_governance/test_approval_integration.py::test_expired_approval PASSED [ 52%]
+tests/test_governance/test_approval_integration.py::test_approval_audit_logs PASSED [ 52%]
+tests/test_governance/test_approval_integration.py::test_admin_auto_approve_low_risk PASSED [ 53%]
+tests/test_governance/test_audit_integration.py::TestAuditIntegration::test_audit_log_structure PASSED [ 53%]
+tests/test_governance/test_audit_integration.py::TestAuditIntegration::test_audit_sanitizes_secrets PASSED [ 53%]
+tests/test_governance/test_audit_integration.py::TestAuditIntegration::test_business_task_audit PASSED [ 53%]
+tests/test_governance/test_audit_integration.py::TestAuditIntegration::test_workflow_audit PASSED [ 53%]
+tests/test_governance/test_audit_integration.py::TestAuditIntegration::test_employee_audit PASSED [ 54%]
+tests/test_governance/test_audit_integration.py::TestAuditIntegration::test_task_audit PASSED [ 54%]
+tests/test_governance/test_audit_integration.py::TestAuditIntegration::test_knowledge_audit PASSED [ 54%]
+tests/test_governance/test_audit_integration.py::TestAuditIntegration::test_audit_query PASSED [ 54%]
+tests/test_governance/test_risk.py::TestRiskEvaluator::test_critical_risk_operations PASSED [ 55%]
+tests/test_governance/test_risk.py::TestRiskEvaluator::test_high_risk_operations PASSED [ 55%]
+tests/test_governance/test_risk.py::TestRiskEvaluator::test_medium_risk_operations PASSED [ 55%]
+tests/test_governance/test_risk.py::TestRiskEvaluator::test_low_risk_operations PASSED [ 55%]
+tests/test_governance/test_risk.py::TestRiskEvaluator::test_case_insensitivity PASSED [ 55%]
+tests/test_governance/test_risk.py::TestRiskEvaluator::test_partial_matching PASSED [ 56%]
+tests/test_governance/test_risk.py::TestRiskEvaluator::test_risk_level_ordering PASSED [ 56%]
+tests/test_governance/test_risk.py::TestRiskEvaluator::test_context_evaluation PASSED [ 56%]
+tests/test_governance/test_risk.py::TestRiskEvaluator::test_evaluate_with_none_values PASSED [ 56%]
+tests/test_governance/test_risk.py::TestRiskEvaluator::test_requires_approval PASSED [ 56%]
+tests/test_identity/test_audit.py::TestAuditService::test_log_basic PASSED [ 57%]
+tests/test_identity/test_audit.py::TestAuditService::test_log_success PASSED [ 57%]
+tests/test_identity/test_audit.py::TestAuditService::test_log_failure PASSED [ 57%]
+tests/test_identity/test_audit.py::TestAuditService::test_log_denied PASSED [ 57%]
+tests/test_identity/test_audit.py::TestAuditService::test_sanitize_password PASSED [ 57%]
+tests/test_identity/test_audit.py::TestAuditService::test_sanitize_token PASSED [ 58%]
+tests/test_identity/test_audit.py::TestAuditService::test_sanitize_nested_secrets PASSED [ 58%]
+tests/test_identity/test_audit.py::TestAuditService::test_sanitize_list_of_dicts PASSED [ 58%]
+tests/test_identity/test_audit.py::TestAuditService::test_log_login PASSED [ 58%]
+tests/test_identity/test_audit.py::TestAuditService::test_log_login_failure PASSED [ 58%]
+tests/test_identity/test_audit.py::TestAuditService::test_log_logout PASSED [ 59%]
+tests/test_identity/test_audit.py::TestAuditService::test_log_permission_denied PASSED [ 59%]
+tests/test_identity/test_audit.py::TestAuditService::test_log_role_change PASSED [ 59%]
+tests/test_identity/test_audit.py::TestAuditService::test_log_approval PASSED [ 59%]
+tests/test_identity/test_audit.py::TestAuditService::test_log_session_revoked PASSED [ 59%]
+tests/test_identity/test_audit.py::TestAuditService::test_query_logs_basic PASSED [ 60%]
+tests/test_identity/test_audit.py::TestAuditService::test_query_logs_filter_action PASSED [ 60%]
+tests/test_identity/test_audit.py::TestAuditService::test_query_logs_filter_status PASSED [ 60%]
+tests/test_identity/test_audit.py::TestAuditService::test_query_logs_limit PASSED [ 60%]
+tests/test_identity/test_governance.py::TestIdentityGovernanceService::test_get_user PASSED [ 60%]
+tests/test_identity/test_governance.py::TestIdentityGovernanceService::test_get_user_not_found PASSED [ 61%]
+tests/test_identity/test_governance.py::TestIdentityGovernanceService::test_get_user_by_username PASSED [ 61%]
+tests/test_identity/test_governance.py::TestIdentityGovernanceService::test_get_user_by_username_not_found PASSED [ 61%]
+tests/test_identity/test_governance.py::TestIdentityGovernanceService::test_disable_user PASSED [ 61%]
+tests/test_identity/test_governance.py::TestIdentityGovernanceService::test_enable_user PASSED [ 61%]
+tests/test_identity/test_governance.py::TestIdentityGovernanceService::test_disable_user_revokes_sessions PASSED [ 62%]
+tests/test_identity/test_governance.py::TestIdentityGovernanceService::test_change_user_role PASSED [ 62%]
+tests/test_identity/test_governance.py::TestIdentityGovernanceService::test_cannot_change_last_admin_role PASSED [ 62%]
+tests/test_identity/test_governance.py::TestIdentityGovernanceService::test_revoke_user_sessions PASSED [ 62%]
+tests/test_identity/test_governance.py::TestIdentityGovernanceService::test_revoke_specific_session PASSED [ 62%]
+tests/test_identity/test_governance.py::TestIdentityGovernanceService::test_revoke_session_not_found PASSED [ 63%]
+tests/test_identity/test_governance.py::TestIdentityGovernanceService::test_validate_session_active PASSED [ 63%]
+tests/test_identity/test_governance.py::TestIdentityGovernanceService::test_validate_session_expired PASSED [ 63%]
+tests/test_identity/test_governance.py::TestIdentityGovernanceService::test_validate_session_revoked PASSED [ 63%]
+tests/test_identity/test_rbac.py::test_admin_has_all_permissions PASSED  [ 64%]
+tests/test_identity/test_rbac.py::test_user_limited_permissions PASSED   [ 64%]
+tests/test_identity/test_rbac.py::test_viewer_minimal_permissions PASSED [ 64%]
+tests/test_identity/test_rbac.py::test_inactive_user_no_permissions PASSED [ 64%]
+tests/test_identity/test_rbac.py::test_superuser_bypass PASSED           [ 64%]
+tests/test_knowledge/test_company_brain.py::TestEntity::test_entity_creation PASSED [ 65%]
+tests/test_knowledge/test_company_brain.py::TestEntity::test_entity_to_dict PASSED [ 65%]
+tests/test_knowledge/test_company_brain.py::TestFact::test_fact_creation PASSED [ 65%]
+tests/test_knowledge/test_company_brain.py::TestFact::test_fact_to_dict PASSED [ 65%]
+tests/test_knowledge/test_company_brain.py::TestCompanyBrain::test_create_entity PASSED [ 65%]
+tests/test_knowledge/test_company_brain.py::TestCompanyBrain::test_get_entity PASSED [ 66%]
+tests/test_knowledge/test_company_brain.py::TestCompanyBrain::test_list_entities PASSED [ 66%]
+tests/test_knowledge/test_company_brain.py::TestCompanyBrain::test_create_fact PASSED [ 66%]
+tests/test_knowledge/test_company_brain.py::TestCompanyBrain::test_fact_conflict_resolution PASSED [ 66%]
+tests/test_knowledge/test_company_brain.py::TestCompanyBrain::test_reject_lower_priority_fact PASSED [ 66%]
+tests/test_knowledge/test_company_brain.py::TestCompanyBrain::test_get_entity_facts PASSED [ 67%]
+tests/test_knowledge/test_knowledge_retrieval.py::test_knowledge_query_defaults PASSED [ 67%]
+tests/test_knowledge/test_knowledge_retrieval.py::test_search_memories PASSED [ 67%]
+tests/test_knowledge/test_knowledge_retrieval.py::test_search_entities PASSED [ 67%]
+tests/test_knowledge/test_knowledge_retrieval.py::test_search_all_sources PASSED [ 67%]
+tests/test_knowledge/test_knowledge_retrieval.py::test_search_with_pagination PASSED [ 68%]
+tests/test_knowledge/test_knowledge_retrieval.py::test_search_empty_query_fails PASSED [ 68%]
+tests/test_knowledge/test_knowledge_retrieval.py::test_search_without_permission_fails PASSED [ 68%]
+tests/test_knowledge/test_knowledge_retrieval.py::test_build_context PASSED [ 68%]
+tests/test_knowledge/test_knowledge_retrieval.py::test_context_summary PASSED [ 68%]
+tests/test_knowledge/test_knowledge_retrieval.py::test_context_to_dict PASSED [ 69%]
+tests/test_knowledge/test_knowledge_retrieval.py::test_knowledge_result_to_dict PASSED [ 69%]
+tests/test_knowledge/test_knowledge_retrieval.py::test_search_with_entity_type_filter PASSED [ 69%]
+tests/test_knowledge/test_knowledge_retrieval.py::test_search_with_memory_type_filter PASSED [ 69%]
+tests/test_knowledge/test_knowledge_retrieval.py::test_search_creates_audit_log PASSED [ 69%]
+tests/test_knowledge/test_knowledge_retrieval.py::test_context_build_creates_audit_log PASSED [ 70%]
+tests/test_knowledge/test_knowledge_retrieval.py::test_full_knowledge_retrieval_workflow PASSED [ 70%]
+tests/test_knowledge/test_memory.py::TestMemory::test_memory_creation PASSED [ 70%]
+tests/test_knowledge/test_memory.py::TestMemory::test_memory_to_dict PASSED [ 70%]
+tests/test_knowledge/test_memory.py::TestMemoryService::test_store_short_term_memory PASSED [ 70%]
+tests/test_knowledge/test_memory.py::TestMemoryService::test_store_working_memory PASSED [ 71%]
+tests/test_knowledge/test_memory.py::TestMemoryService::test_store_long_term_memory PASSED [ 71%]
+tests/test_knowledge/test_memory.py::TestMemoryService::test_retrieve_memory PASSED [ 71%]
+tests/test_knowledge/test_memory.py::TestMemoryService::test_retrieve_nonexistent_memory PASSED [ 71%]
+tests/test_knowledge/test_memory.py::TestMemoryService::test_list_memories PASSED [ 71%]
+tests/test_knowledge/test_memory.py::TestMemoryService::test_delete_memory PASSED [ 72%]
+tests/test_knowledge/test_memory.py::TestMemoryService::test_clear_session PASSED [ 72%]
+tests/test_knowledge/test_memory.py::TestMemoryService::test_clear_task PASSED [ 72%]
+tests/test_knowledge/test_memory.py::TestMemoryService::test_clean_expired SKIPPEDsitory) [ 72%]
+tests/test_knowledge/test_processing.py::TestChunker::test_chunk_text PASSED [ 73%]
+tests/test_knowledge/test_processing.py::TestChunker::test_chunk_type_detection PASSED [ 73%]
+tests/test_knowledge/test_processing.py::TestChunker::test_split_large_paragraph PASSED [ 73%]
+tests/test_knowledge/test_processing.py::TestDocumentProcessor::test_process_text_document PASSED [ 73%]
+tests/test_knowledge/test_processing.py::TestDocumentProcessor::test_process_markdown_document PASSED [ 73%]
+tests/test_knowledge/test_processing.py::TestDocumentProcessor::test_clean_text PASSED [ 74%]
+tests/test_knowledge/test_processing.py::TestDocumentProcessor::test_normalize_text PASSED [ 74%]
+tests/test_knowledge/test_retrieval.py::TestRetrievalService::test_index_chunk PASSED [ 74%]
+tests/test_knowledge/test_retrieval.py::TestRetrievalService::test_index_chunks PASSED [ 74%]
+tests/test_knowledge/test_retrieval.py::TestRetrievalService::test_keyword_search PASSED [ 74%]
+tests/test_knowledge/test_retrieval.py::TestRetrievalService::test_search_with_filters PASSED [ 75%]
+tests/test_knowledge/test_retrieval.py::TestRetrievalService::test_search_empty_query PASSED [ 75%]
+tests/test_knowledge/test_retrieval.py::TestRetrievalService::test_get_chunk PASSED [ 75%]
+tests/test_knowledge/test_retrieval.py::TestRetrievalService::test_remove_document_chunks PASSED [ 75%]
+tests/test_migration.py::test_migration_current_version PASSED           [ 75%]
+tests/test_migration.py::test_migration_history PASSED                   [ 76%]
+tests/test_migration.py::test_database_schema_exists PASSED              [ 76%]
+tests/test_migration.py::test_migration_downgrade_upgrade PASSED         [ 76%]
+tests/test_migration.py::test_alembic_version_tracking PASSED            [ 76%]
+tests/test_repositories/test_integration.py::test_workflow_basic_crud PASSED [ 76%]
+tests/test_repositories/test_integration.py::test_task_basic_crud PASSED [ 77%]
+tests/test_repositories/test_integration.py::test_converters_roundtrip PASSED [ 77%]
+tests/test_repositories/test_workflow_repository.py::test_workflow_repo_create PASSED [ 77%]
+tests/test_repositories/test_workflow_repository.py::test_workflow_repo_read PASSED [ 77%]
+tests/test_repositories/test_workflow_repository.py::test_workflow_repo_update PASSED [ 77%]
+tests/test_repositories/test_workflow_repository.py::test_workflow_repo_delete PASSED [ 78%]
+tests/test_repositories/test_workflow_repository.py::test_workflow_repo_list_by_creator PASSED [ 78%]
+tests/test_repositories/test_workflow_repository.py::test_workflow_repo_list_enabled PASSED [ 78%]
+tests/test_repositories/test_workflow_repository.py::test_workflow_with_steps PASSED [ 78%]
+tests/test_security/test_policy.py::test_unknown_resource_deny PASSED    [ 78%]
+tests/test_security/test_policy.py::test_disabled_feature_deny PASSED    [ 79%]
+tests/test_security/test_policy.py::test_empty_whitelist_deny PASSED     [ 79%]
+tests/test_security/test_policy.py::test_whitelist_allow PASSED          [ 79%]
+tests/test_security/test_policy.py::test_not_in_whitelist_deny PASSED    [ 79%]
+tests/test_security/test_policy.py::test_require_approval PASSED         [ 79%]
+tests/test_security/test_policy.py::test_missing_context_deny PASSED     [ 80%]
+tests/test_security/test_rbac_permissions.py::TestPermissionEnum::test_stage2_permissions_exist PASSED [ 80%]
+tests/test_security/test_rbac_permissions.py::TestPermissionEnum::test_stage4_permissions_exist PASSED [ 80%]
+tests/test_security/test_rbac_permissions.py::TestPermissionEnum::test_stage5_task_permissions_exist PASSED [ 80%]
+tests/test_security/test_rbac_permissions.py::TestPermissionEnum::test_stage5_workflow_permissions_exist PASSED [ 80%]
+tests/test_security/test_rbac_permissions.py::TestPermissionEnum::test_stage6_agent_permissions_exist PASSED [ 81%]
+tests/test_security/test_rbac_permissions.py::TestPermissionEnum::test_stage6_workforce_permissions_exist PASSED [ 81%]
+tests/test_security/test_rbac_permissions.py::TestPermissionEnum::test_stage7_business_permissions_exist PASSED [ 81%]
+tests/test_security/test_rbac_permissions.py::TestPermissionEnum::test_stage8_ceo_permissions_exist PASSED [ 81%]
+tests/test_security/test_rbac_permissions.py::TestRolePermissionMapping::test_admin_has_all_permissions PASSED [ 82%]
+tests/test_security/test_rbac_permissions.py::TestRolePermissionMapping::test_user_has_operational_permissions PASSED [ 82%]
+tests/test_security/test_rbac_permissions.py::TestRolePermissionMapping::test_viewer_has_readonly_permissions PASSED [ 82%]
+tests/test_security/test_rbac_permissions.py::TestRBACServicePermissionChecks::test_admin_permission_check PASSED [ 82%]
+tests/test_security/test_rbac_permissions.py::TestRBACServicePermissionChecks::test_user_permission_check PASSED [ 82%]
+tests/test_security/test_rbac_permissions.py::TestRBACServicePermissionChecks::test_user_denied_destructive_permission PASSED [ 83%]
+tests/test_security/test_rbac_permissions.py::TestRBACServicePermissionChecks::test_viewer_permission_check PASSED [ 83%]
+tests/test_security/test_rbac_permissions.py::TestRBACServicePermissionChecks::test_viewer_denied_write_permission PASSED [ 83%]
+tests/test_security/test_rbac_permissions.py::TestRBACServicePermissionChecks::test_inactive_user_denied PASSED [ 83%]
+tests/test_security/test_rbac_permissions.py::TestRBACServicePermissionChecks::test_superuser_bypass PASSED [ 83%]
+tests/test_security/test_rbac_permissions.py::TestRBACServicePermissionChecks::test_require_permission_async_success PASSED [ 84%]
+tests/test_security/test_rbac_permissions.py::TestRBACServicePermissionChecks::test_require_permission_async_denied PASSED [ 84%]
+tests/test_security/test_rbac_permissions.py::TestRBACServicePermissionChecks::test_require_permission_async_no_user PASSED [ 84%]
+tests/test_security/test_rbac_permissions.py::TestFailClosedPrinciple::test_unknown_permission_denied PASSED [ 84%]
+tests/test_security/test_rbac_permissions.py::TestFailClosedPrinciple::test_no_user_denied PASSED [ 84%]
+tests/test_security/test_rbac_permissions.py::TestFailClosedPrinciple::test_disabled_user_denied PASSED [ 85%]
+tests/test_security/test_rbac_permissions.py::TestPermissionDependency::test_require_permission_dependency_exists PASSED [ 85%]
+tests/test_security/test_rbac_permissions.py::TestPermissionDependency::test_require_any_permission_dependency_exists PASSED [ 85%]
+tests/test_security/test_rbac_permissions.py::TestPermissionDependency::test_require_admin_dependency_exists PASSED [ 85%]
+tests/test_security/test_rbac_permissions.py::TestPermissionDependency::test_permission_dependency_returns_callable PASSED [ 85%]
+tests/test_security/test_rbac_permissions.py::TestPermissionDependency::test_any_permission_dependency_returns_callable PASSED [ 86%]
+tests/test_security/test_rbac_permissions.py::TestPermissionDependency::test_admin_dependency_returns_callable PASSED [ 86%]
+tests/test_security/test_rbac_permissions.py::test_phase2f3_2_test_count PASSED [ 86%]
+tests/test_tasks/test_service.py::test_create_task PASSED                [ 86%]
+tests/test_tasks/test_service.py::test_get_task PASSED                   [ 86%]
+tests/test_tasks/test_service.py::test_get_task_not_found PASSED         [ 87%]
+tests/test_tasks/test_service.py::test_list_tasks PASSED                 [ 87%]
+tests/test_tasks/test_service.py::test_list_tasks_by_status PASSED       [ 87%]
+tests/test_tasks/test_service.py::test_update_task_status PASSED         [ 87%]
+tests/test_tasks/test_service.py::test_complete_task PASSED              [ 87%]
+tests/test_tasks/test_service.py::test_fail_task PASSED                  [ 88%]
+tests/test_tasks/test_service.py::test_assign_task PASSED                [ 88%]
+tests/test_tasks/test_service.py::test_delete_task PASSED                [ 88%]
+tests/test_workflow/test_executor.py::test_execute_sequential_workflow PASSED [ 88%]
+tests/test_workflow/test_executor.py::test_execute_parallel_workflow PASSED [ 88%]
+tests/test_workflow/test_executor.py::test_execute_conditional_workflow PASSED [ 89%]
+tests/test_workflow/test_executor.py::test_execute_loop_workflow PASSED  [ 89%]
+tests/test_workflow/test_executor.py::test_execute_workflow_not_found PASSED [ 89%]
+tests/test_workflow/test_executor.py::test_execute_workflow_permission_denied PASSED [ 89%]
+tests/test_workflow/test_executor.py::test_pause_execution SKIPPED       [ 89%]
+tests/test_workflow/test_executor.py::test_resume_execution SKIPPED      [ 90%]
+tests/test_workflow/test_executor.py::test_cancel_execution SKIPPED      [ 90%]
+tests/test_workflow/test_executor.py::test_list_executions PASSED        [ 90%]
+tests/test_workflow/test_models.py::test_workflow_step_creation PASSED   [ 90%]
+tests/test_workflow/test_models.py::test_workflow_step_sequential PASSED [ 91%]
+tests/test_workflow/test_models.py::test_workflow_step_parallel PASSED   [ 91%]
+tests/test_workflow/test_models.py::test_workflow_step_conditional PASSED [ 91%]
+tests/test_workflow/test_models.py::test_workflow_step_loop PASSED       [ 91%]
+tests/test_workflow/test_models.py::test_workflow_creation PASSED        [ 91%]
+tests/test_workflow/test_models.py::test_workflow_validation_empty_name PASSED [ 92%]
+tests/test_workflow/test_models.py::test_workflow_validation_no_steps PASSED [ 92%]
+tests/test_workflow/test_models.py::test_workflow_validation_valid PASSED [ 92%]
+tests/test_workflow/test_models.py::test_workflow_execution_creation PASSED [ 92%]
+tests/test_workflow/test_models.py::test_workflow_execution_complete PASSED [ 92%]
+tests/test_workflow/test_models.py::test_workflow_execution_failed PASSED [ 93%]
+tests/test_workflow/test_service.py::test_create_workflow_success PASSED [ 93%]
+tests/test_workflow/test_service.py::test_create_workflow_permission_denied PASSED [ 93%]
+tests/test_workflow/test_service.py::test_create_workflow_invalid_steps PASSED [ 93%]
+tests/test_workflow/test_service.py::test_get_workflow_success PASSED    [ 93%]
+tests/test_workflow/test_service.py::test_get_workflow_not_found PASSED  [ 94%]
+tests/test_workflow/test_service.py::test_get_workflow_permission_denied PASSED [ 94%]
+tests/test_workflow/test_service.py::test_list_workflows PASSED          [ 94%]
+tests/test_workflow/test_service.py::test_list_workflows_with_filters PASSED [ 94%]
+tests/test_workflow/test_service.py::test_update_workflow_success PASSED [ 94%]
+tests/test_workflow/test_service.py::test_update_workflow_not_found PASSED [ 95%]
+tests/test_workflow/test_service.py::test_delete_workflow_success PASSED [ 95%]
+tests/test_workflow/test_service.py::test_delete_workflow_not_found PASSED [ 95%]
+tests/test_workflow/test_service.py::test_validate_workflow PASSED       [ 95%]
+tests/test_workforce/test_lifecycle.py::test_activate_employee PASSED    [ 95%]
+tests/test_workforce/test_lifecycle.py::test_activate_already_active PASSED [ 96%]
+tests/test_workforce/test_lifecycle.py::test_activate_without_agent PASSED [ 96%]
+tests/test_workforce/test_lifecycle.py::test_suspend_active_employee PASSED [ 96%]
+tests/test_workforce/test_lifecycle.py::test_retire_employee PASSED      [ 96%]
+tests/test_workforce/test_lifecycle.py::test_cannot_retire_from_created PASSED [ 96%]
+tests/test_workforce/test_lifecycle.py::test_can_transition PASSED       [ 97%]
+tests/test_workforce/test_lifecycle.py::test_lifecycle_state_machine PASSED [ 97%]
+tests/test_workforce/test_models.py::test_ai_employee_creation PASSED    [ 97%]
+tests/test_workforce/test_models.py::test_ai_employee_to_dict PASSED     [ 97%]
+tests/test_workforce/test_models.py::test_employee_performance_record PASSED [ 97%]
+tests/test_workforce/test_models.py::test_employee_cost_record PASSED    [ 98%]
+tests/test_workforce/test_models.py::test_department_enum PASSED         [ 98%]
+tests/test_workforce/test_models.py::test_position_enum PASSED           [ 98%]
+tests/test_workforce/test_models.py::test_employee_status_enum PASSED    [ 98%]
+tests/test_workforce/test_tracking.py::test_record_performance PASSED    [ 98%]
+tests/test_workforce/test_tracking.py::test_performance_updates_employee_stats PASSED [ 99%]
+tests/test_workforce/test_tracking.py::test_performance_summary PASSED   [ 99%]
+tests/test_workforce/test_tracking.py::test_record_cost PASSED           [ 99%]
+tests/test_workforce/test_tracking.py::test_cost_summary PASSED          [ 99%]
+tests/test_workforce/test_tracking.py::test_total_system_cost PASSED     [100%]
+
+============================== warnings summary ===============================
+tests/test_ai_brain/test_ai_brain_api.py::TestAIBrainAPI::test_submit_command_endpoint_exists
+  D:\LiuHao-AI-OS\src\api\schemas.py:28: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    class UserResponse(UserBase):
+
+tests/test_ai_brain/test_ai_brain_api.py::TestAIBrainAPI::test_submit_command_endpoint_exists
+  D:\LiuHao-AI-OS\src\api\schemas.py:77: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    class RoleResponse(BaseModel):
+
+tests/test_ai_brain/test_ai_brain_api.py::TestAIBrainAPI::test_submit_command_endpoint_exists
+  D:\LiuHao-AI-OS\src\api\schemas.py:90: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    class PermissionResponse(BaseModel):
+
+tests/test_ai_brain/test_ai_brain_api.py::TestAIBrainAPI::test_submit_command_endpoint_exists
+  D:\LiuHao-AI-OS\src\api\schemas.py:131: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    class ApprovalRequestResponse(BaseModel):
+
+tests/test_ai_brain/test_ai_brain_api.py::TestAIBrainAPI::test_submit_command_endpoint_exists
+  D:\LiuHao-AI-OS\src\api\schemas.py:164: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    class AuditLogResponse(BaseModel):
+
+tests/test_ai_brain/test_ai_brain_api.py::TestAIBrainAPI::test_submit_command_endpoint_exists
+  D:\LiuHao-AI-OS\src\api\routes\tasks.py:64: PydanticDeprecatedSince20: `min_items` is deprecated and will be removed, use `min_length` instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    agent_ids: List[str] = Field(..., min_items=1)
+
+tests/test_api/test_service_integration.py: 8 warnings
+tests/test_knowledge/test_company_brain.py: 28 warnings
+tests/test_knowledge/test_knowledge_retrieval.py: 40 warnings
+tests/test_knowledge/test_memory.py: 11 warnings
+tests/test_repositories/test_integration.py: 1 warning
+tests/test_repositories/test_workflow_repository.py: 2 warnings
+tests/test_tasks/test_service.py: 17 warnings
+  D:\Lib\site-packages\sqlalchemy\sql\schema.py:3627: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    return util.wrap_callable(lambda ctx: fn(), fn)  # type: ignore
+
+tests/test_ceo/test_models.py::TestCEODashboardData::test_create_ceo_dashboard_data
+  D:\LiuHao-AI-OS\tests\test_ceo\test_models.py:191: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp = datetime.utcnow()
+
+tests/test_ceo/test_models.py::TestCEODashboardData::test_ceo_dashboard_data_serialization
+  D:\LiuHao-AI-OS\tests\test_ceo\test_models.py:247: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_tasks/test_service.py::test_create_task
+tests/test_tasks/test_service.py::test_get_task
+tests/test_tasks/test_service.py::test_list_tasks
+tests/test_tasks/test_service.py::test_list_tasks_by_status
+tests/test_tasks/test_service.py::test_update_task_status
+tests/test_tasks/test_service.py::test_complete_task
+tests/test_tasks/test_service.py::test_fail_task
+tests/test_tasks/test_service.py::test_assign_task
+tests/test_tasks/test_service.py::test_delete_task
+  D:\LiuHao-AI-OS\src\tasks\service.py:134: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    self.event_bus.publish(Event(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_tasks/test_service.py::test_list_tasks_by_status
+tests/test_tasks/test_service.py::test_update_task_status
+  D:\LiuHao-AI-OS\src\tasks\service.py:294: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    self.event_bus.publish(Event(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_workflow/test_executor.py::test_execute_sequential_workflow
+tests/test_workflow/test_executor.py::test_execute_loop_workflow
+tests/test_workflow/test_executor.py::test_list_executions
+  D:\LiuHao-AI-OS\src\workflow\executor.py:217: RuntimeWarning: coroutine 'TaskService.create_task' was never awaited
+    logger.error(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_workflow/test_executor.py::test_execute_parallel_workflow
+  D:\Lib\asyncio\base_events.py:2062: RuntimeWarning: coroutine 'TaskService.create_task' was never awaited
+    handle = None  # Needed to break cycles when an exception occurs.
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=============================== tests coverage ================================
+______________ coverage: platform win32, python 3.13.15-final-0 _______________
+
+Name                                      Stmts   Miss  Cover   Missing
+-----------------------------------------------------------------------
+src\__init__.py                               1      0   100%
+src\ai\__init__.py                            5      0   100%
+src\ai\agent_router.py                       38      4    89%   139-142, 171
+src\ai\agents.py                            139     17    88%   103, 134, 189-203, 267, 271, 275-283
+src\ai\command_processor.py                  77      5    94%   65, 117, 181, 185, 206
+src\ai\models.py                             67      0   100%
+src\ai\orchestrator.py                      260     44    83%   177-180, 242, 294, 343, 351-359, 383, 387-399, 403-417, 511-519, 597-621, 644
+src\ai\planner.py                            74      4    95%   130, 134, 136, 138
+src\ai\providers.py                         389    138    65%   90, 155, 176-177, 179-180, 198-214, 247-262, 266, 292, 352, 363, 387, 396-407, 426, 450-461, 485-546, 550-552, 557, 564-565, 579, 606-607, 628-630, 662-677, 681-722, 738-750, 754-794, 813-827, 831-877
+src\ai\tools.py                             163     14    91%   121, 204, 209-234, 264, 306, 386, 478-481
+src\ai\workflow_bridge.py                    57      2    96%   74, 96
+src\api\dependencies.py                     107     65    39%   43-66, 80-100, 114-119, 142-144, 152-158, 166-172, 180-182, 190-192, 199, 208-216
+src\api\dependencies\__init__.py             17      0   100%
+src\api\dependencies\approval.py             30     16    47%   23, 59-106, 127-155
+src\api\dependencies\database.py             46      3    93%   139-145
+src\api\dependencies\permissions.py          46     27    41%   62-100, 133-160, 188-201
+src\api\factories\__init__.py                 6      0   100%
+src\api\factories\business.py                13      4    69%   44-48
+src\api\factories\knowledge.py               23      9    61%   48-51, 73-75, 96-98, 120-122
+src\api\factories\task.py                     7      1    86%   37
+src\api\factories\workflow.py                 9      2    78%   39-41
+src\api\factories\workforce.py               11      3    73%   41-44
+src\api\routes\__init__.py                   18      0   100%
+src\api\routes\ai_brain.py                  100     52    48%   115-191, 214-248, 276-315, 338-372
+src\api\routes\approvals.py                  80     56    30%   40-67, 82-100, 112-128, 141-164, 177-200, 212-235
+src\api\routes\audit.py                      27     13    52%   37-56, 71-89
+src\api\routes\auth.py                       49     30    39%   36-76, 89-145, 155
+src\api\routes\business.py                   39     14    64%   60-81, 99-106, 121-129, 149-173, 188-192
+src\api\routes\ceo.py                        68     40    41%   45-50, 76-87, 107-115, 136-147, 167-175, 196-207, 227-235
+src\api\routes\health.py                     29     11    62%   28-35, 46, 57-75
+src\api\routes\jarvis.py                     53     24    55%   28-34, 74-108, 122-123, 135-137, 145
+src\api\routes\permissions.py                22      8    64%   31-41, 53-70
+src\api\routes\roles.py                      28     13    54%   26-28, 40-49, 61-75
+src\api\routes\tasks.py                     140     76    46%   93, 131-161, 179-193, 207-215, 230-243, 259-274, 291-316, 333-358, 376-398
+src\api\routes\users.py                      55     35    36%   37-46, 61-66, 79-104, 117-145
+src\api\routes\workflows.py                 139     67    52%   74, 98, 128-150, 165-169, 185-195, 213-243, 262-275, 308-338, 354-362, 379-393, 410-426, 443-459, 476-492
+src\api\routes\workforce.py                 147     81    45%   82, 131-161, 179-194, 210-226, 244-281, 298-333, 349-373, 389-411
+src\api\schemas.py                          103      0   100%
+src\business\__init__.py                      2      0   100%
+src\business\marketing.py                    46     46     0%   11-217
+src\business\models.py                       57      0   100%
+src\business\operations.py                   44     44     0%   11-216
+src\business\registry.py                     74      0   100%
+src\business\research.py                     42     42     0%   11-217
+src\business\sales.py                        46     46     0%   11-224
+src\business\service.py                     114     12    89%   166, 176, 182, 241, 248, 254, 303, 310, 362, 409, 439, 468
+src\ceo\__init__.py                           3      0   100%
+src\ceo\dashboard.py                        121     31    74%   115-117, 126, 132, 141-143, 147-149, 158-163, 185, 208, 236, 313-328, 350-358, 364
+src\ceo\models.py                            46      0   100%
+src\core\__init__.py                          6      0   100%
+src\core\config.py                           66     10    85%   78, 87-90, 95-97, 102, 107, 128
+src\core\di.py                               24      3    88%   62-63, 68
+src\core\errors.py                           70      6    91%   90, 104, 118, 139, 146, 166
+src\core\events.py                          117     22    81%   113-114, 118-125, 136-137, 150-154, 172-173, 182-183, 201-203
+src\core\lifecycle.py                        58     42    28%   24-27, 31-68, 72-97, 101, 111-113, 122-127
+src\core\logging.py                          33     22    33%   21-46, 54-96
+src\database\__init__.py                      4      0   100%
+src\database\base.py                         79     52    34%   50, 52, 58-65, 77-107, 119-130, 145-155, 165-174, 183-190, 200-211, 222-226
+src\database\models.py                      210      0   100%
+src\database\repositories\__init__.py         6      0   100%
+src\database\repositories\business.py        27     12    56%   38-45, 62-68, 85-91, 108-114, 126-132, 145-151
+src\database\repositories\converters.py      70      4    94%   149, 165, 214-215
+src\database\repositories\knowledge.py       86     36    58%   25, 38-44, 57-63, 76-87, 106-113, 130-136, 149-157, 224-230, 247-253, 262-271, 341-358, 418-433
+src\database\repositories\task.py            39     19    51%   36-42, 61-68, 80-86, 103-109, 126-132, 144-149, 162-168, 175, 192-198, 210-216
+src\database\repositories\workflow.py        30      9    70%   69-75, 82, 101-108, 125-131, 148-154
+src\database\repositories\workforce.py       65     38    42%   36-41, 53-58, 67, 79-84, 97-103, 110, 129-136, 148-153, 170-180, 193-221, 228, 247-254, 266-271, 288-299, 316-331
+src\database\repository.py                   62     19    69%   156, 170-173, 185-192, 213-222, 226-227, 231-232, 244-245
+src\governance\__init__.py                    3      0   100%
+src\governance\approval.py                  125     29    77%   21, 24, 119-120, 213, 219-224, 274-279, 342-360, 379-399, 422-423
+src\governance\risk.py                       40      0   100%
+src\identity\__init__.py                      7      0   100%
+src\identity\audit.py                       176      1    99%   475
+src\identity\auth.py                         33     20    39%   21, 27, 41-62, 78-91
+src\identity\database.py                     44     29    34%   23-40, 46-55, 62-67, 72-79, 85-88, 100-101
+src\identity\governance.py                  143     40    72%   20, 22, 71-72, 103-107, 110-111, 208-230, 249-250, 257-258, 275-290, 315-316, 382-399
+src\identity\models.py                      121     10    92%   97, 133, 156, 177-178, 183-185, 207, 243
+src\identity\rbac.py                        166     20    88%   324-325, 328-334, 357-362, 399, 439-443, 452-453, 473, 481, 498, 502
+src\jarvis\__init__.py                        6      0   100%
+src\jarvis\service.py                        63     49    22%   45-55, 59-67, 88-136, 140-150, 154
+src\jarvis\speech_recognition.py             27     18    33%   28-30, 41-66, 77-79
+src\jarvis\state_machine.py                  44     25    43%   34-37, 50-64, 68-76, 80, 84-88, 92, 96-98
+src\jarvis\tts.py                            31     22    29%   34-37, 48-71, 83-88
+src\jarvis\wake_word.py                      32     18    44%   37-40, 51-58, 69-82
+src\knowledge\__init__.py                     6      0   100%
+src\knowledge\company_brain.py              165     18    89%   210-215, 219, 288-294, 299, 325-330, 386-393, 398, 402, 533-540, 545, 579-587, 591
+src\knowledge\documents.py                  138     84    39%   58, 111-116, 132-154, 158, 190-267, 271-274, 285-322, 344-376, 399-424, 438-443, 462-491
+src\knowledge\knowledge_retrieval.py        135      5    96%   124, 207-209, 340
+src\knowledge\memory.py                     181     22    88%   160-165, 169, 173, 271-276, 290, 294, 338-343, 390-396, 407, 411, 442-447, 495-496, 499, 525-530, 563
+src\knowledge\processing.py                 116     17    85%   49, 116, 123-137, 199, 273-290
+src\knowledge\retrieval.py                  145     29    80%   53, 134-139, 148-151, 192, 196, 228, 241-264, 291, 293, 300, 303, 327-333, 337
+src\main.py                                  21     21     0%   5-50
+src\multi_tenant\__init__.py                  3      3     0%   11-27
+src\multi_tenant\api.py                     135    135     0%   10-393
+src\multi_tenant\migration.py                45     45     0%   13-181
+src\multi_tenant\models.py                  133    133     0%   13-310
+src\multi_tenant\services.py                170    170     0%   11-674
+src\security\__init__.py                      3      0   100%
+src\security\policy.py                      117     46    61%   27-31, 183-204, 245-272, 281-306, 315-338, 357, 375
+src\security\secrets.py                      59     38    36%   47-66, 70, 74, 78, 82, 94-116, 120-121, 131-133, 139-141
+src\tasks\__init__.py                         2      0   100%
+src\tasks\executor.py                        69     69     0%   6-313
+src\tasks\models.py                         111     23    79%   64, 80, 143-151, 155, 165-168, 172-175, 179-181, 185-186, 190
+src\tasks\service.py                        138     36    74%   96, 213, 215, 217, 219, 260-273, 379, 406-434, 447-458
+src\workflow\__init__.py                      2      0   100%
+src\workflow\executor.py                    173     66    62%   227-249, 261-283, 295-322, 336-339, 348, 355, 376, 385, 414, 419-427, 433, 439, 451-455, 463, 473, 479-481, 489-499
+src\workflow\models.py                      138     32    77%   91, 94, 97, 134, 142-145, 149-152, 202, 208-209, 228, 232-253
+src\workflow\service.py                     141     24    83%   115-122, 253-260, 271, 274, 319-326, 351-356, 359-360, 363-364, 371-378, 430-437, 478, 482
+src\workforce\__init__.py                     2      0   100%
+src\workforce\cost.py                        90     18    80%   129-131, 225-226, 254-268, 277-279
+src\workforce\employee.py                    78     38    51%   103, 106, 170-172, 242-278, 302-321, 352-380, 408-436
+src\workforce\lifecycle.py                   79      9    89%   83, 96, 158, 167-168, 171, 231, 240-241
+src\workforce\models.py                     100      0   100%
+src\workforce\performance.py                 62     19    69%   126-128, 205-225, 234-236
+src\workforce\registry.py                    85     32    62%   56, 61, 91, 109-114, 133, 172-181, 208, 211, 214, 220-221, 230-237, 241-248
+-----------------------------------------------------------------------
+TOTAL                                      8232   2806    66%
+Coverage HTML written to dir htmlcov
+================ 484 passed, 6 skipped, 130 warnings in 59.90s ================

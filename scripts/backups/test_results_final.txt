@@ -1,0 +1,627 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.15, pytest-9.1.1, pluggy-1.6.0 -- D:\python.exe
+cachedir: .pytest_cache
+rootdir: D:\LiuHao-AI-OS
+configfile: pyproject.toml
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 319 items
+
+tests/test_ai/test_agents.py::TestAgentConfig::test_agent_config_creation PASSED [  0%]
+tests/test_ai/test_agents.py::TestAgentContext::test_agent_context_creation PASSED [  0%]
+tests/test_ai/test_agents.py::TestAgentExecution::test_agent_execution_creation PASSED [  0%]
+tests/test_ai/test_agents.py::TestAgentRegistry::test_register_agent PASSED [  1%]
+tests/test_ai/test_agents.py::TestAgentRegistry::test_get_nonexistent_agent PASSED [  1%]
+tests/test_ai/test_agents.py::TestAgentRegistry::test_list_all_agents PASSED [  1%]
+tests/test_ai/test_agents.py::TestAgentRegistry::test_list_enabled_agents PASSED [  2%]
+tests/test_ai/test_agents.py::TestCreateDefaultAgents::test_create_default_agents PASSED [  2%]
+tests/test_ai/test_agents.py::TestCreateDefaultAgents::test_default_agents_configuration PASSED [  2%]
+tests/test_ai/test_agents.py::TestAgentRuntime::test_runtime_initialization PASSED [  3%]
+tests/test_ai/test_agents.py::TestAgentRuntime::test_execute_agent_permission_check PASSED [  3%]
+tests/test_ai/test_agents.py::TestAgentRuntime::test_execute_unknown_agent PASSED [  3%]
+tests/test_ai/test_agents.py::TestAgentRuntime::test_execute_disabled_agent PASSED [  4%]
+tests/test_ai/test_agents.py::TestAgentProviderSeparation::test_agent_references_provider PASSED [  4%]
+tests/test_ai/test_agents.py::TestAgentProviderSeparation::test_multiple_agents_can_use_same_provider PASSED [  4%]
+tests/test_ai/test_agents.py::TestAgentSecurityEnforcement::test_inactive_user_cannot_use_agents PASSED [  5%]
+tests/test_ai/test_integration.py::TestStage3Integration::test_provider_to_agent_flow PASSED [  5%]
+tests/test_ai/test_integration.py::TestStage3Integration::test_complete_task_execution_flow PASSED [  5%]
+tests/test_ai/test_integration.py::TestStage3Integration::test_multi_agent_collaboration PASSED [  5%]
+tests/test_ai/test_integration.py::TestStage3Integration::test_security_enforcement_across_stack PASSED [  6%]
+tests/test_ai/test_integration.py::TestStage3Integration::test_provider_not_equal_agent_principle PASSED [  6%]
+tests/test_ai/test_integration.py::TestStage3Integration::test_agent_not_equal_workflow_principle PASSED [  6%]
+tests/test_ai/test_integration.py::TestStage3Integration::test_fail_closed_principle_enforcement PASSED [  7%]
+tests/test_ai/test_integration.py::TestStage3Integration::test_audit_everything_principle PASSED [  7%]
+tests/test_ai/test_integration.py::TestStage3Architecture::test_no_duplicate_modules PASSED [  7%]
+tests/test_ai/test_integration.py::TestStage3Architecture::test_single_source_of_truth PASSED [  8%]
+tests/test_ai/test_orchestrator.py::TestTask::test_task_creation PASSED  [  8%]
+tests/test_ai/test_orchestrator.py::TestTaskStep::test_task_step_creation FAILED [  8%]
+tests/test_ai/test_orchestrator.py::TestTaskPlan::test_task_plan_creation PASSED [  9%]
+tests/test_ai/test_orchestrator.py::TestTaskPlan::test_task_plan_dependency_validation PASSED [  9%]
+tests/test_ai/test_orchestrator.py::TestTaskResult::test_task_result_creation FAILED [  9%]
+tests/test_ai/test_orchestrator.py::TestAIOrchestrator::test_orchestrator_initialization PASSED [ 10%]
+tests/test_ai/test_orchestrator.py::TestAIOrchestrator::test_plan_simple_task FAILED [ 10%]
+tests/test_ai/test_orchestrator.py::TestAIOrchestrator::test_plan_complex_multi_agent_task FAILED [ 10%]
+tests/test_ai/test_orchestrator.py::TestAIOrchestrator::test_execute_sequential_plan FAILED [ 10%]
+tests/test_ai/test_orchestrator.py::TestAIOrchestrator::test_execute_parallel_plan FAILED [ 11%]
+tests/test_ai/test_orchestrator.py::TestAIOrchestrator::test_execute_hybrid_plan FAILED [ 11%]
+tests/test_ai/test_orchestrator.py::TestAIOrchestrator::test_handle_step_failure FAILED [ 11%]
+tests/test_ai/test_orchestrator.py::TestAgentWorkflowSeparation::test_agents_provide_capability_orchestrator_coordinates PASSED [ 12%]
+tests/test_ai/test_orchestrator.py::TestAgentWorkflowSeparation::test_orchestrator_delegates_to_agents FAILED [ 12%]
+tests/test_ai/test_orchestrator.py::TestTaskPriorityHandling::test_critical_priority_tasks PASSED [ 12%]
+tests/test_ai/test_providers.py::TestModelRegistry::test_register_model PASSED [ 13%]
+tests/test_ai/test_providers.py::TestModelRegistry::test_get_nonexistent_model FAILED [ 13%]
+tests/test_ai/test_providers.py::TestModelRegistry::test_list_models_by_provider FAILED [ 13%]
+tests/test_ai/test_providers.py::TestProviderConfig::test_provider_config_defaults PASSED [ 14%]
+tests/test_ai/test_providers.py::TestProviderRequest::test_provider_request_creation FAILED [ 14%]
+tests/test_ai/test_providers.py::TestProviderResponse::test_provider_response_success PASSED [ 14%]
+tests/test_ai/test_providers.py::TestProviderGateway::test_gateway_initialization FAILED [ 15%]
+tests/test_ai/test_providers.py::TestProviderGateway::test_register_provider FAILED [ 15%]
+tests/test_ai/test_providers.py::TestProviderGateway::test_get_provider_lazy_initialization FAILED [ 15%]
+tests/test_ai/test_providers.py::TestProviderGateway::test_get_unregistered_provider_fails FAILED [ 15%]
+tests/test_ai/test_providers.py::TestProviderGateway::test_provider_status_tracking FAILED [ 16%]
+tests/test_ai/test_providers.py::TestOpenAIProvider::test_openai_provider_initialization FAILED [ 16%]
+tests/test_ai/test_providers.py::TestAnthropicProvider::test_anthropic_provider_initialization FAILED [ 16%]
+tests/test_ai/test_providers.py::TestGoogleProvider::test_google_provider_initialization FAILED [ 17%]
+tests/test_ai/test_providers.py::TestXAIProvider::test_xai_provider_initialization FAILED [ 17%]
+tests/test_ai/test_providers.py::TestDeepSeekProvider::test_deepseek_provider_initialization FAILED [ 17%]
+tests/test_ai/test_providers.py::TestMoonshotProvider::test_moonshot_provider_initialization FAILED [ 18%]
+tests/test_ai/test_providers.py::TestProviderSecurityEnforcement::test_disabled_provider_cannot_be_used FAILED [ 18%]
+tests/test_ai/test_tools.py::TestToolConfig::test_tool_config_creation PASSED [ 18%]
+tests/test_ai/test_tools.py::TestToolExecution::test_execute_tool_permission_check PASSED [ 19%]
+tests/test_ai/test_tools.py::TestToolExecution::test_execute_unknown_tool PASSED [ 19%]
+tests/test_ai/test_tools.py::TestToolExecution::test_execute_disabled_tool PASSED [ 19%]
+tests/test_ai/test_tools.py::TestToolExecution::test_execute_tool_policy_enforcement PASSED [ 20%]
+tests/test_ai/test_tools.py::TestToolExecution::test_execute_tool_requires_approval PASSED [ 20%]
+tests/test_ai/test_tools.py::TestToolExecution::test_execute_tool_with_idempotency_key PASSED [ 20%]
+tests/test_ai/test_tools.py::TestToolRegistry::test_register_tool PASSED [ 21%]
+tests/test_ai/test_tools.py::TestToolRegistry::test_get_nonexistent_tool PASSED [ 21%]
+tests/test_ai/test_tools.py::TestToolRegistry::test_list_tools_by_category PASSED [ 21%]
+tests/test_ai/test_tools.py::TestToolSecurityEnforcement::test_inactive_user_cannot_use_tools PASSED [ 21%]
+tests/test_ai/test_tools.py::TestToolSecurityEnforcement::test_rate_limiting_enforced PASSED [ 22%]
+tests/test_ai/test_tools.py::TestToolAuditLogging::test_tool_execution_logged PASSED [ 22%]
+tests/test_business/test_models.py::test_business_task_creation PASSED   [ 22%]
+tests/test_business/test_models.py::test_business_task_to_dict PASSED    [ 23%]
+tests/test_business/test_models.py::test_business_task_with_assignment PASSED [ 23%]
+tests/test_business/test_models.py::test_business_metrics_creation PASSED [ 23%]
+tests/test_business/test_models.py::test_business_metrics_to_dict PASSED [ 24%]
+tests/test_business/test_models.py::test_business_domain_enum PASSED     [ 24%]
+tests/test_business/test_models.py::test_business_task_status_enum PASSED [ 24%]
+tests/test_business/test_models.py::test_business_task_priority_enum PASSED [ 25%]
+tests/test_business/test_registry.py::test_registry_initialization PASSED [ 25%]
+tests/test_business/test_registry.py::test_register_task PASSED          [ 25%]
+tests/test_business/test_registry.py::test_register_duplicate_task PASSED [ 26%]
+tests/test_business/test_registry.py::test_get_task PASSED               [ 26%]
+tests/test_business/test_registry.py::test_get_nonexistent_task PASSED   [ 26%]
+tests/test_business/test_registry.py::test_update_task PASSED            [ 26%]
+tests/test_business/test_registry.py::test_update_nonexistent_task PASSED [ 27%]
+tests/test_business/test_registry.py::test_delete_task PASSED            [ 27%]
+tests/test_business/test_registry.py::test_delete_nonexistent_task PASSED [ 27%]
+tests/test_business/test_registry.py::test_list_all_tasks PASSED         [ 28%]
+tests/test_business/test_registry.py::test_list_tasks_by_domain PASSED   [ 28%]
+tests/test_business/test_registry.py::test_list_tasks_by_status PASSED   [ 28%]
+tests/test_business/test_registry.py::test_list_tasks_by_priority PASSED [ 29%]
+tests/test_business/test_registry.py::test_list_tasks_by_assigned_employee PASSED [ 29%]
+tests/test_business/test_registry.py::test_count_by_status PASSED        [ 29%]
+tests/test_business/test_registry.py::test_count_by_domain PASSED        [ 30%]
+tests/test_business/test_registry.py::test_get_employee_tasks PASSED     [ 30%]
+tests/test_business/test_service.py::test_create_task ERROR              [ 30%]
+tests/test_business/test_service.py::test_create_task_without_permission ERROR [ 31%]
+tests/test_business/test_service.py::test_create_task_validation ERROR   [ 31%]
+tests/test_business/test_service.py::test_assign_task ERROR              [ 31%]
+tests/test_business/test_service.py::test_start_task ERROR               [ 31%]
+tests/test_business/test_service.py::test_complete_task ERROR            [ 32%]
+tests/test_business/test_service.py::test_fail_task ERROR                [ 32%]
+tests/test_business/test_service.py::test_get_task ERROR                 [ 32%]
+tests/test_business/test_service.py::test_list_tasks ERROR               [ 33%]
+tests/test_business/test_service.py::test_get_domain_metrics ERROR       [ 33%]
+tests/test_ceo/test_dashboard.py::TestCEODashboard::test_dashboard_initialization PASSED [ 33%]
+tests/test_ceo/test_dashboard.py::TestCEODashboard::test_get_dashboard PASSED [ 34%]
+tests/test_ceo/test_dashboard.py::TestCEODashboard::test_get_business_overview PASSED [ 34%]
+tests/test_ceo/test_dashboard.py::TestCEODashboard::test_get_ai_team_overview PASSED [ 34%]
+tests/test_ceo/test_dashboard.py::TestCEODashboard::test_dashboard_permission_denied FAILED [ 35%]
+tests/test_ceo/test_models.py::TestSystemOverview::test_create_system_overview PASSED [ 35%]
+tests/test_ceo/test_models.py::TestSystemOverview::test_system_overview_serialization PASSED [ 35%]
+tests/test_ceo/test_models.py::TestBusinessOverview::test_create_business_overview PASSED [ 36%]
+tests/test_ceo/test_models.py::TestBusinessOverview::test_business_overview_zero_tasks PASSED [ 36%]
+tests/test_ceo/test_models.py::TestAITeamOverview::test_create_ai_team_overview PASSED [ 36%]
+tests/test_ceo/test_models.py::TestAITeamOverview::test_ai_team_overview_no_employees PASSED [ 36%]
+tests/test_ceo/test_models.py::TestTaskOverview::test_create_task_overview PASSED [ 37%]
+tests/test_ceo/test_models.py::TestTaskOverview::test_task_overview_empty PASSED [ 37%]
+tests/test_ceo/test_models.py::TestApprovalOverview::test_create_approval_overview PASSED [ 37%]
+tests/test_ceo/test_models.py::TestApprovalOverview::test_approval_overview_zero_requests PASSED [ 38%]
+tests/test_ceo/test_models.py::TestCEODashboardData::test_create_ceo_dashboard_data PASSED [ 38%]
+tests/test_ceo/test_models.py::TestCEODashboardData::test_ceo_dashboard_data_serialization PASSED [ 38%]
+tests/test_core/test_events.py::test_event_bus_publish_subscribe PASSED  [ 39%]
+tests/test_core/test_events.py::test_event_bus_async_handler PASSED      [ 39%]
+tests/test_core/test_events.py::test_event_bus_multiple_subscribers PASSED [ 39%]
+tests/test_core/test_events.py::test_event_bus_unsubscribe PASSED        [ 40%]
+tests/test_governance/test_approval.py::TestApprovalService::test_create_low_risk_approval PASSED [ 40%]
+tests/test_governance/test_approval.py::TestApprovalService::test_create_high_risk_approval PASSED [ 40%]
+tests/test_governance/test_approval.py::TestApprovalService::test_create_critical_risk_approval PASSED [ 41%]
+tests/test_governance/test_approval.py::TestApprovalService::test_approve_request PASSED [ 41%]
+tests/test_governance/test_approval.py::TestApprovalService::test_reject_request PASSED [ 41%]
+tests/test_governance/test_approval.py::TestApprovalService::test_cancel_request PASSED [ 42%]
+tests/test_governance/test_approval.py::TestApprovalService::test_cannot_cancel_others_request PASSED [ 42%]
+tests/test_governance/test_approval.py::TestApprovalService::test_prevent_self_approval_high_risk PASSED [ 42%]
+tests/test_governance/test_approval.py::TestApprovalService::test_cannot_approve_non_pending PASSED [ 42%]
+tests/test_governance/test_approval.py::TestApprovalService::test_check_expired_requests PASSED [ 43%]
+tests/test_governance/test_approval.py::TestApprovalService::test_is_approved PASSED [ 43%]
+tests/test_governance/test_approval.py::TestApprovalService::test_is_not_approved PASSED [ 43%]
+tests/test_governance/test_approval.py::TestApprovalService::test_payload_stored PASSED [ 44%]
+tests/test_governance/test_risk.py::TestRiskEvaluator::test_critical_risk_operations PASSED [ 44%]
+tests/test_governance/test_risk.py::TestRiskEvaluator::test_high_risk_operations PASSED [ 44%]
+tests/test_governance/test_risk.py::TestRiskEvaluator::test_medium_risk_operations PASSED [ 45%]
+tests/test_governance/test_risk.py::TestRiskEvaluator::test_low_risk_operations PASSED [ 45%]
+tests/test_governance/test_risk.py::TestRiskEvaluator::test_case_insensitivity PASSED [ 45%]
+tests/test_governance/test_risk.py::TestRiskEvaluator::test_partial_matching PASSED [ 46%]
+tests/test_governance/test_risk.py::TestRiskEvaluator::test_risk_level_ordering PASSED [ 46%]
+tests/test_governance/test_risk.py::TestRiskEvaluator::test_context_evaluation PASSED [ 46%]
+tests/test_governance/test_risk.py::TestRiskEvaluator::test_evaluate_with_none_values PASSED [ 47%]
+tests/test_governance/test_risk.py::TestRiskEvaluator::test_requires_approval PASSED [ 47%]
+tests/test_identity/test_audit.py::TestAuditService::test_log_basic PASSED [ 47%]
+tests/test_identity/test_audit.py::TestAuditService::test_log_success PASSED [ 47%]
+tests/test_identity/test_audit.py::TestAuditService::test_log_failure PASSED [ 48%]
+tests/test_identity/test_audit.py::TestAuditService::test_log_denied PASSED [ 48%]
+tests/test_identity/test_audit.py::TestAuditService::test_sanitize_password PASSED [ 48%]
+tests/test_identity/test_audit.py::TestAuditService::test_sanitize_token PASSED [ 49%]
+tests/test_identity/test_audit.py::TestAuditService::test_sanitize_nested_secrets PASSED [ 49%]
+tests/test_identity/test_audit.py::TestAuditService::test_sanitize_list_of_dicts PASSED [ 49%]
+tests/test_identity/test_audit.py::TestAuditService::test_log_login PASSED [ 50%]
+tests/test_identity/test_audit.py::TestAuditService::test_log_login_failure PASSED [ 50%]
+tests/test_identity/test_audit.py::TestAuditService::test_log_logout PASSED [ 50%]
+tests/test_identity/test_audit.py::TestAuditService::test_log_permission_denied PASSED [ 51%]
+tests/test_identity/test_audit.py::TestAuditService::test_log_role_change PASSED [ 51%]
+tests/test_identity/test_audit.py::TestAuditService::test_log_approval PASSED [ 51%]
+tests/test_identity/test_audit.py::TestAuditService::test_log_session_revoked PASSED [ 52%]
+tests/test_identity/test_audit.py::TestAuditService::test_query_logs_basic PASSED [ 52%]
+tests/test_identity/test_audit.py::TestAuditService::test_query_logs_filter_action PASSED [ 52%]
+tests/test_identity/test_audit.py::TestAuditService::test_query_logs_filter_status PASSED [ 52%]
+tests/test_identity/test_audit.py::TestAuditService::test_query_logs_limit PASSED [ 53%]
+tests/test_identity/test_governance.py::TestIdentityGovernanceService::test_get_user PASSED [ 53%]
+tests/test_identity/test_governance.py::TestIdentityGovernanceService::test_get_user_not_found PASSED [ 53%]
+tests/test_identity/test_governance.py::TestIdentityGovernanceService::test_get_user_by_username PASSED [ 54%]
+tests/test_identity/test_governance.py::TestIdentityGovernanceService::test_get_user_by_username_not_found PASSED [ 54%]
+tests/test_identity/test_governance.py::TestIdentityGovernanceService::test_disable_user PASSED [ 54%]
+tests/test_identity/test_governance.py::TestIdentityGovernanceService::test_enable_user PASSED [ 55%]
+tests/test_identity/test_governance.py::TestIdentityGovernanceService::test_disable_user_revokes_sessions PASSED [ 55%]
+tests/test_identity/test_governance.py::TestIdentityGovernanceService::test_change_user_role PASSED [ 55%]
+tests/test_identity/test_governance.py::TestIdentityGovernanceService::test_cannot_change_last_admin_role PASSED [ 56%]
+tests/test_identity/test_governance.py::TestIdentityGovernanceService::test_revoke_user_sessions PASSED [ 56%]
+tests/test_identity/test_governance.py::TestIdentityGovernanceService::test_revoke_specific_session PASSED [ 56%]
+tests/test_identity/test_governance.py::TestIdentityGovernanceService::test_revoke_session_not_found PASSED [ 57%]
+tests/test_identity/test_governance.py::TestIdentityGovernanceService::test_validate_session_active PASSED [ 57%]
+tests/test_identity/test_governance.py::TestIdentityGovernanceService::test_validate_session_expired PASSED [ 57%]
+tests/test_identity/test_governance.py::TestIdentityGovernanceService::test_validate_session_revoked PASSED [ 57%]
+tests/test_identity/test_rbac.py::test_admin_has_all_permissions PASSED  [ 58%]
+tests/test_identity/test_rbac.py::test_user_limited_permissions PASSED   [ 58%]
+tests/test_identity/test_rbac.py::test_viewer_minimal_permissions PASSED [ 58%]
+tests/test_identity/test_rbac.py::test_inactive_user_no_permissions PASSED [ 59%]
+tests/test_identity/test_rbac.py::test_superuser_bypass PASSED           [ 59%]
+tests/test_knowledge/test_company_brain.py::TestEntity::test_entity_creation PASSED [ 59%]
+tests/test_knowledge/test_company_brain.py::TestEntity::test_entity_to_dict PASSED [ 60%]
+tests/test_knowledge/test_company_brain.py::TestFact::test_fact_creation PASSED [ 60%]
+tests/test_knowledge/test_company_brain.py::TestFact::test_fact_to_dict PASSED [ 60%]
+tests/test_knowledge/test_company_brain.py::TestCompanyBrain::test_create_entity PASSED [ 61%]
+tests/test_knowledge/test_company_brain.py::TestCompanyBrain::test_get_entity PASSED [ 61%]
+tests/test_knowledge/test_company_brain.py::TestCompanyBrain::test_list_entities PASSED [ 61%]
+tests/test_knowledge/test_company_brain.py::TestCompanyBrain::test_create_fact PASSED [ 62%]
+tests/test_knowledge/test_company_brain.py::TestCompanyBrain::test_fact_conflict_resolution PASSED [ 62%]
+tests/test_knowledge/test_company_brain.py::TestCompanyBrain::test_reject_lower_priority_fact PASSED [ 62%]
+tests/test_knowledge/test_company_brain.py::TestCompanyBrain::test_get_entity_facts PASSED [ 63%]
+tests/test_knowledge/test_memory.py::TestMemory::test_memory_creation PASSED [ 63%]
+tests/test_knowledge/test_memory.py::TestMemory::test_memory_to_dict PASSED [ 63%]
+tests/test_knowledge/test_memory.py::TestMemoryService::test_store_short_term_memory PASSED [ 63%]
+tests/test_knowledge/test_memory.py::TestMemoryService::test_store_working_memory PASSED [ 64%]
+tests/test_knowledge/test_memory.py::TestMemoryService::test_store_long_term_memory PASSED [ 64%]
+tests/test_knowledge/test_memory.py::TestMemoryService::test_retrieve_memory PASSED [ 64%]
+tests/test_knowledge/test_memory.py::TestMemoryService::test_retrieve_nonexistent_memory PASSED [ 65%]
+tests/test_knowledge/test_memory.py::TestMemoryService::test_list_memories PASSED [ 65%]
+tests/test_knowledge/test_memory.py::TestMemoryService::test_delete_memory PASSED [ 65%]
+tests/test_knowledge/test_memory.py::TestMemoryService::test_clear_session PASSED [ 66%]
+tests/test_knowledge/test_memory.py::TestMemoryService::test_clear_task PASSED [ 66%]
+tests/test_knowledge/test_memory.py::TestMemoryService::test_clean_expired PASSED [ 66%]
+tests/test_knowledge/test_processing.py::TestChunker::test_chunk_text PASSED [ 67%]
+tests/test_knowledge/test_processing.py::TestChunker::test_chunk_type_detection PASSED [ 67%]
+tests/test_knowledge/test_processing.py::TestChunker::test_split_large_paragraph PASSED [ 67%]
+tests/test_knowledge/test_processing.py::TestDocumentProcessor::test_process_text_document PASSED [ 68%]
+tests/test_knowledge/test_processing.py::TestDocumentProcessor::test_process_markdown_document PASSED [ 68%]
+tests/test_knowledge/test_processing.py::TestDocumentProcessor::test_clean_text PASSED [ 68%]
+tests/test_knowledge/test_processing.py::TestDocumentProcessor::test_normalize_text PASSED [ 68%]
+tests/test_knowledge/test_retrieval.py::TestRetrievalService::test_index_chunk PASSED [ 69%]
+tests/test_knowledge/test_retrieval.py::TestRetrievalService::test_index_chunks PASSED [ 69%]
+tests/test_knowledge/test_retrieval.py::TestRetrievalService::test_keyword_search PASSED [ 69%]
+tests/test_knowledge/test_retrieval.py::TestRetrievalService::test_search_with_filters PASSED [ 70%]
+tests/test_knowledge/test_retrieval.py::TestRetrievalService::test_search_empty_query PASSED [ 70%]
+tests/test_knowledge/test_retrieval.py::TestRetrievalService::test_get_chunk PASSED [ 70%]
+tests/test_knowledge/test_retrieval.py::TestRetrievalService::test_remove_document_chunks PASSED [ 71%]
+tests/test_security/test_policy.py::test_unknown_resource_deny FAILED    [ 71%]
+tests/test_security/test_policy.py::test_disabled_feature_deny FAILED    [ 71%]
+tests/test_security/test_policy.py::test_empty_whitelist_deny FAILED     [ 72%]
+tests/test_security/test_policy.py::test_whitelist_allow FAILED          [ 72%]
+tests/test_security/test_policy.py::test_not_in_whitelist_deny FAILED    [ 72%]
+tests/test_security/test_policy.py::test_require_approval FAILED         [ 73%]
+tests/test_security/test_policy.py::test_missing_context_deny FAILED     [ 73%]
+tests/test_tasks/test_service.py::test_create_task PASSED                [ 73%]
+tests/test_tasks/test_service.py::test_get_task PASSED                   [ 73%]
+tests/test_tasks/test_service.py::test_get_task_not_found PASSED         [ 74%]
+tests/test_tasks/test_service.py::test_list_tasks PASSED                 [ 74%]
+tests/test_tasks/test_service.py::test_list_tasks_by_status PASSED       [ 74%]
+tests/test_tasks/test_service.py::test_update_task_status PASSED         [ 75%]
+tests/test_tasks/test_service.py::test_complete_task PASSED              [ 75%]
+tests/test_tasks/test_service.py::test_fail_task PASSED                  [ 75%]
+tests/test_tasks/test_service.py::test_assign_task PASSED                [ 76%]
+tests/test_tasks/test_service.py::test_delete_task PASSED                [ 76%]
+tests/test_workflow/test_executor.py::test_execute_sequential_workflow PASSED [ 76%]
+tests/test_workflow/test_executor.py::test_execute_parallel_workflow PASSED [ 77%]
+tests/test_workflow/test_executor.py::test_execute_conditional_workflow PASSED [ 77%]
+tests/test_workflow/test_executor.py::test_execute_loop_workflow PASSED  [ 77%]
+tests/test_workflow/test_executor.py::test_execute_workflow_not_found PASSED [ 78%]
+tests/test_workflow/test_executor.py::test_execute_workflow_permission_denied PASSED [ 78%]
+tests/test_workflow/test_executor.py::test_pause_execution SKIPPED (...) [ 78%]
+tests/test_workflow/test_executor.py::test_resume_execution SKIPPED      [ 78%]
+tests/test_workflow/test_executor.py::test_cancel_execution SKIPPED      [ 79%]
+tests/test_workflow/test_executor.py::test_list_executions PASSED        [ 79%]
+tests/test_workflow/test_models.py::test_workflow_step_creation PASSED   [ 79%]
+tests/test_workflow/test_models.py::test_workflow_step_sequential PASSED [ 80%]
+tests/test_workflow/test_models.py::test_workflow_step_parallel PASSED   [ 80%]
+tests/test_workflow/test_models.py::test_workflow_step_conditional PASSED [ 80%]
+tests/test_workflow/test_models.py::test_workflow_step_loop PASSED       [ 81%]
+tests/test_workflow/test_models.py::test_workflow_creation PASSED        [ 81%]
+tests/test_workflow/test_models.py::test_workflow_validation_empty_name PASSED [ 81%]
+tests/test_workflow/test_models.py::test_workflow_validation_no_steps FAILED [ 82%]
+tests/test_workflow/test_models.py::test_workflow_validation_valid PASSED [ 82%]
+tests/test_workflow/test_models.py::test_workflow_execution_creation PASSED [ 82%]
+tests/test_workflow/test_models.py::test_workflow_execution_complete PASSED [ 83%]
+tests/test_workflow/test_models.py::test_workflow_execution_failed PASSED [ 83%]
+tests/test_workflow/test_service.py::test_create_workflow_success PASSED [ 83%]
+tests/test_workflow/test_service.py::test_create_workflow_permission_denied PASSED [ 84%]
+tests/test_workflow/test_service.py::test_create_workflow_invalid_steps FAILED [ 84%]
+tests/test_workflow/test_service.py::test_get_workflow_success PASSED    [ 84%]
+tests/test_workflow/test_service.py::test_get_workflow_not_found PASSED  [ 84%]
+tests/test_workflow/test_service.py::test_get_workflow_permission_denied PASSED [ 85%]
+tests/test_workflow/test_service.py::test_list_workflows PASSED          [ 85%]
+tests/test_workflow/test_service.py::test_list_workflows_with_filters PASSED [ 85%]
+tests/test_workflow/test_service.py::test_update_workflow_success PASSED [ 86%]
+tests/test_workflow/test_service.py::test_update_workflow_not_found PASSED [ 86%]
+tests/test_workflow/test_service.py::test_delete_workflow_success PASSED [ 86%]
+tests/test_workflow/test_service.py::test_delete_workflow_not_found PASSED [ 87%]
+tests/test_workflow/test_service.py::test_validate_workflow PASSED       [ 87%]
+tests/test_workforce/test_lifecycle.py::test_activate_employee PASSED    [ 87%]
+tests/test_workforce/test_lifecycle.py::test_activate_already_active PASSED [ 88%]
+tests/test_workforce/test_lifecycle.py::test_activate_without_agent PASSED [ 88%]
+tests/test_workforce/test_lifecycle.py::test_suspend_active_employee PASSED [ 88%]
+tests/test_workforce/test_lifecycle.py::test_retire_employee PASSED      [ 89%]
+tests/test_workforce/test_lifecycle.py::test_cannot_retire_from_created PASSED [ 89%]
+tests/test_workforce/test_lifecycle.py::test_can_transition PASSED       [ 89%]
+tests/test_workforce/test_lifecycle.py::test_lifecycle_state_machine PASSED [ 89%]
+tests/test_workforce/test_models.py::test_ai_employee_creation PASSED    [ 90%]
+tests/test_workforce/test_models.py::test_ai_employee_to_dict PASSED     [ 90%]
+tests/test_workforce/test_models.py::test_employee_performance_record PASSED [ 90%]
+tests/test_workforce/test_models.py::test_employee_cost_record PASSED    [ 91%]
+tests/test_workforce/test_models.py::test_department_enum PASSED         [ 91%]
+tests/test_workforce/test_models.py::test_position_enum PASSED           [ 91%]
+tests/test_workforce/test_models.py::test_employee_status_enum PASSED    [ 92%]
+tests/test_workforce/test_registry.py::test_registry_initialization PASSED [ 92%]
+tests/test_workforce/test_registry.py::test_register_employee PASSED     [ 92%]
+tests/test_workforce/test_registry.py::test_register_duplicate_id PASSED [ 93%]
+tests/test_workforce/test_registry.py::test_register_duplicate_name PASSED [ 93%]
+tests/test_workforce/test_registry.py::test_register_without_name PASSED [ 93%]
+tests/test_workforce/test_registry.py::test_get_employee PASSED          [ 94%]
+tests/test_workforce/test_registry.py::test_get_nonexistent_employee PASSED [ 94%]
+tests/test_workforce/test_registry.py::test_get_by_name PASSED           [ 94%]
+tests/test_workforce/test_registry.py::test_get_by_nonexistent_name PASSED [ 94%]
+tests/test_workforce/test_registry.py::test_update_employee PASSED       [ 95%]
+tests/test_workforce/test_registry.py::test_update_employee_name PASSED  [ 95%]
+tests/test_workforce/test_registry.py::test_update_employee_name_conflict PASSED [ 95%]
+tests/test_workforce/test_registry.py::test_delete_employee PASSED       [ 96%]
+tests/test_workforce/test_registry.py::test_delete_nonexistent_employee PASSED [ 96%]
+tests/test_workforce/test_registry.py::test_list_employees PASSED        [ 96%]
+tests/test_workforce/test_registry.py::test_list_employees_by_department PASSED [ 97%]
+tests/test_workforce/test_registry.py::test_list_employees_by_status PASSED [ 97%]
+tests/test_workforce/test_registry.py::test_count_by_status PASSED       [ 97%]
+tests/test_workforce/test_registry.py::test_count_by_department PASSED   [ 98%]
+tests/test_workforce/test_tracking.py::test_record_performance PASSED    [ 98%]
+tests/test_workforce/test_tracking.py::test_performance_updates_employee_stats PASSED [ 98%]
+tests/test_workforce/test_tracking.py::test_performance_summary PASSED   [ 99%]
+tests/test_workforce/test_tracking.py::test_record_cost PASSED           [ 99%]
+tests/test_workforce/test_tracking.py::test_cost_summary PASSED          [ 99%]
+tests/test_workforce/test_tracking.py::test_total_system_cost PASSED     [100%]
+
+=================================== ERRORS ====================================
+_____________________ ERROR at setup of test_create_task ______________________
+E   AttributeError: Mock object has no attribute 'has_permission'. Did you mean: 'check_permission'?
+---------------------------- Captured stdout setup ----------------------------
+2026-08-22 00:15:35 [info     ] business_task_registry_initialized
+____________ ERROR at setup of test_create_task_without_permission ____________
+E   AttributeError: Mock object has no attribute 'has_permission'. Did you mean: 'check_permission'?
+---------------------------- Captured stdout setup ----------------------------
+2026-08-22 00:15:35 [info     ] business_task_registry_initialized
+________________ ERROR at setup of test_create_task_validation ________________
+E   AttributeError: Mock object has no attribute 'has_permission'. Did you mean: 'check_permission'?
+---------------------------- Captured stdout setup ----------------------------
+2026-08-22 00:15:35 [info     ] business_task_registry_initialized
+_____________________ ERROR at setup of test_assign_task ______________________
+E   AttributeError: Mock object has no attribute 'has_permission'. Did you mean: 'check_permission'?
+---------------------------- Captured stdout setup ----------------------------
+2026-08-22 00:15:35 [info     ] business_task_registry_initialized
+______________________ ERROR at setup of test_start_task ______________________
+E   AttributeError: Mock object has no attribute 'has_permission'. Did you mean: 'check_permission'?
+---------------------------- Captured stdout setup ----------------------------
+2026-08-22 00:15:35 [info     ] business_task_registry_initialized
+____________________ ERROR at setup of test_complete_task _____________________
+E   AttributeError: Mock object has no attribute 'has_permission'. Did you mean: 'check_permission'?
+---------------------------- Captured stdout setup ----------------------------
+2026-08-22 00:15:35 [info     ] business_task_registry_initialized
+______________________ ERROR at setup of test_fail_task _______________________
+E   AttributeError: Mock object has no attribute 'has_permission'. Did you mean: 'check_permission'?
+---------------------------- Captured stdout setup ----------------------------
+2026-08-22 00:15:35 [info     ] business_task_registry_initialized
+_______________________ ERROR at setup of test_get_task _______________________
+E   AttributeError: Mock object has no attribute 'has_permission'. Did you mean: 'check_permission'?
+---------------------------- Captured stdout setup ----------------------------
+2026-08-22 00:15:35 [info     ] business_task_registry_initialized
+______________________ ERROR at setup of test_list_tasks ______________________
+E   AttributeError: Mock object has no attribute 'has_permission'. Did you mean: 'check_permission'?
+---------------------------- Captured stdout setup ----------------------------
+2026-08-22 00:15:35 [info     ] business_task_registry_initialized
+__________________ ERROR at setup of test_get_domain_metrics __________________
+E   AttributeError: Mock object has no attribute 'has_permission'. Did you mean: 'check_permission'?
+---------------------------- Captured stdout setup ----------------------------
+2026-08-22 00:15:35 [info     ] business_task_registry_initialized
+================================== FAILURES ===================================
+E   TypeError: TaskStep.__init__() got an unexpected keyword argument 'task_id'
+D:\LiuHao-AI-OS\tests\test_ai\test_orchestrator.py:41: TypeError: TaskStep.__init__() got an unexpected keyword argument 'task_id'
+E   AttributeError: 'TaskResult' object has no attribute 'final_output'
+D:\LiuHao-AI-OS\tests\test_ai\test_orchestrator.py:115: AttributeError: 'TaskResult' object has no attribute 'final_output'
+E   AssertionError: assert UUID('8c718295-602c-416a-9c45-beebba918024') == UUID('91b9d50c-c481-4a98-86a5-59564e2782cf')
+     +  where UUID('8c718295-602c-416a-9c45-beebba918024') = Task(task_id=UUID('8c718295-602c-416a-9c45-beebba918024'), title='Test Task', description='Analyze sales data', priority=<TaskPriority.NORMAL: 'normal'>, status=<TaskStatus.PENDING: 'pending'>, actor_id=UUID('a4b47a28-0356-4da9-a0ae-7fc97be39429'), trace_id=UUID('655d1132-d977-4d4c-96d3-60335278eb7a'), plan=None, result=None, error=None, created_at=datetime.datetime(2026, 8, 22, 7, 15, 35, 25848, tzinfo=datetime.timezone.utc), started_at=None, completed_at=None, metadata={}).task_id
+     +  and   UUID('91b9d50c-c481-4a98-86a5-59564e2782cf') = Task(task_id=UUID('91b9d50c-c481-4a98-86a5-59564e2782cf'), title='Test Task', description='Analyze sales data', priority=<TaskPriority.NORMAL: 'normal'>, status=<TaskStatus.PENDING: 'pending'>, actor_id=UUID('a4b47a28-0356-4da9-a0ae-7fc97be39429'), trace_id=UUID('d14a0a03-ca46-4f3c-ba96-5ad4609ef408'), plan=None, result=None, error=None, created_at=datetime.datetime(2026, 8, 22, 7, 15, 35, 25825, tzinfo=datetime.timezone.utc), started_at=None, completed_at=None, metadata={}).task_id
+------------------------------ Captured log call ------------------------------
+ERROR    src.ai.orchestrator:orchestrator.py:194 Task failed: 8c718295-602c-416a-9c45-beebba918024: sequence item 0: expected str instance, AsyncMock found
+D:\LiuHao-AI-OS\tests\test_ai\test_orchestrator.py:150: AssertionError: assert UUID('8c718295-602c-416a-9c45-beebba918024') == UUID('91b9d50c-c481-4a98-86a5-59564e2782cf')
+E   AttributeError: 'Task' object has no attribute 'steps'
+------------------------------ Captured log call ------------------------------
+ERROR    src.ai.orchestrator:orchestrator.py:194 Task failed: 7193d5a3-3159-4c9b-b926-d16a6ead7ae1: sequence item 0: expected str instance, AsyncMock found
+D:\LiuHao-AI-OS\tests\test_ai\test_orchestrator.py:168: AttributeError: 'Task' object has no attribute 'steps'
+E   TypeError: AgentExecution.__init__() got an unexpected keyword argument 'description'
+D:\LiuHao-AI-OS\tests\test_ai\test_orchestrator.py:202: TypeError: AgentExecution.__init__() got an unexpected keyword argument 'description'
+E   TypeError: AgentExecution.__init__() got an unexpected keyword argument 'description'
+D:\LiuHao-AI-OS\tests\test_ai\test_orchestrator.py:257: TypeError: AgentExecution.__init__() got an unexpected keyword argument 'description'
+E   TypeError: AgentExecution.__init__() got an unexpected keyword argument 'description'
+D:\LiuHao-AI-OS\tests\test_ai\test_orchestrator.py:319: TypeError: AgentExecution.__init__() got an unexpected keyword argument 'description'
+E   TypeError: AgentContext.__init__() got an unexpected keyword argument 'user_id'
+D:\LiuHao-AI-OS\tests\test_ai\test_orchestrator.py:366: TypeError: AgentContext.__init__() got an unexpected keyword argument 'user_id'
+E   TypeError: AgentExecution.__init__() got an unexpected keyword argument 'description'
+D:\LiuHao-AI-OS\tests\test_ai\test_orchestrator.py:423: TypeError: AgentExecution.__init__() got an unexpected keyword argument 'description'
+E   TypeError: LiuHaoError.__init__() got an unexpected keyword argument 'resource_type'
+D:\LiuHao-AI-OS\src\core\errors.py:132: TypeError: LiuHaoError.__init__() got an unexpected keyword argument 'resource_type'
+E   AttributeError: 'ModelRegistry' object has no attribute 'list_by_provider'
+D:\LiuHao-AI-OS\tests\test_ai\test_providers.py:68: AttributeError: 'ModelRegistry' object has no attribute 'list_by_provider'
+E   AttributeError: 'ProviderRequest' object has no attribute 'model_id_id'. Did you mean: 'model_id'?
+D:\LiuHao-AI-OS\tests\test_ai\test_providers.py:100: AttributeError: 'ProviderRequest' object has no attribute 'model_id_id'. Did you mean: 'model_id'?
+E   AssertionError: assert <Mock spec='AuditService' id='1372385829488'> == <Mock spec='SecretsManager' id='1372385831168'>
+     +  where <Mock spec='AuditService' id='1372385829488'> = <src.ai.providers.ProviderGateway object at 0x0000013F888AEA50>._audit_service
+D:\LiuHao-AI-OS\tests\test_ai\test_providers.py:137: AssertionError: assert <Mock spec='AuditService' id='1372385829488'> == <Mock spec='SecretsManager' id='1372385831168'>
+E   AttributeError: 'ProviderConfig' object has no attribute 'provider_type'
+D:\LiuHao-AI-OS\src\ai\providers.py:336: AttributeError: 'ProviderConfig' object has no attribute 'provider_type'
+E   AttributeError: 'ProviderConfig' object has no attribute 'provider_type'
+D:\LiuHao-AI-OS\src\ai\providers.py:336: AttributeError: 'ProviderConfig' object has no attribute 'provider_type'
+E   Failed: DID NOT RAISE ConfigurationError
+D:\LiuHao-AI-OS\tests\test_ai\test_providers.py:186: Failed: DID NOT RAISE ConfigurationError
+E   AttributeError: 'ProviderConfig' object has no attribute 'provider_type'
+D:\LiuHao-AI-OS\src\ai\providers.py:336: AttributeError: 'ProviderConfig' object has no attribute 'provider_type'
+E   NameError: name 'mock_secrets' is not defined
+D:\LiuHao-AI-OS\tests\test_ai\test_providers.py:219: NameError: name 'mock_secrets' is not defined
+E   NameError: name 'mock_secrets' is not defined
+D:\LiuHao-AI-OS\tests\test_ai\test_providers.py:237: NameError: name 'mock_secrets' is not defined
+E   NameError: name 'mock_secrets' is not defined
+D:\LiuHao-AI-OS\tests\test_ai\test_providers.py:254: NameError: name 'mock_secrets' is not defined
+E   NameError: name 'mock_secrets' is not defined
+D:\LiuHao-AI-OS\tests\test_ai\test_providers.py:271: NameError: name 'mock_secrets' is not defined
+E   NameError: name 'mock_secrets' is not defined
+D:\LiuHao-AI-OS\tests\test_ai\test_providers.py:288: NameError: name 'mock_secrets' is not defined
+E   NameError: name 'mock_secrets' is not defined
+D:\LiuHao-AI-OS\tests\test_ai\test_providers.py:305: NameError: name 'mock_secrets' is not defined
+E   AttributeError: 'ProviderConfig' object has no attribute 'provider_type'
+D:\LiuHao-AI-OS\src\ai\providers.py:336: AttributeError: 'ProviderConfig' object has no attribute 'provider_type'
+E   Failed: DID NOT RAISE PermissionError
+---------------------------- Captured stdout setup ----------------------------
+2026-08-22 00:15:35 [info     ] business_task_registry_initialized
+2026-08-22 00:15:35 [info     ] ceo_dashboard_initialized
+---------------------------- Captured stdout call -----------------------------
+2026-08-22 00:15:35 [info     ] permission_check               permission=system:admin result=True role=admin user_id=UUID('6210af03-c7e1-4535-ac01-dfdd4cf45635')
+2026-08-22 00:15:35 [info     ] ceo_dashboard_access           extra={'user_id': '6210af03-c7e1-4535-ac01-dfdd4cf45635', 'time_range_hours': 24}
+D:\LiuHao-AI-OS\tests\test_ceo\test_dashboard.py:149: Failed: DID NOT RAISE PermissionError
+E   pydantic_core._pydantic_core.ValidationError: 2 validation errors for Settings
+    secret_key
+      Value error, secret_key must be set via environment variable and be at least 32 characters [type=value_error, input_value='', input_type=str]
+        For further information visit https://errors.pydantic.dev/2.13/v/value_error
+    jwt_secret_key
+      Value error, jwt_secret_key must be set via environment variable and be at least 32 characters [type=value_error, input_value='', input_type=str]
+        For further information visit https://errors.pydantic.dev/2.13/v/value_error
+D:\Lib\site-packages\pydantic_settings\main.py:262: pydantic_core._pydantic_core.ValidationError: 2 validation errors for Settings
+E   pydantic_core._pydantic_core.ValidationError: 2 validation errors for Settings
+    secret_key
+      Value error, secret_key must be set via environment variable and be at least 32 characters [type=value_error, input_value='', input_type=str]
+        For further information visit https://errors.pydantic.dev/2.13/v/value_error
+    jwt_secret_key
+      Value error, jwt_secret_key must be set via environment variable and be at least 32 characters [type=value_error, input_value='', input_type=str]
+        For further information visit https://errors.pydantic.dev/2.13/v/value_error
+D:\Lib\site-packages\pydantic_settings\main.py:262: pydantic_core._pydantic_core.ValidationError: 2 validation errors for Settings
+E   pydantic_core._pydantic_core.ValidationError: 2 validation errors for Settings
+    secret_key
+      Value error, secret_key must be set via environment variable and be at least 32 characters [type=value_error, input_value='', input_type=str]
+        For further information visit https://errors.pydantic.dev/2.13/v/value_error
+    jwt_secret_key
+      Value error, jwt_secret_key must be set via environment variable and be at least 32 characters [type=value_error, input_value='', input_type=str]
+        For further information visit https://errors.pydantic.dev/2.13/v/value_error
+D:\Lib\site-packages\pydantic_settings\main.py:262: pydantic_core._pydantic_core.ValidationError: 2 validation errors for Settings
+E   pydantic_core._pydantic_core.ValidationError: 2 validation errors for Settings
+    secret_key
+      Value error, secret_key must be set via environment variable and be at least 32 characters [type=value_error, input_value='', input_type=str]
+        For further information visit https://errors.pydantic.dev/2.13/v/value_error
+    jwt_secret_key
+      Value error, jwt_secret_key must be set via environment variable and be at least 32 characters [type=value_error, input_value='', input_type=str]
+        For further information visit https://errors.pydantic.dev/2.13/v/value_error
+D:\Lib\site-packages\pydantic_settings\main.py:262: pydantic_core._pydantic_core.ValidationError: 2 validation errors for Settings
+E   pydantic_core._pydantic_core.ValidationError: 2 validation errors for Settings
+    secret_key
+      Value error, secret_key must be set via environment variable and be at least 32 characters [type=value_error, input_value='', input_type=str]
+        For further information visit https://errors.pydantic.dev/2.13/v/value_error
+    jwt_secret_key
+      Value error, jwt_secret_key must be set via environment variable and be at least 32 characters [type=value_error, input_value='', input_type=str]
+        For further information visit https://errors.pydantic.dev/2.13/v/value_error
+D:\Lib\site-packages\pydantic_settings\main.py:262: pydantic_core._pydantic_core.ValidationError: 2 validation errors for Settings
+E   pydantic_core._pydantic_core.ValidationError: 2 validation errors for Settings
+    secret_key
+      Value error, secret_key must be set via environment variable and be at least 32 characters [type=value_error, input_value='', input_type=str]
+        For further information visit https://errors.pydantic.dev/2.13/v/value_error
+    jwt_secret_key
+      Value error, jwt_secret_key must be set via environment variable and be at least 32 characters [type=value_error, input_value='', input_type=str]
+        For further information visit https://errors.pydantic.dev/2.13/v/value_error
+D:\Lib\site-packages\pydantic_settings\main.py:262: pydantic_core._pydantic_core.ValidationError: 2 validation errors for Settings
+E   pydantic_core._pydantic_core.ValidationError: 2 validation errors for Settings
+    secret_key
+      Value error, secret_key must be set via environment variable and be at least 32 characters [type=value_error, input_value='', input_type=str]
+        For further information visit https://errors.pydantic.dev/2.13/v/value_error
+    jwt_secret_key
+      Value error, jwt_secret_key must be set via environment variable and be at least 32 characters [type=value_error, input_value='', input_type=str]
+        For further information visit https://errors.pydantic.dev/2.13/v/value_error
+D:\Lib\site-packages\pydantic_settings\main.py:262: pydantic_core._pydantic_core.ValidationError: 2 validation errors for Settings
+E   assert False
+     +  where False = any(<generator object test_workflow_validation_no_steps.<locals>.<genexpr> at 0x0000013F88BCF920>)
+D:\LiuHao-AI-OS\tests\test_workflow\test_models.py:197: assert False
+E   Failed: DID NOT RAISE ValueError
+D:\LiuHao-AI-OS\tests\test_workflow\test_service.py:128: Failed: DID NOT RAISE ValueError
+============================== warnings summary ===============================
+tests/test_ceo/test_models.py::TestCEODashboardData::test_create_ceo_dashboard_data
+  D:\LiuHao-AI-OS\tests\test_ceo\test_models.py:191: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp = datetime.utcnow()
+
+tests/test_ceo/test_models.py::TestCEODashboardData::test_ceo_dashboard_data_serialization
+  D:\LiuHao-AI-OS\tests\test_ceo\test_models.py:247: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_workflow/test_executor.py::test_execute_sequential_workflow
+tests/test_workflow/test_executor.py::test_execute_parallel_workflow
+tests/test_workflow/test_executor.py::test_execute_loop_workflow
+tests/test_workflow/test_executor.py::test_list_executions
+  D:\LiuHao-AI-OS\src\tasks\service.py:127: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    self.event_bus.publish(Event(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=============================== tests coverage ================================
+______________ coverage: platform win32, python 3.13.15-final-0 _______________
+
+Name                             Stmts   Miss  Cover   Missing
+--------------------------------------------------------------
+src\__init__.py                      1      0   100%
+src\ai\__init__.py                   5      0   100%
+src\ai\agents.py                   139     17    88%   103, 134, 189-203, 267, 271, 275-283
+src\ai\orchestrator.py             186     59    68%   177-180, 240-242, 275-310, 316, 320-337, 341, 349-357, 361-373, 377-391
+src\ai\providers.py                355    183    48%   89, 154, 158-183, 187-236, 243-261, 265, 292, 337, 348, 372-383, 393-469, 473-475, 479-482, 486-493, 505, 517-519, 523-538, 542-572, 582-584, 588-603, 607-648, 658-660, 664-676, 680-720, 733-735, 739-753, 757-803
+src\ai\tools.py                    163     14    91%   121, 204, 209-234, 264, 306, 386, 478-481
+src\business\__init__.py             2      0   100%
+src\business\marketing.py           46     46     0%   11-217
+src\business\models.py              57      0   100%
+src\business\operations.py          44     44     0%   11-216
+src\business\registry.py            58      0   100%
+src\business\research.py            42     42     0%   11-217
+src\business\sales.py               46     46     0%   11-224
+src\business\service.py            114     92    19%   58-62, 94-141, 165-218, 240-278, 302-338, 361-391, 408-411, 438-441, 467-496
+src\ceo\__init__.py                  3      0   100%
+src\ceo\dashboard.py               123     33    73%   84-88, 115-117, 126, 132, 141-143, 147-149, 175-180, 202, 225, 253, 330-345, 367-375, 381
+src\ceo\models.py                   46      0   100%
+src\core\__init__.py                 6      0   100%
+src\core\config.py                  60     10    83%   71, 77-80, 85-87, 92, 97, 112
+src\core\di.py                      24     15    38%   26-27, 40-57, 62-63, 68
+src\core\errors.py                  70      6    91%   104, 118, 139, 146, 153, 166
+src\core\events.py                 117     17    85%   113-114, 118-125, 136-137, 150-154, 172-173
+src\core\lifecycle.py               58     42    28%   24-27, 31-68, 72-97, 101, 111-113, 122-127
+src\core\logging.py                 33     22    33%   21-46, 54-96
+src\governance\__init__.py           3      0   100%
+src\governance\approval.py         125     37    70%   21, 24, 119-120, 160-163, 213, 219-224, 274-279, 308-325, 342-360, 379-399, 422-423
+src\governance\risk.py              37      0   100%
+src\identity\__init__.py             7      0   100%
+src\identity\audit.py              134      1    99%   421
+src\identity\auth.py                33     20    39%   21, 27, 41-62, 78-91
+src\identity\database.py            44     29    34%   23-40, 46-55, 62-67, 72-79, 85-88, 100-101
+src\identity\governance.py         143     40    72%   20, 22, 71-72, 103-107, 110-111, 208-230, 249-250, 257-258, 275-290, 315-316, 382-399
+src\identity\models.py             122     10    92%   99, 135, 158, 179-180, 185-187, 209, 245
+src\identity\rbac.py               116     46    60%   202-203, 206-212, 235-240, 251-252, 266-296, 311-329, 338-347
+src\knowledge\__init__.py            6      0   100%
+src\knowledge\company_brain.py     161     24    85%   171-176, 180, 233-239, 243, 267-272, 317-322, 326, 330, 459-464, 468, 476, 484, 510-523
+src\knowledge\documents.py         138     84    39%   58, 111-116, 132-154, 158, 190-267, 271-274, 285-322, 344-376, 399-424, 438-443, 462-491
+src\knowledge\memory.py            163     27    83%   137-142, 146, 150, 240-245, 261, 265, 269, 273, 307-312, 331, 334, 358-364, 369, 373-379, 409-414, 422, 426, 462-467, 475, 479
+src\knowledge\processing.py        116     17    85%   49, 116, 123-137, 199, 273-290
+src\knowledge\retrieval.py         145     29    80%   53, 134-139, 148-151, 192, 196, 228, 241-264, 291, 293, 300, 303, 327-333, 337
+src\main.py                         21     21     0%   5-50
+src\security\__init__.py             3      0   100%
+src\security\policy.py             117     81    31%   27-31, 57, 61, 77-78, 84-111, 133-204, 213-236, 245-272, 281-306, 315-338, 352-353, 357, 369
+src\security\secrets.py             59     39    34%   28-30, 47-66, 70, 74, 78, 82, 94-116, 120-121, 131-133, 140
+src\tasks\__init__.py                4      0   100%
+src\tasks\executor.py               69     53    23%   34-37, 59-176, 206-222, 246-270, 287-313
+src\tasks\models.py                110     23    79%   64, 80, 142-150, 154, 164-167, 171-174, 178-180, 184-185, 189
+src\tasks\service.py               115     33    71%   90, 203, 205, 207, 209, 250-263, 359, 387-411, 424-434
+src\workflow\__init__.py             4      0   100%
+src\workflow\executor.py           173     70    60%   185-217, 227-249, 261-283, 295-322, 336-339, 348, 355, 376, 385, 419-427, 433, 451-455, 463, 473, 489-499
+src\workflow\models.py             136     32    76%   88, 91, 94, 131, 139-142, 146-149, 199, 205-206, 225, 229-250
+src\workflow\service.py            126     24    81%   113-121, 252-260, 269, 272, 318-326, 348-353, 356-357, 360-361, 368-376, 411-419, 457, 461
+src\workforce\__init__.py            7      0   100%
+src\workforce\cost.py               87     16    82%   129-131, 224-225, 253-265, 274-276
+src\workforce\employee.py           92     65    29%   62-65, 97-144, 166-173, 198-209, 239-280, 299-323, 349-382, 405-438
+src\workforce\lifecycle.py          79      9    89%   83, 96, 158, 167-168, 171, 231, 240-241
+src\workforce\models.py            100      0   100%
+src\workforce\performance.py        62     19    69%   126-128, 205-225, 234-236
+src\workforce\registry.py           79      2    97%   128, 205
+--------------------------------------------------------------
+TOTAL                             4734   1539    67%
+Coverage HTML written to dir htmlcov
+=========================== short test summary info ===========================
+FAILED tests/test_ai/test_orchestrator.py::TestTaskStep::test_task_step_creation
+FAILED tests/test_ai/test_orchestrator.py::TestTaskResult::test_task_result_creation
+FAILED tests/test_ai/test_orchestrator.py::TestAIOrchestrator::test_plan_simple_task
+FAILED tests/test_ai/test_orchestrator.py::TestAIOrchestrator::test_plan_complex_multi_agent_task
+FAILED tests/test_ai/test_orchestrator.py::TestAIOrchestrator::test_execute_sequential_plan
+FAILED tests/test_ai/test_orchestrator.py::TestAIOrchestrator::test_execute_parallel_plan
+FAILED tests/test_ai/test_orchestrator.py::TestAIOrchestrator::test_execute_hybrid_plan
+FAILED tests/test_ai/test_orchestrator.py::TestAIOrchestrator::test_handle_step_failure
+FAILED tests/test_ai/test_orchestrator.py::TestAgentWorkflowSeparation::test_orchestrator_delegates_to_agents
+FAILED tests/test_ai/test_providers.py::TestModelRegistry::test_get_nonexistent_model
+FAILED tests/test_ai/test_providers.py::TestModelRegistry::test_list_models_by_provider
+FAILED tests/test_ai/test_providers.py::TestProviderRequest::test_provider_request_creation
+FAILED tests/test_ai/test_providers.py::TestProviderGateway::test_gateway_initialization
+FAILED tests/test_ai/test_providers.py::TestProviderGateway::test_register_provider
+FAILED tests/test_ai/test_providers.py::TestProviderGateway::test_get_provider_lazy_initialization
+FAILED tests/test_ai/test_providers.py::TestProviderGateway::test_get_unregistered_provider_fails
+FAILED tests/test_ai/test_providers.py::TestProviderGateway::test_provider_status_tracking
+FAILED tests/test_ai/test_providers.py::TestOpenAIProvider::test_openai_provider_initialization
+FAILED tests/test_ai/test_providers.py::TestAnthropicProvider::test_anthropic_provider_initialization
+FAILED tests/test_ai/test_providers.py::TestGoogleProvider::test_google_provider_initialization
+FAILED tests/test_ai/test_providers.py::TestXAIProvider::test_xai_provider_initialization
+FAILED tests/test_ai/test_providers.py::TestDeepSeekProvider::test_deepseek_provider_initialization
+FAILED tests/test_ai/test_providers.py::TestMoonshotProvider::test_moonshot_provider_initialization
+FAILED tests/test_ai/test_providers.py::TestProviderSecurityEnforcement::test_disabled_provider_cannot_be_used
+FAILED tests/test_ceo/test_dashboard.py::TestCEODashboard::test_dashboard_permission_denied
+FAILED tests/test_security/test_policy.py::test_unknown_resource_deny - pydan...
+FAILED tests/test_security/test_policy.py::test_disabled_feature_deny - pydan...
+FAILED tests/test_security/test_policy.py::test_empty_whitelist_deny - pydant...
+FAILED tests/test_security/test_policy.py::test_whitelist_allow - pydantic_co...
+FAILED tests/test_security/test_policy.py::test_not_in_whitelist_deny - pydan...
+FAILED tests/test_security/test_policy.py::test_require_approval - pydantic_c...
+FAILED tests/test_security/test_policy.py::test_missing_context_deny - pydant...
+FAILED tests/test_workflow/test_models.py::test_workflow_validation_no_steps
+FAILED tests/test_workflow/test_service.py::test_create_workflow_invalid_steps
+ERROR tests/test_business/test_service.py::test_create_task - AttributeError:...
+ERROR tests/test_business/test_service.py::test_create_task_without_permission
+ERROR tests/test_business/test_service.py::test_create_task_validation - Attr...
+ERROR tests/test_business/test_service.py::test_assign_task - AttributeError:...
+ERROR tests/test_business/test_service.py::test_start_task - AttributeError: ...
+ERROR tests/test_business/test_service.py::test_complete_task - AttributeErro...
+ERROR tests/test_business/test_service.py::test_fail_task - AttributeError: M...
+ERROR tests/test_business/test_service.py::test_get_task - AttributeError: Mo...
+ERROR tests/test_business/test_service.py::test_list_tasks - AttributeError: ...
+ERROR tests/test_business/test_service.py::test_get_domain_metrics - Attribut...
+====== 34 failed, 272 passed, 3 skipped, 6 warnings, 10 errors in 6.89s =======

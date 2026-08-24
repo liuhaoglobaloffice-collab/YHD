@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LiuHao AI OS - 模块测试覆盖率可视化</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 2rem;
+            color: #333;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            padding: 2rem;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 {
+            text-align: center;
+            color: #667eea;
+            margin-bottom: 1rem;
+            font-size: 2.5rem;
+        }
+        .summary {
+            text-align: center;
+            font-size: 1.2rem;
+            color: #666;
+            margin-bottom: 2rem;
+            padding: 1rem;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        .priority-section {
+            margin-bottom: 2rem;
+        }
+        .priority-header {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-bottom: 1rem;
+            padding: 0.5rem;
+            border-radius: 8px;
+        }
+        .urgent { background: #fee; color: #c33; }
+        .important { background: #ffa; color: #880; }
+        .good { background: #efe; color: #060; }
+        .modules-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .module-card {
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            padding: 1.5rem;
+            transition: all 0.3s;
+        }
+        .module-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+        }
+        .module-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        .module-name {
+            font-size: 1.3rem;
+            font-weight: bold;
+            color: #333;
+        }
+        .coverage-badge {
+            padding: 0.3rem 0.8rem;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+        .coverage-0 { background: #f44336; color: white; }
+        .coverage-low { background: #ff9800; color: white; }
+        .coverage-medium { background: #ffc107; color: #333; }
+        .coverage-good { background: #8bc34a; color: white; }
+        .coverage-excellent { background: #4caf50; color: white; }
+        .module-desc {
+            color: #666;
+            margin-bottom: 1rem;
+            font-size: 0.95rem;
+        }
+        .stats {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        .stat {
+            flex: 1;
+            text-align: center;
+            padding: 0.5rem;
+            background: #f8f9fa;
+            border-radius: 6px;
+        }
+        .stat-label {
+            font-size: 0.8rem;
+            color: #888;
+            margin-bottom: 0.2rem;
+        }
+        .stat-value {
+            font-size: 1.3rem;
+            font-weight: bold;
+            color: #667eea;
+        }
+        .features {
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid #e0e0e0;
+        }
+        .feature-item {
+            font-size: 0.85rem;
+            color: #555;
+            padding: 0.3rem 0;
+            display: flex;
+            align-items: center;
+        }
+        .feature-item::before {
+            content: "▸";
+            color: #667eea;
+            margin-right: 0.5rem;
+            font-weight: bold;
+        }
+        .legend {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-top: 2rem;
+            padding: 1rem;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏗️ LiuHao AI OS 模块测试覆盖率</h1>
+        <div class="summary">
+            <strong>总体覆盖率: 23%</strong> | 10,822 行代码 | 8,329 行未覆盖
+        </div>
+
+        <div class="priority-section">
+            <div class="priority-header urgent">🔴 紧急 - 0% 覆盖率且关键</div>
+            <div class="modules-grid">
+                <div class="module-card">
+                    <div class="module-header">
+                        <span class="module-name">🎤 Jarvis 语音助手</span>
+                        <span class="coverage-badge coverage-0">0%</span>
+                    </div>
+                    <div class="module-desc">完整的语音交互系统，包含语音识别、TTS、唤醒词检测和状态机</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="stat-label">源文件</div>
+                            <div class="stat-value">6</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-label">测试文件</div>
+                            <div class="stat-value">0</div>
+                        </div>
+                    </div>
+                    <div class="features">
+                        <div class="feature-item">SpeechRecognizer - 语音识别</div>
+                        <div class="feature-item">JarvisService - 主服务</div>
+                        <div class="feature-item">VoiceInteractionStateMachine - 状态机</div>
+                        <div class="feature-item">WakeWordDetector - 唤醒词检测</div>
+                        <div class="feature-item">TextToSpeech - 文本转语音</div>
+                    </div>
+                </div>
+
+                <div class="module-card">
+                    <div class="module-header">
+                        <span class="module-name">🧠 知识管理</span>
+                        <span class="coverage-badge coverage-0">0%</span>
+                    </div>
+                    <div class="module-desc">AI OS 核心，包含公司大脑、文档管理、记忆系统和知识检索</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="stat-label">源文件</div>
+                            <div class="stat-value">7</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-label">测试文件</div>
+                            <div class="stat-value">7</div>
+                        </div>
+                    </div>
+                    <div class="features">
+                        <div class="feature-item">CompanyBrain - 公司知识图谱</div>
+                        <div class="feature-item">DocumentService - 文档管理</div>
+                        <div class="feature-item">MemoryService - 记忆系统</div>
+                        <div class="feature-item">KnowledgeRetrievalService - 知识检索</div>
+                    </div>
+                </div>
+
+                <div class="module-card">
+                    <div class="module-header">
+                        <span class="module-name">🏢 多租户系统</span>
+                        <span class="coverage-badge coverage-0">0%</span>
+                    </div>
+                    <div class="module-desc">企业级多租户架构，数据隔离和主密码管理</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="stat-label">源文件</div>
+                            <div class="stat-value">6</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-label">测试文件</div>
+                            <div class="stat-value">1</div>
+                        </div>
+                    </div>
+                    <div class="features">
+                        <div class="feature-item">租户隔离与数据安全</div>
+                        <div class="feature-item">主密码管理</div>
+                        <div class="feature-item">租户迁移</div>
+                    </div>
+                </div>
+
+                <div class="module-card">
+                    <div class="module-header">
+                        <span class="module-name">⚙️ 任务执行器</span>
+                        <span class="coverage-badge coverage-0">0%</span>
+                    </div>
+                    <div class="module-desc">任务调度和执行引擎，处理任务依赖和并发</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="stat-label">类数量</div>
+                            <div class="stat-value">1</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-label">测试</div>
+                            <div class="stat-value">0</div>
+                        </div>
+                    </div>
+                    <div class="features">
+                        <div class="feature-item">TaskExecutor - 任务执行引擎</div>
+                        <div class="feature-item">依赖解析</div>
+                        <div class="feature-item">并发调度</div>
+                        <div class="feature-item">失败重试</div>
+                    </div>
+                </div>
+
+                <div class="module-card">
+                    <div class="module-header">
+                        <span class="module-name">🔄 工作流执行器</span>
+                        <span class="coverage-badge coverage-0">0%</span>
+                    </div>
+                    <div class="module-desc">工作流编排和执行引擎，支持复杂流程</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="stat-label">类数量</div>
+                            <div class="stat-value">1</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-label">测试</div>
+                            <div class="stat-value">0</div>
+                        </div>
+                    </div>
+                    <div class="features">
+                        <div class="feature-item">WorkflowExecutor - 工作流引擎</div>
+                        <div class="feature-item">步骤编排</div>
+                        <div class="feature-item">条件分支</div>
+                        <div class="feature-item">错误处理</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="priority-section">
+            <div class="priority-header important">🟡 重要 - 低覆盖率且高风险</div>
+            <div class="modules-grid">
+                <div class="module-card">
+                    <div class="module-header">
+                        <span class="module-name">🔐 身份认证</span>
+                        <span class="coverage-badge coverage-low">39%</span>
+                    </div>
+                    <div class="module-desc">用户认证和授权系统，RBAC 权限控制</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="stat-label">源文件</div>
+                            <div class="stat-value">7</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-label">测试文件</div>
+                            <div class="stat-value">5</div>
+                        </div>
+                    </div>
+                    <div class="features">
+                        <div class="feature-item">auth.py - 39% 认证逻辑</div>
+                        <div class="feature-item">rbac.py - 78% 权限控制</div>
+                        <div class="feature-item">audit.py - 87% 审计日志</div>
+                        <div class="feature-item">governance.py - 0% 身份治理</div>
+                    </div>
+                </div>
+
+                <div class="module-card">
+                    <div class="module-header">
+                        <span class="module-name">🛡️ 安全策略</span>
+                        <span class="coverage-badge coverage-low">24%</span>
+                    </div>
+                    <div class="module-desc">安全策略和密钥管理</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="stat-label">源文件</div>
+                            <div class="stat-value">3</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-label">测试文件</div>
+                            <div class="stat-value">3</div>
+                        </div>
+                    </div>
+                    <div class="features">
+                        <div class="feature-item">policy.py - 24% 安全策略</div>
+                        <div class="feature-item">secrets.py - 31% 密钥管理</div>
+                    </div>
+                </div>
+
+                <div class="module-card">
+                    <div class="module-header">
+                        <span class="module-name">⚖️ 治理系统</span>
+                        <span class="coverage-badge coverage-low">28%</span>
+                    </div>
+                    <div class="module-desc">审批流程和风险管理</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="stat-label">源文件</div>
+                            <div class="stat-value">3</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-label">测试文件</div>
+                            <div class="stat-value">5</div>
+                        </div>
+                    </div>
+                    <div class="features">
+                        <div class="feature-item">approval.py - 审批流程</div>
+                        <div class="feature-item">risk.py - 28% 风险管理</div>
+                    </div>
+                </div>
+
+                <div class="module-card">
+                    <div class="module-header">
+                        <span class="module-name">👥 员工管理</span>
+                        <span class="coverage-badge coverage-low">17-23%</span>
+                    </div>
+                    <div class="module-desc">员工生命周期、绩效和成本管理</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="stat-label">源文件</div>
+                            <div class="stat-value">7</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-label">测试文件</div>
+                            <div class="stat-value">4</div>
+                        </div>
+                    </div>
+                    <div class="features">
+                        <div class="feature-item">lifecycle.py - 25% 生命周期</div>
+                        <div class="feature-item">performance.py - 23% 绩效</div>
+                        <div class="feature-item">cost.py - 17% 成本核算</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="priority-section">
+            <div class="priority-header good">🟢 良好 - 有基础但需完善</div>
+            <div class="modules-grid">
+                <div class="module-card">
+                    <div class="module-header">
+                        <span class="module-name">🤖 AI 核心引擎</span>
+                        <span class="coverage-badge coverage-medium">中等</span>
+                    </div>
+                    <div class="module-desc">AI 代理、编排器和向量检索</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="stat-label">源文件</div>
+                            <div class="stat-value">18</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-label">测试文件</div>
+                            <div class="stat-value">13</div>
+                        </div>
+                    </div>
+                    <div class="features">
+                        <div class="feature-item">已有 agents、orchestrator、providers 测试</div>
+                        <div class="feature-item">需补充边缘案例</div>
+                    </div>
+                </div>
+
+                <div class="module-card">
+                    <div class="module-header">
+                        <span class="module-name">🌐 API 接口层</span>
+                        <span class="coverage-badge coverage-low">23%</span>
+                    </div>
+                    <div class="module-desc">FastAPI 路由和接口</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="stat-label">源文件</div>
+                            <div class="stat-value">34</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-label">测试文件</div>
+                            <div class="stat-value">4</div>
+                        </div>
+                    </div>
+                    <div class="features">
+                        <div class="feature-item">需要端到端测试</div>
+                        <div class="feature-item">需要集成测试</div>
+                    </div>
+                </div>
+
+                <div class="module-card">
+                    <div class="module-header">
+                        <span class="module-name">💼 业务领域</span>
+                        <span class="coverage-badge coverage-medium">中等</span>
+                    </div>
+                    <div class="module-desc">营销、销售、研究、运营服务</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="stat-label">源文件</div>
+                            <div class="stat-value">14</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-label">测试文件</div>
+                            <div class="stat-value">6</div>
+                        </div>
+                    </div>
+                    <div class="features">
+                        <div class="feature-item">已有供应商测试</div>
+                        <div class="feature-item">缺少营销、销售专项测试</div>
+                    </div>
+                </div>
+
+                <div class="module-card">
+                    <div class="module-header">
+                        <span class="module-name">📊 CEO 仪表板</span>
+                        <span class="coverage-badge coverage-medium">中等</span>
+                    </div>
+                    <div class="module-desc">CEO 决策仪表板</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="stat-label">源文件</div>
+                            <div class="stat-value">3</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-label">测试文件</div>
+                            <div class="stat-value">3</div>
+                        </div>
+                    </div>
+                    <div class="features">
+                        <div class="feature-item">已有基础测试</div>
+                        <div class="feature-item">需完善数据聚合测试</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-color coverage-0"></div>
+                <span>0% - 危险</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color coverage-low"></div>
+                <span>1-40% - 低</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color coverage-medium"></div>
+                <span>41-70% - 中等</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color coverage-good"></div>
+                <span>71-85% - 良好</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color coverage-excellent"></div>
+                <span>86-100% - 优秀</span>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
