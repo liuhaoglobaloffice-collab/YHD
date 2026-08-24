@@ -18,6 +18,7 @@ from uuid import UUID
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.dependencies import get_current_user
@@ -38,14 +39,30 @@ logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/business", tags=["business"])
 
 
+# Request/Response Models
+class CreateBusinessTaskRequest(BaseModel):
+    """Request model for creating a business task"""
+
+    domain: BusinessDomain
+    title: str = Field(..., min_length=1, max_length=255)
+    description: str = Field(..., min_length=1)
+    priority: BusinessTaskPriority = BusinessTaskPriority.MEDIUM
+    context: Optional[dict] = None
+    tags: Optional[List[str]] = None
+
+
+class UpdateBusinessTaskRequest(BaseModel):
+    """Request model for updating a business task"""
+
+    status: Optional[BusinessTaskStatus] = None
+    priority: Optional[BusinessTaskPriority] = None
+    assigned_employee_id: Optional[UUID] = None
+    result: Optional[dict] = None
+
+
 @router.post("/tasks", response_model=dict)
 async def create_task(
-    domain: BusinessDomain,
-    title: str,
-    description: str,
-    priority: BusinessTaskPriority = BusinessTaskPriority.MEDIUM,
-    context: Optional[dict] = None,
-    tags: Optional[List[str]] = None,
+    request: CreateBusinessTaskRequest,
     business_service: BusinessService = Depends(get_business_service),
     session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -58,12 +75,12 @@ async def create_task(
     """
     task = await business_service.create_task(
         user_id=current_user.id,
-        domain=domain,
-        title=title,
-        description=description,
-        priority=priority,
-        context=context,
-        tags=tags,
+        domain=request.domain,
+        title=request.title,
+        description=request.description,
+        priority=request.priority,
+        context=request.context,
+        tags=request.tags,
     )
 
     # Audit: Business task created
@@ -74,7 +91,11 @@ async def create_task(
         resource_id=str(task.id),
         status="success",
         user_id=current_user.id,
-        details={"domain": domain.value, "title": title, "priority": priority.value},
+        details={
+            "domain": request.domain.value,
+            "title": request.title,
+            "priority": request.priority.value,
+        },
     )
 
     return task.to_dict()
@@ -131,10 +152,7 @@ async def get_task(
 @router.put("/tasks/{task_id}", response_model=dict)
 async def update_task(
     task_id: UUID,
-    status: Optional[BusinessTaskStatus] = None,
-    priority: Optional[BusinessTaskPriority] = None,
-    assigned_employee_id: Optional[UUID] = None,
-    result: Optional[dict] = None,
+    request: UpdateBusinessTaskRequest,
     business_service: BusinessService = Depends(get_business_service),
     session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -148,10 +166,10 @@ async def update_task(
     task = await business_service.update_task(
         user_id=current_user.id,
         task_id=task_id,
-        status=status,
-        priority=priority,
-        assigned_employee_id=assigned_employee_id,
-        result=result,
+        status=request.status,
+        priority=request.priority,
+        assigned_employee_id=request.assigned_employee_id,
+        result=request.result,
     )
 
     # Audit: Business task updated
@@ -163,9 +181,9 @@ async def update_task(
         status="success",
         user_id=current_user.id,
         details={
-            "status": status.value if status else None,
-            "priority": priority.value if priority else None,
-            "assigned_employee_id": str(assigned_employee_id) if assigned_employee_id else None,
+            "status": request.status.value if request.status else None,
+            "priority": request.priority.value if request.priority else None,
+            "assigned_employee_id": str(request.assigned_employee_id) if request.assigned_employee_id else None,
         },
     )
 

@@ -14,6 +14,12 @@ from src.api.dependencies.database import close_database, init_database
 from src.api.routes import api_router
 from src.core.config import get_settings
 from src.core.errors import LiuHaoError
+from src.core.errors import (
+    ResourceNotFoundError,
+    PermissionDeniedError,
+    AuthenticationError,
+    ValidationError as LiuHaoValidationError,
+)
 from src.core.lifecycle import get_lifecycle_manager
 
 logger = structlog.get_logger(__name__)
@@ -63,8 +69,20 @@ def create_app() -> FastAPI:
     @app.exception_handler(LiuHaoError)
     async def liuhao_error_handler(request: Request, exc: LiuHaoError):
         """Handle LiuHao-specific errors"""
+        # 映射错误类型到 HTTP 状态码
+        if isinstance(exc, ResourceNotFoundError):
+            http_status = status.HTTP_404_NOT_FOUND
+        elif isinstance(exc, PermissionDeniedError):
+            http_status = status.HTTP_403_FORBIDDEN
+        elif isinstance(exc, AuthenticationError):
+            http_status = status.HTTP_401_UNAUTHORIZED
+        elif isinstance(exc, LiuHaoValidationError):
+            http_status = status.HTTP_422_UNPROCESSABLE_ENTITY
+        else:
+            http_status = status.HTTP_400_BAD_REQUEST
+
         return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=http_status,
             content={
                 "error": {
                     "code": exc.code,
