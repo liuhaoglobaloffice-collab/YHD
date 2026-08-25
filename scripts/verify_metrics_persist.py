@@ -1,34 +1,78 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 import os
-import sqlite3
+import sys
+from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urlparse
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from src.api.providers_metrics_persist import persist_sample
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./verify_metrics.db")
 METRICS_PERSIST = os.environ.get("METRICS_PERSIST", "0")
 
 
-def sqlite_path_from_url(database_url: str) -> Path:
-    parsed = urlparse(database_url)
-    if parsed.scheme != "sqlite":
-        raise ValueError(f"Unsupported DATABASE_URL scheme: {parsed.scheme!r}")
-    if parsed.path in ("", ":memory:"):
-        return Path(":memory:")
-
-    path_value = parsed.path
-    if path_value.startswith("/") and not path_value.startswith("//"):
-        path_value = path_value.lstrip("/")
-
-    database_file = Path(path_value)
-    if not database_file.is_absolute():
-        database_file = (Path.cwd() / database_file).resolve()
-    return database_file
+def _is_postgres_url(database_url: str) -> bool:
+    return database_url.startswith("postgresql://") or database_url.startswith("postgres://")
 
 
-def ensure_db_file(path: Path) -> None:
-    if path == Path(":memory:"):
-        return
-    path.parent.mkdir(parents=True, exist_ok=True)
+def _run_postgres_verification(database_url: str) -> list[dict[str, object]]:
+    try:
+        from sqlalchemy import create_engine, text
+    except ImportError as exc:  # pragma: no cover
+        raise RuntimeError("PostgreSQL verification requires sqlalchemy to be installed.") from exc
+
+    sample = {
+        "provider": "openai",
+        "model": "gpt-4o-mini",
+        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "latency_ms": 220.5,
+        "success_rate": 0.99,
+    }
+
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS provider_metric_samples (
+                    id SERIAL PRIMARY KEY,
+                    provider TEXT NOT NULL,
+                    model TEXT NOT NULL,
+                    timestamp TEXT NOT NULL,
+                    latency_ms DOUBLE PRECISION NOT NULL,
+                    success_rate DOUBLE PRECISION NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO provider_metric_samples (provider, model, timestamp, latency_ms, success_rate)
+                VALUES (:provider, :model, :timestamp, :latency_ms, :success_rate)
+                """
+            ),
+            sample,
+        )
+
+    with engine.connect() as connection:
+        rows = connection.execute(
+            text(
+                """
+                SELECT provider, model, timestamp, latency_ms, success_rate
+                FROM provider_metric_samples
+                ORDER BY id DESC
+                LIMIT 5
+                """
+            )
+        ).mappings().all()
+
+    return [dict(row) for row in rows]
 
 
 def main() -> int:
@@ -36,35 +80,16 @@ def main() -> int:
         print("METRICS_PERSIST is not enabled; skipping persistence verification.")
         return 0
 
-    database_path = sqlite_path_from_url(DATABASE_URL)
-    ensure_db_file(database_path)
+    if _is_postgres_url(DATABASE_URL):
+        rows = _run_postgres_verification(DATABASE_URL)
+    else:
+        rows = persist_sample(DATABASE_URL)
 
-    conn = sqlite3.connect(str(database_path))
-    conn.execute("CREATE TABLE IF NOT EXISTS provider_metric_samples (id INTEGER PRIMARY KEY AUTOINCREMENT, provider TEXT, model TEXT, timestamp TEXT, latency_ms REAL, success_rate REAL)")
-
-    sample = (
-        "openai",
-        "gpt-4o-mini",
-        "2026-08-25T00:00:00Z",
-        220.5,
-        0.99,
-    )
-    conn.execute(
-        "INSERT INTO provider_metric_samples (provider, model, timestamp, latency_ms, success_rate) VALUES (?, ?, ?, ?, ?)",
-        sample,
-    )
-    conn.commit()
-
-    rows = conn.execute(
-        "SELECT provider, model, timestamp, latency_ms, success_rate FROM provider_metric_samples ORDER BY id DESC LIMIT 5"
-    ).fetchall()
     print(f"DATABASE_URL={DATABASE_URL}")
     print(f"METRICS_PERSIST={METRICS_PERSIST}")
     print(f"persisted_rows={len(rows)}")
     for row in rows:
         print(f"sample={row}")
-
-    conn.close()
 
     if not rows:
         raise RuntimeError("Persistence verification failed: no rows were written to the database.")
