@@ -64,7 +64,7 @@ jobs:
               print('Configured DB is not SQLite or PostgreSQL; use the appropriate DB client for your database.')
           PY
       - name: Fail when staging secret is missing
-        if: ${{ secrets.STAGING_DATABASE_URL == '' }}
+        if: ${{ env.STAGING_DATABASE_URL == '' }}
         run: |
           echo "STAGING_DATABASE_URL is not configured. This workflow falls back to SQLite and should not be treated as staging validation."
           exit 1
