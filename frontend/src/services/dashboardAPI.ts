@@ -1,5 +1,62 @@
 import apiService from './apiService';
 
+const normalizeSeverity = (value?: string): 'critical' | 'high' | 'warning' | 'info' => {
+  const normalized = (value ?? 'info').toString().toLowerCase();
+  if (normalized === 'critical') return 'critical';
+  if (normalized === 'high') return 'high';
+  if (normalized === 'warning' || normalized === 'medium') return 'warning';
+  return 'info';
+};
+
+const normalizeAlertList = (alerts: any[] = []): DashboardAlert[] =>
+  alerts.map((alert, index) => ({
+    type: alert?.type ?? 'system',
+    severity: normalizeSeverity(alert?.severity ?? alert?.level),
+    title: alert?.title ?? alert?.message ?? '系统提醒',
+    message: alert?.message ?? alert?.title ?? '系统提醒',
+    supplier_id: alert?.supplier_id ?? alert?.supplierId,
+    created_at: alert?.created_at ?? alert?.timestamp ?? new Date().toISOString(),
+    id: alert?.id ?? index + 1,
+  }));
+
+const normalizeStats = (rawStats: any): DashboardStats => {
+  const riskDistribution = rawStats?.risk_distribution ?? {};
+  const suppliers = rawStats?.suppliers ?? {};
+  const riskOverview = rawStats?.risk_overview ?? {};
+  const businessMetrics = rawStats?.business_metrics ?? {};
+  const systemStatus = rawStats?.system_status ?? {};
+
+  return {
+    timestamp: rawStats?.last_updated ?? rawStats?.timestamp ?? new Date().toISOString(),
+    suppliers: {
+      total: Number(rawStats?.total_suppliers ?? suppliers.total ?? 0),
+      low_risk: Number(riskDistribution.low ?? suppliers.low_risk ?? 0),
+      medium_risk: Number(riskDistribution.medium ?? suppliers.medium_risk ?? 0),
+      high_risk: Number(riskDistribution.high ?? suppliers.high_risk ?? 0),
+      critical_risk: Number(riskDistribution.critical ?? suppliers.critical_risk ?? 0),
+    },
+    risk_overview: {
+      average_risk_score: Number(rawStats?.average_risk_score ?? riskOverview.average_risk_score ?? 0),
+      suppliers_needing_attention: Number(rawStats?.suppliers_needing_attention ?? riskOverview.suppliers_needing_attention ?? 0),
+      compliance_issues: Number(rawStats?.compliance_issues ?? riskOverview.compliance_issues ?? 0),
+      quality_alerts: Number(rawStats?.quality_alerts ?? riskOverview.quality_alerts ?? 0),
+    },
+    business_metrics: {
+      total_inquiries: Number(rawStats?.total_inquiries ?? businessMetrics.total_inquiries ?? 0),
+      active_orders: Number(rawStats?.active_orders ?? businessMetrics.active_orders ?? 0),
+      pending_quotes: Number(rawStats?.pending_quotes ?? businessMetrics.pending_quotes ?? 0),
+      this_month_revenue: Number(rawStats?.this_month_revenue ?? businessMetrics.this_month_revenue ?? 0),
+    },
+    system_status: {
+      ai_agents_active: Number(rawStats?.ai_agents_active ?? systemStatus.ai_agents_active ?? 0),
+      tasks_in_progress: Number(rawStats?.tasks_in_progress ?? systemStatus.tasks_in_progress ?? 0),
+      tasks_completed_today: Number(rawStats?.tasks_completed_today ?? systemStatus.tasks_completed_today ?? 0),
+      system_health: String(rawStats?.system_health ?? systemStatus.system_health ?? 'healthy').toUpperCase(),
+    },
+    recent_alerts: normalizeAlertList(Array.isArray(rawStats?.recent_alerts) ? rawStats.recent_alerts : Array.isArray(rawStats?.alerts) ? rawStats.alerts : []),
+  };
+};
+
 /**
  * Dashboard 统计数据响应(匹配后端实际返回格式)
  */
@@ -30,13 +87,7 @@ export interface DashboardStats {
     tasks_completed_today: number;
     system_health: string;
   };
-  recent_alerts: Array<{
-    id: number;
-    type: string;
-    severity: string;
-    message: string;
-    timestamp: string;
-  }>;
+  recent_alerts: DashboardAlert[];
 }
 
 /**
@@ -70,12 +121,14 @@ export interface TopSupplier {
  * 警报
  */
 export interface DashboardAlert {
+  id?: number;
   type: string;
   severity: 'critical' | 'high' | 'warning' | 'info';
-  title: string;
+  title?: string;
   message: string;
   supplier_id?: string;
-  created_at: string;
+  created_at?: string;
+  timestamp?: string;
 }
 
 /**
@@ -112,7 +165,8 @@ class DashboardAPI {
    * 获取仪表板统计数据
    */
   async getStats(): Promise<DashboardStats> {
-    return apiService.get<DashboardStats>('/dashboard/stats');
+    const rawStats = await apiService.get<any>('/dashboard/stats');
+    return normalizeStats(rawStats);
   }
 
   /**
@@ -128,16 +182,28 @@ class DashboardAPI {
    * 获取优质供应商列表
    */
   async getTopSuppliers(limit: number = 10): Promise<TopSupplier[]> {
-    return apiService.get<TopSupplier[]>('/dashboard/top-suppliers', {
+    const suppliers = await apiService.get<any[]>('/dashboard/top-suppliers', {
       params: { limit },
     });
+
+    return Array.isArray(suppliers)
+      ? suppliers.map((supplier) => ({
+          id: String(supplier.id ?? ''),
+          name: supplier.name ?? '未知供应商',
+          business_type: supplier.business_type ?? supplier.supplier_type ?? 'unknown',
+          risk_level: supplier.risk_level ?? 'unknown',
+          status: supplier.status ?? 'active',
+          contact_email: supplier.contact_email ?? supplier.email ?? '',
+        }))
+      : [];
   }
 
   /**
    * 获取警报
    */
   async getAlerts(): Promise<DashboardAlert[]> {
-    return apiService.get<DashboardAlert[]>('/dashboard/alerts');
+    const alerts = await apiService.get<any[]>('/dashboard/alerts');
+    return normalizeAlertList(alerts);
   }
 
   /**
@@ -151,9 +217,13 @@ class DashboardAPI {
    * 获取最近活动
    */
   async getRecentActivity(limit: number = 20): Promise<RecentActivity[]> {
-    return apiService.get<RecentActivity[]>('/dashboard/recent-activity', {
-      params: { limit },
-    });
+    try {
+      return await apiService.get<RecentActivity[]>('/dashboard/recent-activity', {
+        params: { limit },
+      });
+    } catch (_error) {
+      return [];
+    }
   }
 }
 

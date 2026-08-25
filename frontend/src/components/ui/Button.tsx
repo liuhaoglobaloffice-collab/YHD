@@ -1,7 +1,7 @@
 import React from 'react';
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger';
+  variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' | 'neon';
   size?: 'sm' | 'md' | 'lg';
   isLoading?: boolean;
   children: React.ReactNode;
@@ -16,16 +16,26 @@ const Button: React.FC<ButtonProps> = ({
   disabled,
   ...props
 }) => {
-  const baseClasses = 'inline-flex items-center justify-center font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed';
+  // 赛博朋克基础样式：添加霓虹发光和动画效果
+  const baseClasses = 'inline-flex items-center justify-center font-medium transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed btn-glow relative overflow-hidden';
   
+  // 赛博朋克主题变体：使用新的霓虹色系
   const variantClasses = {
-    primary: 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 shadow-lg shadow-blue-500/30',
-    secondary: 'bg-cyan-600 text-white hover:bg-cyan-700 active:bg-cyan-800 shadow-lg shadow-cyan-500/30',
-    outline: 'border-2 border-blue-600 text-blue-600 hover:bg-blue-600/10 hover:border-blue-700',
-    ghost: 'text-gray-300 hover:bg-gray-800 hover:text-white',
-    danger: 'bg-red-600 text-white hover:bg-red-700 active:bg-red-800 shadow-lg shadow-red-500/30',
+    // 主按钮：霓虹蓝发光
+    primary: 'bg-neon-blue text-primary-bg hover:bg-neon-cyan active:bg-neon-cyan shadow-neon-blue border border-neon-blue/50',
+    // 次要按钮：青色发光
+    secondary: 'bg-neon-cyan text-primary-bg hover:bg-neon-blue active:bg-neon-blue shadow-neon-cyan border border-neon-cyan/50',
+    // 轮廓按钮：透明背景 + 霓虹边框
+    outline: 'bg-transparent border-2 border-neon-blue text-neon-blue hover:bg-neon-blue/10 hover:shadow-neon-blue',
+    // 幽灵按钮：玻璃态效果
+    ghost: 'bg-glass-light text-text-primary hover:bg-glass-md hover:text-neon-cyan border border-surface-border/30',
+    // 危险按钮：红色霓虹发光
+    danger: 'bg-neon-red text-white hover:bg-neon-red/80 active:bg-neon-red shadow-neon-red border border-neon-red/50',
+    // 霓虹特效按钮（极致发光）
+    neon: 'bg-gradient-to-r from-neon-blue to-neon-purple text-white border-2 border-neon-cyan hover:shadow-2xl hover:shadow-neon-cyan animate-pulse-glow',
   };
   
+  // 按钮尺寸
   const sizeClasses = {
     sm: 'px-3 py-1.5 text-sm rounded-md',
     md: 'px-4 py-2 text-base rounded-lg',
@@ -38,9 +48,10 @@ const Button: React.FC<ButtonProps> = ({
       disabled={disabled || isLoading}
       {...props}
     >
+      {/* 加载状态：霓虹旋转动画 */}
       {isLoading && (
         <svg
-          className="animate-spin -ml-1 mr-2 h-4 w-4"
+          className="animate-spin -ml-1 mr-2 h-4 w-4 text-neon-cyan"
           xmlns="http://www.w3.org/2000/svg"
           fill="none"
           viewBox="0 0 24 24"

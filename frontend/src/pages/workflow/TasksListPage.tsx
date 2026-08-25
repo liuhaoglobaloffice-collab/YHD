@@ -6,6 +6,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   getTasks,
   Task,
@@ -18,6 +19,7 @@ import {
 } from '../../services/taskAPI';
 
 const TasksListPage: React.FC = () => {
+  const navigate = useNavigate();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -118,9 +120,17 @@ const TasksListPage: React.FC = () => {
   return (
     <div className="p-6 space-y-6">
       {/* 标题 */}
-      <div>
-        <h1 className="text-2xl font-bold text-white">任务中心</h1>
-        <p className="text-gray-400 mt-1">管理和监控所有任务执行</p>
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-white">任务中心</h1>
+          <p className="text-gray-400 mt-1">管理和监控所有任务执行</p>
+        </div>
+        <button
+          onClick={() => navigate('/workflow/tasks/create')}
+          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+        >
+          创建任务
+        </button>
       </div>
 
       {/* 统计卡片 */}
@@ -286,10 +296,16 @@ const TasksListPage: React.FC = () => {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex gap-2">
-                        <button className="text-blue-400 hover:text-blue-300 text-sm">
+                        <button
+                          onClick={() => navigate(`/workflow/tasks/${task.task_id}`)}
+                          className="text-blue-400 hover:text-blue-300 text-sm"
+                        >
                           查看
                         </button>
-                        <button className="text-green-400 hover:text-green-300 text-sm">
+                        <button
+                          onClick={() => navigate(`/workflow/tasks/${task.task_id}/edit`)}
+                          className="text-green-400 hover:text-green-300 text-sm"
+                        >
                           编辑
                         </button>
                         <button className="text-red-400 hover:text-red-300 text-sm">

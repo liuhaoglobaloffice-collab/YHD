@@ -169,6 +169,11 @@ async def init_database() -> None:
     async with engine.begin() as conn:
         # Import all models to register them with Base
         from . import models  # noqa: F401
+        # Import provider metrics model so it is registered too
+        try:
+            from . import provider_metrics_model  # noqa: F401
+        except Exception:
+            pass
 
         # Create all tables
         await conn.run_sync(Base.metadata.create_all)

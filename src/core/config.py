@@ -3,8 +3,11 @@ Layer 0: Core Runtime
 Configuration management with security-first design
 """
 
+import os
+from pathlib import Path
 from typing import Optional
 
+from dotenv import load_dotenv
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -18,6 +21,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         case_sensitive=False,
         extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
     )
 
     # Application
@@ -58,18 +63,14 @@ class Settings(BaseSettings):
 
     # Security
     secret_key: str = Field(default="", description="MUST be set via environment variable")
-    # Ollama (Week 4: Local LLM)
-    ollama_host: str = Field(default="http://localhost:11434", description="Ollama API endpoint")
-    ollama_default_model: str = Field(default="qwen2.5:7b", description="Default Ollama model")
-    ollama_timeout: int = Field(default=60, description="Ollama request timeout in seconds")
-    ollama_enabled: bool = Field(default=False, description="Enable Ollama provider")
     jwt_secret_key: str = Field(default="", description="MUST be set via environment variable")
+    jwt_algorithm: str = Field(default="HS256")
+
     # Ollama (Week 4: Local LLM)
     ollama_host: str = Field(default="http://localhost:11434", description="Ollama API endpoint")
     ollama_default_model: str = Field(default="qwen2.5:7b", description="Default Ollama model")
     ollama_timeout: int = Field(default=60, description="Ollama request timeout in seconds")
     ollama_enabled: bool = Field(default=False, description="Enable Ollama provider")
-    jwt_algorithm: str = Field(default="HS256")
     jwt_expiration_hours: int = Field(default=24)
 
     # Policy Defaults (Fail Closed)
@@ -135,6 +136,22 @@ def get_settings() -> Settings:
     """
     global _settings
     if _settings is None:
+        project_root = Path(__file__).resolve().parents[1]
+        env_candidates = [
+            project_root / ".env",
+            project_root / ".env.local",
+            project_root / ".env.development",
+            project_root / ".env.production",
+        ]
+        for env_file in env_candidates:
+            if env_file.exists():
+                load_dotenv(env_file, override=False)
+
+        if os.environ.get("APP_ENV") == "production":
+            prod_env = project_root / ".env.production"
+            if prod_env.exists():
+                load_dotenv(prod_env, override=False)
+
         _settings = Settings()
     return _settings
 

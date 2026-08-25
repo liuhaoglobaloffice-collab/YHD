@@ -179,7 +179,7 @@ class SupplierImportExport:
             result = await crud.advanced_search(filters, page=1, page_size=10000)
             suppliers = result["items"]
         else:
-            suppliers = await crud.get_all()
+            suppliers = await crud.get_all(limit=10000)
         
         # 构建DataFrame
         data = []

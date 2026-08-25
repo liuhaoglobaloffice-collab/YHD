@@ -555,6 +555,16 @@ class ProviderGateway:
         provider_instance = self._get_or_create_provider(provider)
         return await provider_instance.health_check()
 
+    async def get_provider_statuses(self) -> Dict[ProviderType, ProviderStatus]:
+        """Return health status for all configured providers."""
+        statuses: Dict[ProviderType, ProviderStatus] = {}
+        for provider in self.list_providers():
+            try:
+                statuses[provider] = await self.get_provider_status(provider)
+            except Exception:
+                statuses[provider] = ProviderStatus.UNAVAILABLE
+        return statuses
+
     def get_provider_metrics(self, provider: ProviderType) -> ProviderMetrics:
         """Get provider metrics."""
         provider_instance = self._get_or_create_provider(provider)

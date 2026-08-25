@@ -102,7 +102,9 @@ const SuppliersListPage = () => {
       active: 'bg-green-600 text-white',
       inactive: 'bg-gray-600 text-gray-300',
       suspended: 'bg-yellow-600 text-gray-900',
+      blacklist: 'bg-red-600 text-white',
       blacklisted: 'bg-red-600 text-white',
+      pending: 'bg-blue-600 text-white',
     };
     return badges[status] || 'bg-gray-600 text-white';
   };
@@ -114,8 +116,11 @@ const SuppliersListPage = () => {
     const badges = {
       manufacturer: 'bg-blue-600 text-white',
       trader: 'bg-purple-600 text-white',
+      trading: 'bg-purple-600 text-white',
       agent: 'bg-orange-600 text-white',
+      service: 'bg-teal-600 text-white',
       service_provider: 'bg-teal-600 text-white',
+      distributor: 'bg-indigo-600 text-white',
     };
     return badges[type] || 'bg-gray-600 text-white';
   };
@@ -127,8 +132,11 @@ const SuppliersListPage = () => {
     const types = {
       manufacturer: '制造商',
       trader: '贸易商',
+      trading: '贸易商',
       agent: '代理商',
+      service: '服务商',
       service_provider: '服务商',
+      distributor: '分销商',
     };
     return types[type] || type;
   };
@@ -141,7 +149,9 @@ const SuppliersListPage = () => {
       active: '正常',
       inactive: '停用',
       suspended: '暂停',
+      blacklist: '黑名单',
       blacklisted: '黑名单',
+      pending: '待审核',
     };
     return statuses[status] || status;
   };
@@ -182,7 +192,7 @@ const SuppliersListPage = () => {
               <option value="active">正常</option>
               <option value="inactive">停用</option>
               <option value="suspended">暂停</option>
-              <option value="blacklisted">黑名单</option>
+              <option value="blacklist">黑名单</option>
             </select>
           </div>
 
@@ -198,9 +208,9 @@ const SuppliersListPage = () => {
             >
               <option value="">所有类型</option>
               <option value="manufacturer">制造商</option>
-              <option value="trader">贸易商</option>
+              <option value="trading">贸易商</option>
               <option value="agent">代理商</option>
-              <option value="service_provider">服务商</option>
+              <option value="service">服务商</option>
             </select>
           </div>
         </div>

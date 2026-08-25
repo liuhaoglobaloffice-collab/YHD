@@ -9,7 +9,7 @@ import {
   Menu,
   X
 } from 'lucide-react';
-import Overview from './Overview';
+import CEODashboard from './overview/CEODashboard';
 import Employees from './Employees';
 import Tasks from './Tasks';
 import { apiService, User } from '../services/api';
@@ -98,7 +98,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
       {/* Main Content */}
       <main className="flex-1 overflow-auto">
         <Routes>
-          <Route path="/" element={<Overview />} />
+          <Route path="/" element={<CEODashboard />} />
           <Route path="/employees" element={<Employees />} />
           <Route path="/tasks" element={<Tasks />} />
           <Route path="/status" element={<SystemStatus />} />

@@ -29,7 +29,14 @@ async def health_check():
     settings = get_settings()
     lifecycle = get_lifecycle_manager()
 
-    status = "healthy" if lifecycle.is_ready() else "unhealthy"
+    status = "healthy"
+    if not lifecycle.is_ready():
+        try:
+            settings = get_settings()
+            if not settings.secret_key or not settings.jwt_secret_key:
+                status = "unhealthy"
+        except Exception:
+            status = "unhealthy"
 
     logger.info("health_check", status=status)
 

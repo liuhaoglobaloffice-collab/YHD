@@ -28,6 +28,7 @@ import {
   Search,
   Database,
   Brain,
+  LayoutGrid,
   Network,
   List,
   PlusCircle,
@@ -40,7 +41,12 @@ import {
   FileCheck,
   Book,
   Video,
-  Mail
+  Mail,
+  Mic,
+  Languages,
+  MonitorSmartphone,
+  SmartphoneCharging,
+  Sparkles
 } from 'lucide-react';
 
 export interface MenuItemLevel3 {
@@ -130,7 +136,27 @@ export const menuConfig: MenuItemLevel1[] = [
           { name: 'Provider列表', path: '/ai-team/providers/list' },
           { name: '模型配置', path: '/ai-team/providers/models', icon: Cpu }
         ]
+      },
+      {
+        name: '语音交互',
+        path: '/ai-team/voice',
+        icon: Mic,
+        children: [
+          { name: 'Jarvis 控制台', path: '/ai-team/voice/console', icon: Languages }
+        ]
       }
+    ]
+  },
+  {
+    name: '未来平台',
+    path: '/future',
+    icon: MonitorSmartphone,
+    children: [
+      { name: '平台路线图', path: '/future/platform', icon: SmartphoneCharging },
+      { name: '桌面端', path: '/future/desktop', icon: MonitorSmartphone },
+      { name: '移动端', path: '/future/mobile', icon: SmartphoneCharging },
+      { name: 'UI 操作台', path: '/future/console', icon: LayoutGrid },
+      { name: '品牌风格', path: '/future/design', icon: Sparkles }
     ]
   },
   {

@@ -45,16 +45,81 @@ apiClient.interceptors.response.use(
 export enum SupplierType {
   MANUFACTURER = 'manufacturer',
   TRADER = 'trader',
+  TRADING = 'trading',
   AGENT = 'agent',
-  SERVICE_PROVIDER = 'service_provider',
+  DISTRIBUTOR = 'distributor',
+  SERVICE = 'service',
+  SERVICE_PROVIDER = 'service',
 }
 
 export enum SupplierStatus {
   ACTIVE = 'active',
   INACTIVE = 'inactive',
   SUSPENDED = 'suspended',
-  BLACKLISTED = 'blacklisted',
+  BLACKLIST = 'blacklist',
+  PENDING = 'pending',
+  BLACKLISTED = 'blacklist',
 }
+
+const toBackendSupplierType = (supplierType?: SupplierType | string): string | undefined => {
+  if (!supplierType) return undefined;
+  const normalized = supplierType.toString().toLowerCase();
+  if (normalized === 'service_provider' || normalized === 'service') return 'service';
+  if (normalized === 'trader' || normalized === 'trading') return 'trading';
+  return normalized;
+};
+
+const toFrontendSupplierType = (supplierType?: string): SupplierType => {
+  const normalized = supplierType?.toString().toLowerCase();
+  if (normalized === 'service' || normalized === 'service_provider') return SupplierType.SERVICE_PROVIDER;
+  if (normalized === 'trading' || normalized === 'trader') return SupplierType.TRADER;
+  if (normalized === 'distributor') return SupplierType.DISTRIBUTOR;
+  if (normalized === 'agent') return SupplierType.AGENT;
+  if (normalized === 'manufacturer') return SupplierType.MANUFACTURER;
+  return SupplierType.MANUFACTURER;
+};
+
+const toBackendSupplierStatus = (status?: SupplierStatus | string): string | undefined => {
+  if (!status) return undefined;
+  const normalized = status.toString().toLowerCase();
+  if (normalized === 'blacklisted' || normalized === 'blacklist') return 'blacklist';
+  return normalized;
+};
+
+const toFrontendSupplierStatus = (status?: string): SupplierStatus => {
+  const normalized = status?.toString().toLowerCase();
+  if (normalized === 'blacklist' || normalized === 'blacklisted') return SupplierStatus.BLACKLISTED;
+  if (normalized === 'pending') return SupplierStatus.PENDING;
+  if (normalized === 'suspended') return SupplierStatus.SUSPENDED;
+  if (normalized === 'inactive') return SupplierStatus.INACTIVE;
+  return SupplierStatus.ACTIVE;
+};
+
+const normalizeSupplier = (supplier: any): Supplier => ({
+  id: Number(supplier?.id ?? 0),
+  name: supplier?.name ?? '',
+  name_en: supplier?.name_en ?? supplier?.legal_name,
+  supplier_type: toFrontendSupplierType(supplier?.business_type ?? supplier?.supplier_type),
+  status: toFrontendSupplierStatus(supplier?.status),
+  industry: supplier?.industry ?? '',
+  website: supplier?.website,
+  description: supplier?.description,
+  address: supplier?.address,
+  phone: supplier?.phone,
+  email: supplier?.email ?? supplier?.contact_email,
+  contact_email: supplier?.contact_email ?? supplier?.email,
+  registration_number: supplier?.registration_number,
+  tax_id: supplier?.tax_id,
+  legal_representative: supplier?.legal_representative,
+  registered_capital: supplier?.registered_capital,
+  established_date: supplier?.established_date,
+  business_scope: supplier?.business_scope,
+  country: supplier?.country,
+  main_products: supplier?.main_products ?? supplier?.product_category,
+  risk_score: supplier?.risk_score,
+  created_at: supplier?.created_at,
+  updated_at: supplier?.updated_at,
+});
 
 // ============ 接口定义 ============
 
@@ -232,17 +297,45 @@ export interface UpdateSupplierRequest {
 export const getSuppliers = async (
   params?: SupplierQueryParams
 ): Promise<PaginatedResponse<Supplier>> => {
-  const response = await apiClient.get('/suppliers/', { params });
-  return response.data;
+  const requestParams: Record<string, any> = {};
+
+  if (params?.page) requestParams.skip = (params.page - 1) * (params.page_size ?? 20);
+  if (params?.page_size) requestParams.limit = params.page_size;
+  if (params?.status) requestParams.status = toBackendSupplierStatus(params.status);
+  if (params?.supplier_type) requestParams.business_type = toBackendSupplierType(params.supplier_type);
+  if (params?.industry) requestParams.industry = params.industry;
+  if (params?.search) requestParams.search = params.search;
+
+  const response = await apiClient.get('/suppliers/', { params: requestParams });
+  const data = response.data ?? { items: [], total: 0 };
+  const items = Array.isArray(data.items) ? data.items.map(normalizeSupplier) : [];
+  const searchQuery = (params?.search ?? '').trim().toLowerCase();
+  const filteredItems = searchQuery
+    ? items.filter((supplier: Supplier) =>
+        supplier.name.toLowerCase().includes(searchQuery) ||
+        (supplier.country ?? '').toLowerCase().includes(searchQuery)
+      )
+    : items;
+
+  const total = Number(data.total ?? filteredItems.length ?? 0);
+  const pageSize = Number(requestParams.limit ?? params?.page_size ?? 20);
+  const page = Number(params?.page ?? 1);
+
+  return {
+    items: filteredItems,
+    total,
+    page,
+    page_size: pageSize,
+    total_pages: Math.max(1, Math.ceil(total / pageSize)),
+  };
 };
 
 /**
  * 获取单个供应商详情
- * Week 7 Day 1-2 新增
  */
 export const getSupplier = async (supplierId: number): Promise<Supplier> => {
   const response = await apiClient.get(`/suppliers/${supplierId}`);
-  return response.data;
+  return normalizeSupplier(response.data);
 };
 
 /**
@@ -251,8 +344,14 @@ export const getSupplier = async (supplierId: number): Promise<Supplier> => {
 export const createSupplier = async (
   data: CreateSupplierRequest
 ): Promise<Supplier> => {
-  const response = await apiClient.post('/suppliers/', data);
-  return response.data;
+  const payload = {
+    ...data,
+    business_type: toBackendSupplierType(data.supplier_type),
+  };
+  delete (payload as any).supplier_type;
+
+  const response = await apiClient.post('/suppliers/', payload);
+  return normalizeSupplier(response.data);
 };
 
 /**
@@ -262,8 +361,17 @@ export const updateSupplier = async (
   supplierId: number,
   data: UpdateSupplierRequest
 ): Promise<Supplier> => {
-  const response = await apiClient.put(`/suppliers/${supplierId}`, data);
-  return response.data;
+  const payload = {
+    ...data,
+  } as Record<string, any>;
+
+  if (payload.supplier_type) {
+    payload.business_type = toBackendSupplierType(payload.supplier_type);
+    delete payload.supplier_type;
+  }
+
+  const response = await apiClient.put(`/suppliers/${supplierId}`, payload);
+  return normalizeSupplier(response.data);
 };
 
 /**

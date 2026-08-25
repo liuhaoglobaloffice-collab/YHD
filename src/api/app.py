@@ -95,6 +95,14 @@ def create_app() -> FastAPI:
     # Include API routes
     app.include_router(api_router)
 
+    # Expose Prometheus metrics at root /metrics as well as under /api/v1/metrics
+    try:
+        from src.api.routes import metrics as metrics_module
+        app.include_router(metrics_module.router)
+    except Exception:
+        # if metrics module cannot be loaded, continue without it
+        logger.info("metrics_router_not_loaded")
+
     # Root endpoint
     @app.get("/")
     async def root():

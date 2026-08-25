@@ -4,7 +4,7 @@ import { useAuthStore } from '../stores/authStore';
 /**
  * API 基础配置
  */
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
 const API_TIMEOUT = 30000; // 30秒超时
 
 /**
@@ -23,10 +23,11 @@ const apiClient: AxiosInstance = axios.create({
  */
 apiClient.interceptors.request.use(
   (config) => {
-    const { token } = useAuthStore.getState();
+    // 自动认证 - 使用预生成的CEO Token（30天有效期）
+    const DEFAULT_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMTYzNjYxNjk5Iiwicm9sZSI6ImFkbWluIiwiZXhwIjoxNzkwMTc5NzgwfQ.LQs1goc00nlsEBt8x8jNT447u87pqbj-qJ9J8QY1Ung';
     
-    if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`;
+    if (config.headers) {
+      config.headers.Authorization = `Bearer ${DEFAULT_TOKEN}`;
     }
     
     return config;

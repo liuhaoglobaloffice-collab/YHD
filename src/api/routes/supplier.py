@@ -15,7 +15,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -205,7 +205,7 @@ async def create_supplier(
     )
 
     return SupplierResponse(
-        id=str(supplier.id),
+        id=supplier.id,
         name=supplier.name,
         code=supplier.code,
         legal_name=supplier.legal_name,
@@ -234,8 +234,10 @@ async def create_supplier(
 async def list_suppliers(
     status: Optional[SupplierStatus] = Query(None, description="按状态筛选"),
     business_type: Optional[BusinessType] = Query(None, description="按类型筛选"),
-    skip: int = Query(0, ge=0, description="跳过记录数"),
-    limit: int = Query(100, ge=1, le=1000, description="返回记录数"),
+    skip: Optional[int] = Query(None, ge=0, description="跳过记录数（兼容旧参数）"),
+    limit: Optional[int] = Query(None, ge=1, le=1000, description="返回记录数（兼容旧参数）"),
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(20, ge=1, le=200, description="每页数量"),
     session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     _: None = Depends(require_permission("supplier", "read")),
@@ -246,8 +248,10 @@ async def list_suppliers(
     需要权限: supplier:read
     """
     crud = SupplierCRUD(session)
+    effective_skip = skip if skip is not None else (page - 1) * page_size
+    effective_limit = limit if limit is not None else page_size
     suppliers = await crud.list_suppliers(
-        status=status, business_type=business_type, skip=skip, limit=limit
+        status=status, business_type=business_type, skip=effective_skip, limit=effective_limit
     )
 
     # 获取总数
@@ -265,7 +269,7 @@ async def list_suppliers(
 
     items = [
         SupplierResponse(
-            id=str(s.id),
+            id=s.id,
             name=s.name,
             code=s.code,
             legal_name=s.legal_name,
@@ -591,8 +595,8 @@ async def get_risk_history(
 
 @router.post("/import")
 async def import_suppliers(
-    file: bytes,
-    file_type: str = "excel",
+    file: UploadFile = File(..., description="供应商导入文件（CSV/Excel）"),
+    file_type: Optional[str] = None,
     validate: bool = True,
     session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -600,9 +604,23 @@ async def import_suppliers(
 ):
     """导入供应商数据（Excel/CSV）"""
     from src.business.supplier.import_export import SupplierImportExport
-    
+
+    resolved_type = (file_type or "").strip().lower()
+    if not resolved_type:
+        filename = (file.filename or "").lower()
+        if filename.endswith(".csv"):
+            resolved_type = "csv"
+        elif filename.endswith(".xlsx") or filename.endswith(".xls"):
+            resolved_type = "excel"
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported file type; upload .csv or .xlsx/.xls")
+
+    if resolved_type not in {"csv", "excel"}:
+        raise HTTPException(status_code=400, detail="file_type must be 'csv' or 'excel'")
+
+    content = await file.read()
     importer = SupplierImportExport(session)
-    result = await importer.import_suppliers(file, file_type=file_type, validate=validate)
+    result = await importer.import_suppliers(content, file_type=resolved_type, validate=validate)
     return result
 
 
@@ -648,7 +666,7 @@ async def export_suppliers(
 
 @router.post("/{supplier_id}/contacts", response_model=ContactResponse, status_code=201)
 async def add_contact(
-    supplier_id: str,
+    supplier_id: int,
     contact_data: dict,
     session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -680,8 +698,8 @@ async def add_contact(
     await session.refresh(contact)
     
     return ContactResponse(
-        id=str(contact.id),
-        supplier_id=str(contact.supplier_id),
+        id=contact.id,
+        supplier_id=contact.supplier_id,
         name=contact.name,
         position=contact.position,
         phone=contact.phone,
@@ -696,7 +714,7 @@ async def add_contact(
 
 @router.post("/{supplier_id}/certificates", status_code=201)
 async def add_certificate(
-    supplier_id: str,
+    supplier_id: int,
     certificate_data: dict,
     session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -735,8 +753,8 @@ async def add_certificate(
     await session.refresh(certificate)
     
     return {
-        "id": str(certificate.id),
-        "supplier_id": str(certificate.supplier_id),
+        "id": certificate.id,
+        "supplier_id": certificate.supplier_id,
         "certificate_type": certificate.certificate_type,
         "certificate_name": certificate.certificate_name,
         "certificate_number": certificate.certificate_number,

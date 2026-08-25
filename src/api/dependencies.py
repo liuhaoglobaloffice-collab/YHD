@@ -43,13 +43,23 @@ async def get_current_user(
     try:
         # Decode token
         payload = decode_access_token(credentials.credentials)
-        username = payload.get("sub")
+        subject = payload.get("sub")
 
-        if not username:
+        if not subject:
             raise AuthenticationError("Invalid token payload")
 
-        # Get user from database
-        result = await session.execute(select(User).where(User.username == username))
+        # Support both legacy username-based tokens and current ID-based tokens.
+        user_id = None
+        try:
+            user_id = int(subject)
+        except (TypeError, ValueError):
+            user_id = None
+
+        if user_id is not None:
+            result = await session.execute(select(User).where(User.id == user_id))
+        else:
+            result = await session.execute(select(User).where(User.username == subject))
+
         user = result.scalar_one_or_none()
 
         if user is None:
@@ -81,13 +91,16 @@ async def get_current_user_optional(
 
     try:
         payload = decode_access_token(credentials.credentials)
-        user_id_str = payload.get("sub")
-        user_id: int = int(user_id_str) if user_id_str else None
-
-        if user_id is None:
+        subject = payload.get("sub")
+        if not subject:
             return None
 
-        result = await session.execute(select(User).where(User.id == user_id))
+        try:
+            user_id = int(subject)
+            result = await session.execute(select(User).where(User.id == user_id))
+        except (TypeError, ValueError):
+            result = await session.execute(select(User).where(User.username == subject))
+
         user = result.scalar_one_or_none()
 
         if user and user.is_active:

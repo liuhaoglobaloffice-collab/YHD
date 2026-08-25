@@ -163,7 +163,7 @@ const SupplierDetailPage: React.FC = () => {
   const handleDeleteContact = async (contactId: number) => {
     if (!confirm('确认删除该联系人？')) return;
     try {
-      await deleteSupplierContact(supplierId!, contactId);
+      await deleteSupplierContact(Number(supplierId!), contactId);
       loadContacts(); // 重新加载列表
     } catch (err: any) {
       alert(err.message || '删除联系人失败');

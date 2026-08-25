@@ -21,6 +21,7 @@ Architecture (Phase 2F-2.5):
     Database
 """
 
+from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 
@@ -35,10 +36,60 @@ from ...api.dependencies.permissions import require_permission
 from ...api.factories import get_task_service
 from ...identity.audit import AuditAction, AuditService
 from ...identity.models import User
-from ...tasks.models import TaskPriority, TaskStatus, TaskType
+from ...tasks.models import TaskDependency, TaskPriority, TaskResult, TaskStatus, TaskType
 from ...tasks.service import TaskService
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
+
+
+def _parse_assigned_agent_ids(values: List[str]) -> List[UUID]:
+    """Normalize agent IDs from API payloads and ignore non-UUID placeholders."""
+    assigned_ids: List[UUID] = []
+    for value in values or []:
+        candidate = str(value).strip()
+        if not candidate:
+            continue
+        try:
+            assigned_ids.append(UUID(candidate))
+        except ValueError:
+            continue
+    return assigned_ids
+
+
+def _parse_task_dependencies(values: List[str]) -> List[TaskDependency]:
+    """Convert raw dependency IDs into domain dependency objects."""
+    dependencies: List[TaskDependency] = []
+    for value in values or []:
+        candidate = str(value).strip()
+        if not candidate:
+            continue
+        try:
+            dependencies.append(TaskDependency(task_id=UUID(candidate)))
+        except ValueError:
+            continue
+    return dependencies
+
+
+def _task_result_from_dict(data: Optional[dict]) -> Optional[TaskResult]:
+    """Convert payload result dicts into TaskResult domain objects."""
+    if data is None:
+        return None
+
+    completed_at_raw = data.get("completed_at")
+    completed_at = None
+    if completed_at_raw:
+        try:
+            completed_at = datetime.fromisoformat(completed_at_raw)
+        except ValueError:
+            completed_at = None
+
+    return TaskResult(
+        success=bool(data.get("success", True)),
+        output=data.get("output"),
+        error=data.get("error"),
+        metadata=data.get("metadata") or {},
+        completed_at=completed_at or datetime.utcnow(),
+    )
 
 
 # Request/Response Models
@@ -95,28 +146,62 @@ class TaskResponse(BaseModel):
     @classmethod
     def from_task(cls, task):
         """Convert Task to response."""
+        assigned_agents = getattr(task, "assigned_agents", None)
+        if assigned_agents is None:
+            assigned_agents = getattr(task, "assigned_to", []) or []
+        assigned_agents = [str(agent) for agent in (assigned_agents or [])]
+
+        creator_id = getattr(task, "created_by", None)
+        if creator_id is None:
+            creator_id = getattr(task, "creator_id", "")
+
+        result = getattr(task, "result", None)
+        if result is not None and hasattr(result, "to_dict"):
+            result_dict = result.to_dict()
+        elif isinstance(result, dict):
+            result_dict = result
+        else:
+            result_dict = None
+
+        dependencies = []
+        for dep in getattr(task, "dependencies", []) or []:
+            if isinstance(dep, dict):
+                dependencies.append(
+                    {
+                        "task_id": str(dep.get("task_id") or dep.get("id") or ""),
+                        "type": dep.get("type") or dep.get("dependency_type") or "finish_to_start",
+                    }
+                )
+            else:
+                dependencies.append(
+                    {
+                        "task_id": str(getattr(dep, "task_id", "")),
+                        "type": getattr(dep, "dependency_type", "finish_to_start"),
+                    }
+                )
+
+        task_id = getattr(task, "task_id", getattr(task, "id", ""))
+        created_at = getattr(task, "created_at", None)
+        updated_at = getattr(task, "updated_at", None)
+        started_at = getattr(task, "started_at", None)
+        completed_at = getattr(task, "completed_at", None)
+
         return cls(
-            task_id=str(task.task_id),
+            task_id=str(task_id),
             title=task.title,
             description=task.description,
-            task_type=task.task_type.value,
-            status=task.status.value,
-            priority=task.priority.value,
-            assigned_agents=task.assigned_agents,
-            created_by=str(task.created_by),
-            created_at=task.created_at.isoformat(),
-            updated_at=task.updated_at.isoformat(),
-            started_at=task.started_at.isoformat() if task.started_at else None,
-            completed_at=task.completed_at.isoformat() if task.completed_at else None,
-            dependencies=[
-                {
-                    "task_id": str(dep.task_id),
-                    "type": dep.dependency_type,
-                }
-                for dep in task.dependencies
-            ],
-            result=task.result.to_dict() if task.result else None,
-            metadata=task.metadata,
+            task_type=task.task_type.value if hasattr(task.task_type, "value") else str(task.task_type),
+            status=task.status.value if hasattr(task.status, "value") else str(task.status),
+            priority=task.priority.value if hasattr(task.priority, "value") else str(task.priority),
+            assigned_agents=assigned_agents,
+            created_by=str(creator_id),
+            created_at=created_at.isoformat() if created_at else "",
+            updated_at=updated_at.isoformat() if updated_at else created_at.isoformat() if created_at else "",
+            started_at=started_at.isoformat() if started_at else None,
+            completed_at=completed_at.isoformat() if completed_at else None,
+            dependencies=dependencies,
+            result=result_dict,
+            metadata=getattr(task, "metadata", {}) or getattr(task, "meta", {}) or {},
         )
 
 
@@ -139,8 +224,8 @@ async def create_task(
             description=request.description,
             task_type=request.task_type,
             priority=request.priority,
-            assigned_agents=request.assigned_agents,
-            dependencies=request.dependencies,
+            assigned_to=_parse_assigned_agent_ids(request.assigned_agents),
+            dependencies=_parse_task_dependencies(request.dependencies),
             metadata=request.metadata,
             user=current_user,
         )
@@ -269,7 +354,7 @@ async def update_task_status(
         task = await task_service.update_task_status(
             task_id=task_id,
             status=request.status,
-            result=request.result,
+            result=_task_result_from_dict(request.result),
             user=current_user,
         )
 

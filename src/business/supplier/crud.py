@@ -82,6 +82,31 @@ class SupplierCRUD:
             select(Supplier).where(Supplier.name == name)
         )
         return result.scalar_one_or_none()
+
+    async def get_all(
+        self,
+        status: Optional[SupplierStatus] = None,
+        business_type: Optional[BusinessType] = None,
+        skip: int = 0,
+        limit: Optional[int] = None,
+    ) -> List[Supplier]:
+        """获取全部供应商，支持状态/类型筛选和分页。"""
+        query = select(Supplier)
+        conditions = []
+
+        if status is not None:
+            conditions.append(Supplier.status == status)
+        if business_type is not None:
+            conditions.append(Supplier.business_type == business_type)
+        if conditions:
+            query = query.where(and_(*conditions))
+
+        query = query.order_by(Supplier.created_at.desc()).offset(skip)
+        if limit is not None:
+            query = query.limit(limit)
+
+        result = await self.session.execute(query)
+        return list(result.scalars().all())
     
     async def list_suppliers(
         self,

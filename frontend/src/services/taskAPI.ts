@@ -113,6 +113,72 @@ export const taskTypeLabels: Record<TaskType, string> = {
 
 // ============ 类型定义 ============
 
+const normalizeTaskType = (value?: string): TaskType => {
+  const normalized = (value ?? TaskType.GENERAL).toString().toLowerCase();
+  if (Object.values(TaskType).includes(normalized as TaskType)) return normalized as TaskType;
+  return TaskType.GENERAL;
+};
+
+const normalizeTaskStatus = (value?: string): TaskStatus => {
+  const normalized = (value ?? TaskStatus.PENDING).toString().toLowerCase();
+  if (Object.values(TaskStatus).includes(normalized as TaskStatus)) return normalized as TaskStatus;
+  return TaskStatus.PENDING;
+};
+
+const normalizeTaskPriority = (value?: string): TaskPriority => {
+  const normalized = (value ?? TaskPriority.MEDIUM).toString().toLowerCase();
+  if (Object.values(TaskPriority).includes(normalized as TaskPriority)) return normalized as TaskPriority;
+  return TaskPriority.MEDIUM;
+};
+
+const normalizeTask = (task: any): Task => {
+  const payload = task ?? {};
+  const assignedAgents = Array.isArray(payload.assigned_agents)
+    ? payload.assigned_agents
+    : Array.isArray(payload.assigned_to)
+      ? payload.assigned_to
+      : Array.isArray(payload.agent_ids)
+        ? payload.agent_ids
+        : [];
+
+  const dependencies = Array.isArray(payload.dependencies)
+    ? payload.dependencies
+    : Array.isArray(payload.deps)
+      ? payload.deps
+      : [];
+
+  const resultValue = payload.result ?? payload.result_data ?? payload.output ?? undefined;
+
+  return {
+    task_id: String(payload.task_id ?? payload.id ?? payload.taskId ?? ''),
+    title: payload.title ?? '未命名任务',
+    description: payload.description ?? '',
+    task_type: normalizeTaskType(payload.task_type ?? payload.type),
+    status: normalizeTaskStatus(payload.status ?? payload.state),
+    priority: normalizeTaskPriority(payload.priority),
+    assigned_agents: assignedAgents.map((agent: any) => String(agent)),
+    created_by: String(payload.created_by ?? payload.creator_id ?? payload.createdBy ?? 'system'),
+    created_at: payload.created_at ?? payload.createdAt ?? new Date().toISOString(),
+    updated_at: payload.updated_at ?? payload.updatedAt ?? payload.created_at ?? payload.createdAt ?? new Date().toISOString(),
+    started_at: payload.started_at ?? payload.startedAt,
+    completed_at: payload.completed_at ?? payload.completedAt,
+    dependencies: dependencies.map((dep: any) => ({
+      task_id: String(dep?.task_id ?? dep?.id ?? dep?.taskId ?? ''),
+      type: dep?.type ?? dep?.dependency_type ?? dep?.dependencyType ?? 'finish_to_start',
+    })),
+    result: resultValue
+      ? {
+          success: Boolean(resultValue.success ?? true),
+          output: resultValue.output ?? resultValue,
+          error: resultValue.error,
+          metadata: resultValue.metadata ?? resultValue.meta ?? {},
+          completed_at: resultValue.completed_at ?? resultValue.completedAt ?? payload.completed_at ?? payload.completedAt ?? new Date().toISOString(),
+        }
+      : undefined,
+    metadata: payload.metadata ?? payload.meta ?? {},
+  };
+};
+
 export interface TaskDependency {
   task_id: string;
   type: string;
@@ -143,7 +209,6 @@ export interface Task {
   result?: TaskResult;
   metadata: Record<string, any>;
 }
-
 export interface CreateTaskRequest {
   title: string;
   description?: string;
@@ -181,8 +246,15 @@ export interface TaskListParams {
  */
 export async function getTasks(params?: TaskListParams): Promise<Task[]> {
   try {
-    const response = await apiClient.get<Task[]>('/tasks', { params });
-    return response.data;
+    const query = params ? {
+      status: params.status,
+      task_type: params.task_type,
+      priority: params.priority,
+      assigned_agent: params.assigned_agent,
+    } : undefined;
+
+    const response = await apiClient.get<any[]>('/tasks', { params: query });
+    return Array.isArray(response.data) ? response.data.map(normalizeTask) : [];
   } catch (error) {
     console.error('Failed to fetch tasks:', error);
     throw error;
@@ -194,8 +266,8 @@ export async function getTasks(params?: TaskListParams): Promise<Task[]> {
  */
 export async function getReadyTasks(): Promise<Task[]> {
   try {
-    const response = await apiClient.get<Task[]>('/tasks/ready');
-    return response.data;
+    const response = await apiClient.get<any[]>('/tasks/ready');
+    return Array.isArray(response.data) ? response.data.map(normalizeTask) : [];
   } catch (error) {
     console.error('Failed to fetch ready tasks:', error);
     throw error;
@@ -207,8 +279,8 @@ export async function getReadyTasks(): Promise<Task[]> {
  */
 export async function getTask(taskId: string): Promise<Task> {
   try {
-    const response = await apiClient.get<Task>(`/tasks/${taskId}`);
-    return response.data;
+    const response = await apiClient.get<any>(`/tasks/${taskId}`);
+    return normalizeTask(response.data);
   } catch (error) {
     console.error(`Failed to fetch task ${taskId}:`, error);
     throw error;
@@ -220,8 +292,8 @@ export async function getTask(taskId: string): Promise<Task> {
  */
 export async function createTask(request: CreateTaskRequest): Promise<Task> {
   try {
-    const response = await apiClient.post<Task>('/tasks', request);
-    return response.data;
+    const response = await apiClient.post<any>('/tasks', request);
+    return normalizeTask(response.data);
   } catch (error) {
     console.error('Failed to create task:', error);
     throw error;
@@ -236,8 +308,8 @@ export async function updateTaskStatus(
   request: UpdateTaskStatusRequest
 ): Promise<Task> {
   try {
-    const response = await apiClient.put<Task>(`/tasks/${taskId}/status`, request);
-    return response.data;
+    const response = await apiClient.put<any>(`/tasks/${taskId}/status`, request);
+    return normalizeTask(response.data);
   } catch (error) {
     console.error(`Failed to update task ${taskId} status:`, error);
     throw error;
@@ -252,8 +324,8 @@ export async function assignTask(
   request: AssignTaskRequest
 ): Promise<Task> {
   try {
-    const response = await apiClient.put<Task>(`/tasks/${taskId}/assign`, request);
-    return response.data;
+    const response = await apiClient.put<any>(`/tasks/${taskId}/assign`, request);
+    return normalizeTask(response.data);
   } catch (error) {
     console.error(`Failed to assign task ${taskId}:`, error);
     throw error;
@@ -268,8 +340,8 @@ export async function completeTask(
   request: CompleteTaskRequest
 ): Promise<Task> {
   try {
-    const response = await apiClient.post<Task>(`/tasks/${taskId}/complete`, request);
-    return response.data;
+    const response = await apiClient.post<any>(`/tasks/${taskId}/complete`, request);
+    return normalizeTask(response.data);
   } catch (error) {
     console.error(`Failed to complete task ${taskId}:`, error);
     throw error;
