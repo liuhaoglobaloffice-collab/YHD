@@ -13,6 +13,10 @@ def test_metrics_persist_end_to_end(tmp_path):
     # Ensure METRICS_PERSIST enabled for this test
     os.environ['METRICS_PERSIST'] = '1'
 
+    # Use a temporary sqlite DB for CI-friendly test: set DATABASE_URL before importing project modules
+    db_file = tmp_path / 'liuhao_ai_os_test.db'
+    os.environ['DATABASE_URL'] = f"sqlite:///{db_file.as_posix()}"
+
     # Use project's config to find DB path and remove any pre-existing DB for clean run
     import src.database.base as base
 

@@ -52,8 +52,8 @@ class LifecycleManager:
             self.event_bus = get_event_bus()
             logger.info("event_bus_initialized")
 
-            # 4. Publish startup event
-            self.event_bus.publish(
+            # 4. Publish startup event - use async publish so async subscribers are invoked
+            await self.event_bus.publish_async(
                 Event(
                     name="system.startup",
                     data={"env": self.settings.app_env},
