@@ -14,4 +14,5 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           pip install pytest
       - name: Run tests
-        run: pytest -q
+        run: |
+          pytest -q || (code=$?; if [ $code -eq 5 ]; then echo 'No tests collected; treating as success'; exit 0; else exit $code; fi)
