@@ -20,6 +20,10 @@ from .models import (
     WorkflowStep,
     WorkflowStepType,
 )
+from .event_bus import EventBus
+from .workflow import WorkflowEngine, WorkflowStep as WorkflowStepShim, WorkflowTask
+from .state_machine import WorkflowStateMachine
+from .templates import SupplierRiskWorkflowTemplate
 
 # Service and Executor are not exported from __init__ to avoid circular imports
 # Import them directly: from src.workflow.service import WorkflowService
@@ -32,5 +36,11 @@ __all__ = [
     "WorkflowStepType",
     "WorkflowExecution",
     "WorkflowExecutionStatus",
+    "EventBus",
+    "WorkflowEngine",
+    "WorkflowStepShim",
+    "WorkflowTask",
+    "WorkflowStateMachine",
+    "SupplierRiskWorkflowTemplate",
     # WorkflowService and WorkflowExecutor not exported - import directly
 ]
