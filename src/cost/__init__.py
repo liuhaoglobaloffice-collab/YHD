@@ -1,0 +1,1 @@
+"""Cost management addon package."""
