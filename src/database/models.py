@@ -78,6 +78,48 @@ class DocumentModel(Base):
         Index("idx_documents_created_at", "created_at"),
     )
 
+    chunks = relationship("DocumentChunkModel", back_populates="document")
+    embeddings = relationship("EmbeddingStorageModel", back_populates="document")
+
+
+class DocumentChunkModel(Base):
+    """Phase 2.2 document chunk persistence model.
+
+    Stores individual text chunks extracted from a document and keeps the
+    metadata payload in a structured JSON field for future retrieval/search.
+    """
+
+    __tablename__ = "document_chunks"
+
+    id = Column(String(36), primary_key=True)
+    document_id = Column(String(36), ForeignKey("documents.id"), nullable=False)
+    chunk_text = Column(Text, nullable=False)
+    chunk_index = Column(Integer, nullable=False, default=0)
+    metadata_ = Column("metadata", JSON, default=dict)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    document = relationship("DocumentModel", back_populates="chunks")
+
+
+class EmbeddingStorageModel(Base):
+    """Phase 2.2 lightweight embedding record model.
+
+    Stores vector metadata and provider identifier in a future-friendly
+    shape separate from the document payload itself.
+    """
+
+    __tablename__ = "embedding_storage"
+
+    id = Column(String(36), primary_key=True)
+    document_id = Column(String(36), ForeignKey("documents.id"), nullable=True)
+    chunk_id = Column(String(36), nullable=True)
+    vector = Column(JSON, nullable=False)
+    dimension = Column(Integer, nullable=False, default=3)
+    provider = Column(String(80), nullable=False, default="mock")
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    document = relationship("DocumentModel", back_populates="embeddings")
+
 
 class MemoryModel(Base):
     """
