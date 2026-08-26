@@ -34,6 +34,8 @@ from .retrieval import (
 from .chunker import TextChunker, Chunk, chunk_text
 from .embedding import EmbeddingService, EmbeddingPipeline
 from .vector_store import InMemoryVectorStore, VectorRecord
+from .retriever import Retriever
+from .rag_pipeline import RAGPipeline
 
 __all__ = [
     "DocumentMetadata",
@@ -49,6 +51,8 @@ __all__ = [
     "EmbeddingPipeline",
     "InMemoryVectorStore",
     "VectorRecord",
+    "Retriever",
+    "RAGPipeline",
     "SearchQuery",
     "SearchResult",
     "RetrievalService",

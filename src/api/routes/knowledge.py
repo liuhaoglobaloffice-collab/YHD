@@ -6,7 +6,7 @@ Phase 2F-2 Update: Added database dependency for future Phase 2G migration.
 Current implementation still uses memory storage - will be migrated in Phase 2G.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 import structlog
@@ -37,6 +37,9 @@ from src.knowledge.knowledge_retrieval import (
 from src.knowledge.memory import MemoryService, MemoryType
 from src.knowledge.processing import DocumentProcessor
 from src.knowledge.retrieval import RetrievalService
+from src.knowledge.rag_pipeline import RAGPipeline
+from src.knowledge.retriever import Retriever
+from src.knowledge.vector_store import InMemoryVectorStore
 
 logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/knowledge", tags=["knowledge"])
@@ -249,10 +252,71 @@ class KnowledgeContextResponse(BaseModel):
     summary: str
 
 
+class RAGSearchRequest(BaseModel):
+    """Minimal RAG search request for Phase 2.3."""
+
+    query: str = Field(..., min_length=1, max_length=500)
+    limit: int = Field(default=5, ge=1, le=20)
+
+
+class RAGQueryRequest(BaseModel):
+    """Minimal RAG query/update request shape used by the phase 2.3 API."""
+
+    query: str = Field(..., min_length=1, max_length=500)
+    limit: int = Field(default=5, ge=1, le=20)
+
+
+class RAGStructuredResponse(BaseModel):
+    """Structured RAG answer response contract."""
+
+    query: str
+    sources: List[Dict[str, Any]]
+    context: str
+    answer: str
+    metadata: Dict[str, Any]
+
+
 # Phase 4: Services now use dependency injection via factories
 # processor and retrieval_service remain global as they don't need DB
 processor = DocumentProcessor()
 retrieval_service = RetrievalService()
+
+
+# Phase 2.3 RAG lightweight endpoints
+
+
+@router.post("/search", response_model=RAGStructuredResponse)
+async def knowledge_search_route(
+    request: RAGSearchRequest,
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(require_permission("knowledge", "read")),
+):
+    """Vector search adapter endpoint for the Phase 2.3 RAG interface."""
+
+    store = InMemoryVectorStore()
+    retriever = Retriever(store, provider_name="mock")
+    hits = await retriever.search(request.query, limit=request.limit)
+    return {
+        "query": request.query,
+        "sources": hits,
+        "context": retriever.assemble_context(hits),
+        "answer": "",
+        "metadata": {"provider": "mock", "retrieval": "vector_similarity"},
+    }
+
+
+@router.post("/query", response_model=RAGStructuredResponse)
+async def knowledge_query_route(
+    request: RAGQueryRequest,
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(require_permission("knowledge", "read")),
+):
+    """RAG query endpoint that returns the requested output shape."""
+
+    store = InMemoryVectorStore()
+    pipeline = RAGPipeline(store, provider_name="mock")
+    result = await pipeline.query(request.query, limit=request.limit)
+    return result
 
 
 # Phase 4 Module 2: Knowledge Retrieval endpoints
