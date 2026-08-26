@@ -1,0 +1,60 @@
+# Local environment and secrets
+.env
+.env.production
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+env/
+.venv/
+venv/
+
+# Distribution / packaging
+.Python
+build/
+dist/
+.eggs/
+*.egg-info/
+
+# Pytest
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Database
+dev.db
+*.db
+*.db-journal
+*.sqlite3
+
+# Node / frontend
+node_modules/
+frontend/dist/
+
+# Logs
+logs/
+*.log
+
+# IDEs
+.vscode/
+.idea/
+
+# Temporary
+tmp/
+temp/
+*.tmp
+*.swp
+
+# Coverage
+coverage/
+
+# Async/cache tooling
+.mypy_cache/
+
+# OS
+.DS_Store
+Thumbs.db
