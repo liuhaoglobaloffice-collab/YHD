@@ -10,11 +10,12 @@ from src.security.policy import (
     get_policy_engine,
     reset_policy_engine,
 )
-from src.security.secrets import (
-    SecretsManager,
-    get_secrets_manager,
-    reset_secrets_manager,
-)
+from src.security.rbac import RBACService, Role, PermissionSet
+from src.security.permission import Permission
+from src.security.abac import ABACPolicyEngine, PolicyDecision as ABACPolicyDecision
+from src.security.tenant import Tenant, TenantContext, TenantValidator
+from src.security.audit_policy import AuditPolicy, AuditExporter, AuditVerifier
+from src.security.secrets import SecretManager, get_secret_manager
 
 __all__ = [
     "PolicyEngine",
@@ -23,7 +24,18 @@ __all__ = [
     "PolicyContext",
     "get_policy_engine",
     "reset_policy_engine",
-    "SecretsManager",
-    "get_secrets_manager",
-    "reset_secrets_manager",
+    "RBACService",
+    "Role",
+    "PermissionSet",
+    "Permission",
+    "ABACPolicyEngine",
+    "ABACPolicyDecision",
+    "Tenant",
+    "TenantContext",
+    "TenantValidator",
+    "AuditPolicy",
+    "AuditExporter",
+    "AuditVerifier",
+    "SecretManager",
+    "get_secret_manager",
 ]

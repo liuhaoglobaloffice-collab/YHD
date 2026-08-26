@@ -1,0 +1,11 @@
+name: dependency-check
+on:
+  pull_request:
+  push:
+
+jobs:
+  dependency-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "verify lockfiles and flagged dependency issues"

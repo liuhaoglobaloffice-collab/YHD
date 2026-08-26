@@ -14,6 +14,27 @@ from src.core.errors import ConfigurationError
 logger = structlog.get_logger(__name__)
 
 
+class SecretManager:
+    """A lightweight secret manager compatible with the requested Phase 5 secret contract."""
+
+    def __init__(self):
+        self._secrets: Dict[str, str] = {}
+
+    def store_secret(self, key: str, value: str) -> str:
+        self._secrets[key] = value
+        return value
+
+    def get_secret(self, key: str) -> Optional[str]:
+        return self._secrets.get(key)
+
+    def rotate_secret(self, key: str, new_value: str) -> str:
+        self._secrets[key] = new_value
+        return new_value
+
+    def delete_secret(self, key: str) -> None:
+        self._secrets.pop(key, None)
+
+
 class SecretsManager:
     """
     Secure secrets management
@@ -132,6 +153,11 @@ def get_secrets_manager() -> SecretsManager:
     if _secrets_manager is None:
         _secrets_manager = SecretsManager()
     return _secrets_manager
+
+
+def get_secret_manager() -> SecretManager:
+    """Compatibility alias to the requested Phase 5 lightweight SecretManager."""
+    return SecretManager()
 
 
 def reset_secrets_manager() -> None:
