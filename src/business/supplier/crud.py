@@ -45,6 +45,23 @@ class SupplierCRUD:
         Returns:
             创建的供应商对象
         """
+        # Normalize certain fields passed as strings
+        established = kwargs.get('established_date')
+        if isinstance(established, str):
+            try:
+                # Try parsing full datetime first
+                parsed = datetime.fromisoformat(established)
+            except ValueError:
+                try:
+                    # Fallback to date-only
+                    from datetime import date as _date
+                    parsed_date = _date.fromisoformat(established)
+                    # keep as date to satisfy SQLAlchemy DateTime column
+                    parsed = parsed_date
+                except Exception:
+                    parsed = None
+            kwargs['established_date'] = parsed
+
         supplier = Supplier(
             name=name,
             country=country,

@@ -9,11 +9,12 @@ from datetime import datetime
 from typing import Optional, Dict, Any, List
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # from src.ai.core import get_ai_brain  # REMOVED: No such module
 from src.business.supplier.crud import SupplierCRUD
+from src.providers.registry import get_provider
 from src.business.supplier.models import (
     Supplier,
     SupplierRiskAssessment,
@@ -46,21 +47,25 @@ class SupplierRiskAgent:
     - 沟通风险 (communication)
     """
     
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession, provider=None):
         """
         初始化风险评估 Agent
         
         Args:
             db: 数据库会话
+            provider: optional provider adapter, default to mock registry
         """
         self.db = db
         self.crud = SupplierCRUD(db)
+        self.provider = provider or get_provider("mock")
         # self.ai_brain = get_ai_brain()  # MOCK VERSION  # 使用 AI Brain 进行分析
         
     async def assess_risk(
         self,
         supplier_id: int,
-        save_to_db: bool = True
+        save_to_db: bool = True,
+        assessor: Optional[str] = None,
+        assessor_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         评估供应商风险
@@ -91,25 +96,37 @@ class SupplierRiskAgent:
         # 3. 调用 AI 分析
         try:
             ai_response = await self._call_ai_analysis(prompt)
-            risk_data = self._parse_ai_response(ai_response)
+            parsed = self._parse_ai_response(ai_response)
         except Exception as e:
             logger.error("ai_analysis_failed", error=str(e))
             # 返回默认评估
-            risk_data = self._get_default_assessment()
-        
-        # 4. 保存到数据库
+            parsed = self._get_default_assessment()
+
+        # Normalize result for external contract
+        normalized = self._normalize_risk_result(supplier_id, parsed, parsed.get("overall_score"))
+
+        # 4. 保存到数据库 (save parsed/raw scores)
         if save_to_db:
-            assessment = await self._save_assessment(supplier_id, risk_data)
-            risk_data["assessment_id"] = assessment.id
-        
+            assessment = await self._save_assessment(
+                supplier_id,
+                parsed,
+                assessor=assessor,
+                assessor_id=assessor_id,
+            )
+            normalized["assessment_id"] = assessment.id
+            # ensure risk_level uses stored enum name
+            normalized["risk_level"] = assessment.risk_level.name
+            normalized["overall_score"] = assessment.overall_score
+            normalized["risk_score"] = assessment.overall_score
+
         logger.info(
             "risk_assessment_completed",
             supplier_id=supplier_id,
-            risk_level=risk_data["risk_level"],
-            overall_score=risk_data["overall_score"]
+            risk_level=normalized.get("risk_level"),
+            overall_score=normalized.get("overall_score")
         )
-        
-        return risk_data
+
+        return normalized
     
     async def _gather_supplier_data(self, supplier_id: int) -> Optional[Dict[str, Any]]:
         """
@@ -261,15 +278,17 @@ Provide ONLY the JSON output, no additional text."""
     async def _call_ai_analysis(self, prompt: str) -> str:
         """
         调用 AI 进行分析
-        
+
         Args:
             prompt: AI Prompt
-            
+
         Returns:
-            AI 响应文本
+            AI 响应文本.
         """
-        # MOCK VERSION: 返回模拟 AI 响应 (等待 AI Provider 集成)
-        # TODO: 集成 src.ai.providers.get_provider("openai").chat_completion()
+        # Preserve the existing mock fallback path while allowing a provider
+        # adapter object to supply the underlying analysis output.
+        if hasattr(self, "provider") and self.provider is not None:
+            return await self.provider.analyze(prompt)
         return json.dumps({
             "compliance_score": 75.0,
             "financial_score": 80.0,
@@ -316,6 +335,7 @@ Provide ONLY the JSON output, no additional text."""
             
             # 映射风险等级
             risk_level_map = {
+                "VERY_LOW": RiskLevel.VERY_LOW,
                 "LOW": RiskLevel.LOW,
                 "MEDIUM": RiskLevel.MEDIUM,
                 "HIGH": RiskLevel.HIGH,
@@ -356,7 +376,9 @@ Provide ONLY the JSON output, no additional text."""
     async def _save_assessment(
         self,
         supplier_id: int,
-        risk_data: Dict[str, Any]
+        risk_data: Dict[str, Any],
+        assessor: Optional[str] = None,
+        assessor_id: Optional[int] = None,
     ) -> SupplierRiskAssessment:
         """
         保存风险评估到数据库
@@ -381,6 +403,9 @@ Provide ONLY the JSON output, no additional text."""
             weaknesses=json.dumps(risk_data["weaknesses"], ensure_ascii=False),
             opportunities=json.dumps(risk_data["opportunities"], ensure_ascii=False),
             threats=json.dumps(risk_data["threats"], ensure_ascii=False),
+            recommendations=json.dumps(risk_data.get("recommendations", []), ensure_ascii=False),
+            assessor_id=assessor_id,
+            assessment_method="ai" if assessor else "manual",
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),
         )
@@ -400,6 +425,131 @@ Provide ONLY the JSON output, no additional text."""
         
         return assessment
     
+    def _normalize_risk_result(self, supplier_id: int, parsed: Dict[str, Any], overall_score: Optional[float] = None) -> Dict[str, Any]:
+        """
+        Normalize parsed AI result into the external contract expected by API and tests.
+        Returns a dict with keys: supplier_id, risk_level, risk_score, overall_score, risk_factors, recommendations, assessment_id
+        """
+        # Ensure risk_level is a RiskLevel enum
+        rl = parsed.get("risk_level")
+        if isinstance(rl, RiskLevel):
+            risk_level_enum = rl
+        else:
+            try:
+                # parsed risk_level may be a string like 'LOW' or 'low'
+                risk_level_enum = RiskLevel[rl.upper()]
+            except Exception:
+                risk_level_enum = RiskLevel.MEDIUM
+
+        overall = overall_score if overall_score is not None else parsed.get("overall_score", 50.0)
+
+        risk_factors = {
+            "strengths": parsed.get("strengths", []),
+            "weaknesses": parsed.get("weaknesses", []),
+            "opportunities": parsed.get("opportunities", []),
+            "threats": parsed.get("threats", []),
+        }
+
+        return {
+            "supplier_id": supplier_id,
+            "risk_level": risk_level_enum.name,
+            "risk_score": parsed.get("overall_score", overall),
+            "overall_score": overall,
+            "risk_factors": risk_factors,
+            "recommendations": parsed.get("recommendations", []),
+            "assessment_id": None,
+        }
+
+    async def get_risk_history(
+        self,
+        supplier_id: int,
+        limit: int = 10,
+    ) -> List[SupplierRiskAssessment]:
+        """
+        Return supplier assessment history most-recent-first, keeping the
+        agent API contract consistent with the routes and tests.
+        """
+        stmt = (
+            select(SupplierRiskAssessment)
+            .where(SupplierRiskAssessment.supplier_id == supplier_id)
+            .order_by(desc(SupplierRiskAssessment.created_at))
+            .limit(limit)
+        )
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_risk_distribution(self) -> Dict[str, int]:
+        """
+        Return a latest-per-supplier distribution of assessment risk levels.
+        This keeps the supplier-risk agent contract available for API and UI
+        consumers without forcing a larger architectural rewrite.
+        """
+        stmt = (
+            select(SupplierRiskAssessment)
+            .order_by(desc(SupplierRiskAssessment.created_at))
+        )
+        result = await self.db.execute(stmt)
+        assessments = list(result.scalars().all())
+
+        latest_by_supplier: Dict[int, SupplierRiskAssessment] = {}
+        for assessment in assessments:
+            supplier_id = assessment.supplier_id
+            if supplier_id not in latest_by_supplier:
+                latest_by_supplier[supplier_id] = assessment
+
+        distribution = {
+            "VERY_LOW": 0,
+            "LOW": 0,
+            "MEDIUM": 0,
+            "HIGH": 0,
+            "CRITICAL": 0,
+        }
+
+        for assessment in latest_by_supplier.values():
+            level = assessment.risk_level.name if hasattr(assessment.risk_level, "name") else str(assessment.risk_level)
+            level = level.upper()
+            if level in distribution:
+                distribution[level] += 1
+
+        return distribution
+
+    async def get_high_risk_suppliers(
+        self,
+        limit: int = 10,
+    ) -> List[tuple[Supplier, SupplierRiskAssessment]]:
+        """
+        Return high-risk suppliers as tuples of (Supplier, latest high-risk assessment)
+        deduped by supplier ID and bounded by the requested limit.
+        """
+        stmt = (
+            select(SupplierRiskAssessment)
+            .where(
+                SupplierRiskAssessment.risk_level.in_([
+                    RiskLevel.HIGH,
+                    RiskLevel.CRITICAL,
+                ])
+            )
+            .order_by(desc(SupplierRiskAssessment.created_at))
+        )
+        result = await self.db.execute(stmt)
+        assessments = list(result.scalars().all())
+
+        high_suppliers: List[tuple[Supplier, SupplierRiskAssessment]] = []
+        seen = set()
+        for assessment in assessments:
+            supplier_id = assessment.supplier_id
+            if supplier_id in seen:
+                continue
+            supplier = await self.db.get(Supplier, supplier_id)
+            if supplier is None:
+                continue
+            high_suppliers.append((supplier, assessment))
+            seen.add(supplier_id)
+            if len(high_suppliers) >= limit:
+                break
+
+        return high_suppliers
+
     async def get_latest_assessment(
         self,
         supplier_id: int
@@ -409,7 +559,7 @@ Provide ONLY the JSON output, no additional text."""
         
         Args:
             supplier_id: 供应商 ID
-            
+             
         Returns:
             最新的评估记录，如果不存在返回 None
         """
@@ -479,10 +629,10 @@ Provide ONLY the JSON output, no additional text."""
         knowledge_data = {
             "supplier_id": supplier_id,
             "assessment_id": assessment.id,
-            "risk_level": assessment.risk_level.value,
+            "risk_level": assessment.risk_level.name,
             "overall_score": float(assessment.overall_score),
             "created_at": assessment.created_at.isoformat(),
-            "summary": f"供应商 {supplier_id} 的风险评估：等级 {assessment.risk_level.value}，评分 {assessment.overall_score}",
+            "summary": f"供应商 {supplier_id} 的风险评估：等级 {assessment.risk_level.name}，评分 {assessment.overall_score}",
             "strengths": assessment.strengths,
             "weaknesses": assessment.weaknesses,
             "opportunities": assessment.opportunities,

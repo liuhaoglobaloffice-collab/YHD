@@ -11,6 +11,7 @@ Architecture:
     Database
 """
 
+import json
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 
@@ -573,16 +574,31 @@ async def get_risk_history(
 
     history = await agent.get_risk_history(supplier_id=supplier_id, limit=limit)
 
+    def _risk_factors_from_model(assessment):
+        return {
+            "strengths": json.loads(assessment.strengths or "[]"),
+            "weaknesses": json.loads(assessment.weaknesses or "[]"),
+            "opportunities": json.loads(assessment.opportunities or "[]"),
+            "threats": json.loads(assessment.threats or "[]"),
+        }
+
+    def _recommendations_from_model(assessment):
+        try:
+            return json.loads(assessment.recommendations or "[]")
+        except Exception:
+            return []
+
     return [
         RiskAssessmentResponse(
             id=a.id,
             supplier_id=a.supplier_id,
-            risk_level=a.risk_level.value,
-            risk_score=a.risk_score,
-            risk_factors=a.risk_factors,
+            risk_level=a.risk_level.name,
+            risk_score=a.overall_score,
+            risk_factors=_risk_factors_from_model(a),
             assessment_date=a.assessment_date.isoformat(),
-            assessor=a.assessor,
-            recommendations=a.recommendations,
+            assessor=current_user.username,
+            recommendations=_recommendations_from_model(a),
+            is_active=True,
         )
         for a in history
     ]

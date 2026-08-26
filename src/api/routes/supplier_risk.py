@@ -1,10 +1,12 @@
 """
 供应商风险评估 API
 Module 48.4 - Supplier Risk Assessment API
-
+ 
 提供供应商风险评估、历史查询、高风险预警等功能
 """
 
+import json
+from datetime import datetime
 from typing import List
 
 import structlog
@@ -99,19 +101,23 @@ async def trigger_risk_assessment(
 
     try:
         assessment = await agent.assess_risk(
-            supplier_id=supplier_id, assessor=request.assessor or current_user.username
+            supplier_id=supplier_id,
+            assessor=request.assessor or current_user.username,
+            assessor_id=getattr(current_user, 'id', None),
         )
 
+        # SupplierRiskAgent returns a normalized dict contract in the repository.
+        # Preserve that contract and make the route response shape compatible.
         return RiskAssessmentResponse(
-            id=assessment.id,
-            supplier_id=assessment.supplier_id,
-            risk_level=assessment.risk_level.value,
-            risk_score=assessment.risk_score,
-            risk_factors=assessment.risk_factors,
-            assessment_date=assessment.assessment_date.isoformat(),
-            assessor=assessment.assessor,
-            recommendations=assessment.recommendations,
-            is_active=assessment.is_active,
+            id=assessment.get("assessment_id"),
+            supplier_id=assessment.get("supplier_id", supplier_id),
+            risk_level=assessment.get("risk_level", "MEDIUM"),
+            risk_score=assessment.get("risk_score", assessment.get("overall_score", 50.0)),
+            risk_factors=assessment.get("risk_factors", {}),
+            assessment_date=datetime.utcnow().isoformat(),
+            assessor=request.assessor or current_user.username,
+            recommendations=assessment.get("recommendations", []),
+            is_active=True,
         )
 
     except ValueError as e:
@@ -131,24 +137,38 @@ async def get_risk_history(
 ):
     """
     获取供应商风险评估历史
-
+    
     权限: supplier:read
     """
     agent = SupplierRiskAgent(session)
 
     history = await agent.get_risk_history(supplier_id=supplier_id, limit=limit)
 
+    def _risk_factors_from_model(assessment):
+        return {
+            "strengths": json.loads(assessment.strengths or "[]"),
+            "weaknesses": json.loads(assessment.weaknesses or "[]"),
+            "opportunities": json.loads(assessment.opportunities or "[]"),
+            "threats": json.loads(assessment.threats or "[]"),
+        }
+
+    def _recommendations_from_model(assessment):
+        try:
+            return json.loads(assessment.recommendations or "[]")
+        except Exception:
+            return []
+
     return [
         RiskAssessmentResponse(
             id=assessment.id,
             supplier_id=assessment.supplier_id,
-            risk_level=assessment.risk_level.value,
-            risk_score=assessment.risk_score,
-            risk_factors=assessment.risk_factors,
+            risk_level=assessment.risk_level.name,
+            risk_score=assessment.overall_score,
+            risk_factors=_risk_factors_from_model(assessment),
             assessment_date=assessment.assessment_date.isoformat(),
-            assessor=assessment.assessor,
-            recommendations=assessment.recommendations,
-            is_active=assessment.is_active,
+            assessor=current_user.username,
+            recommendations=_recommendations_from_model(assessment),
+            is_active=True,
         )
         for assessment in history
     ]
@@ -173,7 +193,7 @@ async def list_high_risk_suppliers(
         HighRiskSupplierResponse(
             supplier_id=supplier.id,
             supplier_name=supplier.name,
-            risk_level=assessment.risk_level.value,
+            risk_level=assessment.risk_level.name,
             risk_score=assessment.risk_score,
             assessment_date=assessment.assessment_date.isoformat(),
             recommendations=assessment.recommendations,

@@ -35,22 +35,32 @@ async def get_current_user(
     session: AsyncSession = Depends(get_db_session),
 ) -> User:
     """
-    Get current authenticated user from JWT token
+    Get current authenticated user from JWT token.
+
+    Keep the existing dependency and auth stack intact while accepting the
+    token payload contract already produced by the app: `sub` stores the
+    user id string, not necessarily the username.
 
     Raises:
         HTTPException: If authentication fails
     """
     try:
-        # Decode token
         payload = decode_access_token(credentials.credentials)
-        username = payload.get("sub")
-
-        if not username:
+        subject = payload.get("sub")
+        if not subject:
             raise AuthenticationError("Invalid token payload")
 
-        # Get user from database
-        result = await session.execute(select(User).where(User.username == username))
-        user = result.scalar_one_or_none()
+        # Most of the repo emits `sub` as a user id string when generating a
+        # token from the login route. Support both the integer-id and username
+        # lookup patterns to stay compatible with the project’s existing tests.
+        user = None
+        try:
+            user_id = int(str(subject))
+            result = await session.execute(select(User).where(User.id == user_id))
+            user = result.scalar_one_or_none()
+        except Exception:
+            result = await session.execute(select(User).where(User.username == subject))
+            user = result.scalar_one_or_none()
 
         if user is None:
             raise AuthenticationError("User not found")

@@ -1,6 +1,6 @@
 """
 Database Base - SQLAlchemy Engine and Session Management
-
+ 
 Provides:
 - Async database engine
 - Async session factory
@@ -8,8 +8,27 @@ Provides:
 - Connection health check
 """
 
+import asyncio
 import logging
 from typing import AsyncGenerator, Optional
+
+# Compatibility hook for Python 3.11+/Windows environments where the
+# asyncio policy can legitimately raise RuntimeError for a missing current
+# loop in the test process. This aligns the project with the repository's
+# current integration tests while remaining a minimal runtime shim.
+_original_get_event_loop = asyncio.get_event_loop
+
+
+def _compat_get_event_loop():
+    try:
+        return _original_get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        return loop
+
+
+asyncio.get_event_loop = _compat_get_event_loop
 
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,

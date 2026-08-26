@@ -51,6 +51,7 @@ class BusinessType(str, Enum):
 class RiskLevel(str, Enum):
     """风险等级"""
 
+    VERY_LOW = "very_low"  # 很低风险
     LOW = "low"  # 低风险
     MEDIUM = "medium"  # 中等风险
     HIGH = "high"  # 高风险

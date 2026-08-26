@@ -77,6 +77,19 @@ async def register(
     return user
 
 
+@router.post("/token", response_model=TokenResponse)
+async def token_endpoint(
+    login_data: LoginRequest,
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Minimal compatibility alias requested by the Phase 1 test contract.
+
+    Produces the same response shape as /auth/login while preserving the
+    current route object and authentication pipeline.
+    """
+    return await login(login_data, session)
+
+
 @router.post("/login", response_model=TokenResponse)
 async def login(
     login_data: LoginRequest,

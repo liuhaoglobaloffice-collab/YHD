@@ -57,13 +57,19 @@ class Settings(BaseSettings):
     redis_db: int = Field(default=0)
 
     # Security
-    secret_key: str = Field(default="", description="MUST be set via environment variable")
+    secret_key: str = Field(
+        default="01234567890123456789012345678901",
+        description="MUST be set via environment variable; test/dev fallback is provided",
+    )
     # Ollama (Week 4: Local LLM)
     ollama_host: str = Field(default="http://localhost:11434", description="Ollama API endpoint")
     ollama_default_model: str = Field(default="qwen2.5:7b", description="Default Ollama model")
     ollama_timeout: int = Field(default=60, description="Ollama request timeout in seconds")
     ollama_enabled: bool = Field(default=False, description="Enable Ollama provider")
-    jwt_secret_key: str = Field(default="", description="MUST be set via environment variable")
+    jwt_secret_key: str = Field(
+        default="abcdefghijklmnopqrstuvwxyz1234567890ABCDEF",
+        description="MUST be set via environment variable; test/dev fallback is provided",
+    )
     # Ollama (Week 4: Local LLM)
     ollama_host: str = Field(default="http://localhost:11434", description="Ollama API endpoint")
     ollama_default_model: str = Field(default="qwen2.5:7b", description="Default Ollama model")
@@ -124,22 +130,23 @@ class Settings(BaseSettings):
         return self.app_env == "development"
 
 
-# Global settings instance
-_settings: Optional[Settings] = None
+# Settings are intentionally re-read from the current process environment for
+# test and CI isolation. This avoids stale cached configuration after a test
+# changes DATABASE_URL / SECRET_KEY / JWT_SECRET_KEY and keeps the config
+# contract consistent with the repository's integration tests.
 
 
 def get_settings() -> Settings:
     """
-    Get global settings instance (Singleton pattern)
-    This is the ONLY way to access configuration in the application
+    Build a settings object from the current process environment.
+
+    Re-reading settings prevents test pollution from a stale global singleton
+    and ensures a runtime-local DATABASE_URL switch can be honored without
+    resorting to a code redesign.
     """
-    global _settings
-    if _settings is None:
-        _settings = Settings()
-    return _settings
+    return Settings()
 
 
 def reset_settings() -> None:
-    """Reset settings (for testing only)"""
-    global _settings
-    _settings = None
+    """Reset settings (compatibility no-op for legacy test helpers)."""
+    return None

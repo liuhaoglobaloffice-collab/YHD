@@ -31,3 +31,11 @@ jobs:
           METRICS_PERSIST: '1'
         run: |
           pytest -q tests/integration/test_metrics_persist.py
+
+      - name: Run full test suite
+        env:
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+          JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          pytest -q

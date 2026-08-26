@@ -4,7 +4,7 @@ Task lifecycle management
 """
 
 from typing import Any, Dict, List, Optional, Set
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -154,6 +154,97 @@ class TaskService:
         )
 
         return task
+
+    async def create_task_from_assessment(self, assessment: Dict[str, Any], actor: Optional[Any] = None) -> Task:
+        """
+        Create a task from a normalized supplier risk assessment dict.
+
+        This method intentionally bypasses the external permission checks required by
+        create_task (which expects an authenticated User) so that internal automation
+        (e.g., risk pipeline) can create tasks. It still records an audit log; user_id
+        will be None when actor is not provided.
+        """
+        # Validate minimal contract
+        assessment_id = assessment.get("assessment_id")
+        if not assessment_id:
+            raise ValueError("assessment_id is required to create a task from assessment")
+
+        # Build payload
+        from src.business.supplier.task_adapter import build_task_payload_from_assessment
+
+        payload = build_task_payload_from_assessment(
+            assessment, created_by=(getattr(actor, "username", "system") if actor else "system")
+        )
+
+        # Map priority tokens (P0/P1/P2) to TaskPriority
+        priority_map = {
+            "P0": TaskPriority.CRITICAL,
+            "P1": TaskPriority.HIGH,
+            "P2": TaskPriority.MEDIUM,
+        }
+        priority_token = payload.get("priority", "P1")
+        priority = priority_map.get(priority_token, TaskPriority.MEDIUM)
+
+        # Map task_type string to TaskType if possible
+        task_type_str = payload.get("task_type", "other")
+        try:
+            task_type = TaskType(task_type_str)
+        except Exception:
+            task_type = TaskType.OTHER
+
+        title = payload.get("title", "Task from assessment")
+        description = payload.get("description", "")
+
+        # metadata must include assessment_reference
+        metadata = payload.get("reference", {})
+        # Wrap under explicit key to follow other code expectations
+        metadata_wrapped = {"assessment_reference": metadata}
+
+        # Creator id if actor provided and has id attribute; otherwise use a deterministic
+        # placeholder UUID so the underlying TaskModel constraint is satisfied.
+        creator_id = getattr(actor, "id", None) if actor else None
+        if creator_id is None:
+            creator_id = UUID("00000000-0000-0000-0000-000000000000")
+
+        # Construct Task dataclass and persist via repository
+        task = Task(
+            title=title,
+            description=description,
+            task_type=task_type,
+            priority=priority,
+            assigned_to=[],
+            creator_id=creator_id,
+            metadata=metadata_wrapped,
+            tags=[],
+        )
+
+        model = task_to_model(task)
+        saved_model = await self.repo.create(model)
+        created_task = model_to_task(saved_model)
+
+        # Audit - log as TASK_CREATED (fallback to CREATE if TASK_CREATED not present)
+        action = getattr(AuditAction, 'TASK_CREATED', AuditAction.CREATE)
+        await self.audit_service.log(
+            self.session,
+            action=action,
+            resource_type="task",
+            status="success",
+            user_id=creator_id,
+            resource_id=str(created_task.id),
+            details={"title": created_task.title, "reference": metadata},
+        )
+
+        # Publish event
+        self.event_bus.publish(
+            Event(
+                name="task.created",
+                data={"task_id": str(created_task.id), "title": created_task.title},
+            )
+        )
+
+        logger.info("task_created_from_assessment", task_id=created_task.id, assessment_id=assessment_id)
+
+        return created_task
 
     async def get_task(self, task_id: UUID, user: User) -> Task:
         """

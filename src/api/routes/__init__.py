@@ -16,9 +16,11 @@ from src.api.routes import (
     jarvis,  # Jarvis Voice Interaction
     permissions,
     rag,  # Week 4 - RAG System
+    ready,  # readiness endpoint
     roles,
     # knowledge,  # TODO: Fix initialization in Stage 4
     supplier,  # Module 48 - Supplier Intelligence
+    supplier_risk,  # Risk assessment route module for supplier flow
     tasks,
     users,
     workflows,
@@ -30,6 +32,7 @@ api_router = APIRouter(prefix="/api/v1")
 
 # Include route modules
 api_router.include_router(health.router)
+api_router.include_router(ready.router)
 api_router.include_router(auth.router)
 api_router.include_router(users.router)
 api_router.include_router(roles.router)
@@ -43,6 +46,7 @@ api_router.include_router(workflows.router)
 api_router.include_router(workforce.router)  # Stage 6
 api_router.include_router(business.router)  # Stage 7
 api_router.include_router(supplier.router)  # Module 48 - Supplier Intelligence
+api_router.include_router(supplier_risk.router)  # Supplier risk assessment route hookup
 api_router.include_router(ceo.router)  # Stage 8
 api_router.include_router(ai_brain.router)  # Phase 3.1 - AI Brain Core
 api_router.include_router(jarvis.router)  # Jarvis Voice Interaction
