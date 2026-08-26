@@ -15,6 +15,7 @@ from .security import SecurityAuditConsole
 from .models import ModelCenter
 from .metrics import MetricDashboard
 from .onboarding import OnboardingWizard, DemoFlow
+from .governance import GovernanceCenter
 
 __all__ = [
     "FutureConsole",
@@ -33,4 +34,5 @@ __all__ = [
     "MetricDashboard",
     "OnboardingWizard",
     "DemoFlow",
+    "GovernanceCenter",
 ]
