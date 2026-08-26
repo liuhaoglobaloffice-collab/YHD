@@ -36,6 +36,8 @@ from .embedding import EmbeddingService, EmbeddingPipeline
 from .vector_store import InMemoryVectorStore, VectorRecord
 from .retriever import Retriever
 from .rag_pipeline import RAGPipeline
+from .security import KnowledgeSecurityPolicy, KnowledgeSecurityEvent, validate_user_access
+from .pii import detect_pii
 
 __all__ = [
     "DocumentMetadata",
@@ -53,6 +55,10 @@ __all__ = [
     "VectorRecord",
     "Retriever",
     "RAGPipeline",
+    "KnowledgeSecurityPolicy",
+    "KnowledgeSecurityEvent",
+    "validate_user_access",
+    "detect_pii",
     "SearchQuery",
     "SearchResult",
     "RetrievalService",
