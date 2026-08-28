@@ -121,6 +121,9 @@ class WorkflowExecution:
     completed_steps: List[str] = field(default_factory=list)
     failed_steps: List[str] = field(default_factory=list)
 
+    # Execution result (final output of the workflow)
+    result: Optional[Dict[str, Any]] = None
+
     # Execution variables (shared context between steps)
     variables: Dict[str, Any] = field(default_factory=dict)
 

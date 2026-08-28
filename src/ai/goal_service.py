@@ -148,8 +148,23 @@ class GoalService:
         from uuid import UUID
         wf_uuid = UUID(workflow_id)
 
-        # 创建 WorkflowExecutor 并执行
-        executor = WorkflowExecutor(session=self.session)
+        # 创建 WorkflowExecutor 并执行，注入 TaskExecutor 确保任务真实执行
+        from src.identity.rbac import RBACService
+        from src.tasks.executor import TaskExecutor
+        from src.tasks.service import TaskService
+        from src.workflow.service import WorkflowService
+
+        task_service = TaskService(self.session)
+        task_executor = TaskExecutor(task_service=task_service)
+        rbac_service = RBACService(self.session)
+        workflow_service = WorkflowService(self.session, rbac_service=rbac_service)
+        executor = WorkflowExecutor(
+            session=self.session,
+            workflow_service=workflow_service,
+            task_service=task_service,
+            task_executor=task_executor,
+            rbac_service=rbac_service,
+        )
         execution = await executor.execute_workflow(
             workflow_id=wf_uuid,
             user=user,

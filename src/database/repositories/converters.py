@@ -144,7 +144,7 @@ def workflow_execution_to_model(execution: WorkflowExecution) -> WorkflowExecuti
     return WorkflowExecutionModel(
         id=str(execution.execution_id),
         workflow_id=str(execution.workflow_id),
-        user_id=str(execution.user_id),
+        user_id=str(execution.started_by) if execution.started_by else None,
         status=execution.status.value,
         variables=execution.variables,
         result=execution.result,
@@ -157,10 +157,18 @@ def workflow_execution_to_model(execution: WorkflowExecution) -> WorkflowExecuti
 
 def model_to_workflow_execution(model: WorkflowExecutionModel) -> WorkflowExecution:
     """Convert WorkflowExecutionModel to WorkflowExecution dataclass"""
+    # user_id may be a UUID string or an integer ID; handle both
+    started_by = None
+    if model.user_id:
+        try:
+            started_by = UUID(model.user_id)
+        except ValueError:
+            # Not a valid UUID, store as string (e.g. integer user ID)
+            started_by = model.user_id  # type: ignore[assignment]
     return WorkflowExecution(
         execution_id=UUID(model.id),
         workflow_id=UUID(model.workflow_id),
-        user_id=UUID(model.user_id),
+        started_by=started_by,
         status=WorkflowExecutionStatus(model.status),
         variables=model.variables or {},
         result=model.result,

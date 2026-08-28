@@ -18,9 +18,12 @@ from src.ai.recovery import FailureCategory, RecoveryChain, StrategyAction
 from src.ai.recovery_executor import RecoveryExecutor
 from src.core.di import get_dependency
 from src.core.events import Event, EventBus
+from src.database.repositories.converters import workflow_execution_to_model
+from src.database.repositories.workflow import WorkflowExecutionRepository
 from src.identity.audit import AuditAction, AuditService
 from src.identity.models import User
 from src.identity.rbac import Permission, RBACService
+from src.tasks.executor import TaskExecutor
 from src.tasks.models import TaskPriority, TaskType
 from src.tasks.service import TaskService
 from src.workflow.models import (
@@ -61,6 +64,7 @@ class WorkflowExecutor:
         self,
         workflow_service: Optional[WorkflowService] = None,
         task_service: Optional[TaskService] = None,
+        task_executor: Optional[TaskExecutor] = None,
         rbac_service: Optional[RBACService] = None,
         audit_service: Optional[AuditService] = None,
         event_bus: Optional[EventBus] = None,
@@ -68,10 +72,12 @@ class WorkflowExecutor:
     ):
         self.workflow_service = workflow_service or get_dependency(WorkflowService)
         self.task_service = task_service or get_dependency(TaskService)
+        self.task_executor = task_executor
         self.rbac = rbac_service or get_dependency(RBACService)
         self.audit = audit_service or get_dependency(AuditService)
         self.event_bus = event_bus or get_dependency(EventBus)
         self.session = session
+        self._execution_repo = WorkflowExecutionRepository(session) if session else None
 
         # 失败恢复链（仅在注入 session 时可用）
         self._recovery = RecoveryChain(session) if session else None
@@ -84,6 +90,31 @@ class WorkflowExecutor:
         self._retry_counts: Dict[str, int] = {}
 
         logger.info("workflow_executor_initialized")
+
+    async def _persist_execution(self, execution: WorkflowExecution) -> None:
+        """Persist WorkflowExecution state to database."""
+        if not self._execution_repo:
+            return
+
+        exists = await self._execution_repo.exists(str(execution.execution_id))
+        if exists:
+            await self._execution_repo.update(
+                str(execution.execution_id),
+                {
+                    "status": execution.status.value,
+                    "variables": execution.variables,
+                    "result": execution.result,
+                    "error": execution.error,
+                    "meta": execution.metadata,
+                    "started_at": execution.started_at,
+                    "completed_at": execution.completed_at,
+                },
+            )
+        else:
+            model = workflow_execution_to_model(execution)
+            await self._execution_repo.create(model)
+
+        await self.session.commit()
 
     async def execute_workflow(
         self,
@@ -111,6 +142,7 @@ class WorkflowExecutor:
         # Check permission
         if not await self.rbac.check_permission_by_id(user.id, Permission.WORKFLOW_EXECUTE):
             await self.audit.log(
+                session=self.session,
                 action=AuditAction.WORKFLOW_EXECUTE,
                 user_id=user.id,
                 resource_type="workflow",
@@ -135,8 +167,12 @@ class WorkflowExecutor:
 
         self._executions[execution.execution_id] = execution
 
+        # Persist PENDING status
+        await self._persist_execution(execution)
+
         # Audit
         await self.audit.log(
+            session=self.session,
             action=AuditAction.WORKFLOW_EXECUTE,
             user_id=user.id,
             resource_type="workflow",
@@ -150,7 +186,7 @@ class WorkflowExecutor:
 
         # Emit event
         if self.event_bus:
-            await self.event_bus.publish(
+            self.event_bus.publish(
                 Event(
                     name="workflow.execution.started",
                     data={
@@ -166,6 +202,9 @@ class WorkflowExecutor:
             execution.status = WorkflowExecutionStatus.RUNNING
             execution.started_at = datetime.now(UTC)
 
+            # Persist RUNNING status
+            await self._persist_execution(execution)
+
             results = []
             for step in workflow.steps:
                 step_result = await self._execute_step(step, execution, user)
@@ -175,8 +214,12 @@ class WorkflowExecutor:
             execution.completed_at = datetime.now(UTC)
             execution.result = {"results": results}
 
+            # Persist COMPLETED status
+            await self._persist_execution(execution)
+
             # Audit success
             await self.audit.log(
+                session=self.session,
                 action=AuditAction.WORKFLOW_EXECUTE,
                 user_id=user.id,
                 resource_type="workflow",
@@ -192,7 +235,7 @@ class WorkflowExecutor:
 
             # Emit event
             if self.event_bus:
-                await self.event_bus.publish(
+                self.event_bus.publish(
                     Event(
                         name="workflow.execution.completed",
                         data={
@@ -208,6 +251,9 @@ class WorkflowExecutor:
             execution.status = WorkflowExecutionStatus.FAILED
             execution.completed_at = datetime.now(UTC)
             execution.error = error_msg
+
+            # Persist initial FAILED status
+            await self._persist_execution(execution)
 
             # Step 1: 记录失败到恢复链
             recovery_strategy = None
@@ -250,6 +296,9 @@ class WorkflowExecutor:
                             execution.status = WorkflowExecutionStatus.RUNNING
                             execution.error = None
                             execution.completed_at = None
+
+                            # Persist retry RUNNING status
+                            await self._persist_execution(execution)
                             try:
                                 results = []
                                 for step in workflow.steps:
@@ -262,6 +311,8 @@ class WorkflowExecutor:
                                     "recovered": True,
                                     "retry_attempt": retry_count,
                                 }
+                                # Persist retry COMPLETED status
+                                await self._persist_execution(execution)
                                 # 记录成功恢复经验
                                 await self._recovery.record_lesson(
                                     record.id,
@@ -272,6 +323,8 @@ class WorkflowExecutor:
                                 execution.status = WorkflowExecutionStatus.FAILED
                                 execution.completed_at = datetime.now(UTC)
                                 execution.error = str(retry_e)
+                                # Persist retry FAILED status
+                                await self._persist_execution(execution)
                                 await self._recovery.record_lesson(
                                     record.id,
                                     f"RecoveryExecutor retry failed: {retry_e}",
@@ -283,6 +336,7 @@ class WorkflowExecutor:
 
             # Audit failure
             await self.audit.log(
+                session=self.session,
                 action=AuditAction.WORKFLOW_EXECUTE,
                 user_id=user.id,
                 resource_type="workflow",
@@ -298,7 +352,7 @@ class WorkflowExecutor:
             # Emit event
             if self.event_bus:
                 event_name = "workflow.execution.recovered" if execution.status == WorkflowExecutionStatus.COMPLETED else "workflow.execution.failed"
-                await self.event_bus.publish(
+                self.event_bus.publish(
                     Event(
                         name=event_name,
                         data={
@@ -335,7 +389,11 @@ class WorkflowExecutor:
 
         execution.status = WorkflowExecutionStatus.PAUSED
 
+        # Persist PAUSED status
+        await self._persist_execution(execution)
+
         await self.audit.log(
+            session=self.session,
             action=AuditAction.WORKFLOW_EXECUTE,
             user_id=user.id,
             resource_type="workflow_execution",
@@ -345,7 +403,7 @@ class WorkflowExecutor:
         )
 
         if self.event_bus:
-            await self.event_bus.publish(
+            self.event_bus.publish(
                 Event(
                     name="workflow.execution.paused",
                     data={
@@ -369,7 +427,11 @@ class WorkflowExecutor:
 
         execution.status = WorkflowExecutionStatus.RUNNING
 
+        # Persist RUNNING status
+        await self._persist_execution(execution)
+
         await self.audit.log(
+            session=self.session,
             action=AuditAction.WORKFLOW_EXECUTE,
             user_id=user.id,
             resource_type="workflow_execution",
@@ -379,7 +441,7 @@ class WorkflowExecutor:
         )
 
         if self.event_bus:
-            await self.event_bus.publish(
+            self.event_bus.publish(
                 Event(
                     name="workflow.execution.resumed",
                     data={
@@ -408,7 +470,11 @@ class WorkflowExecutor:
         execution.status = WorkflowExecutionStatus.CANCELLED
         execution.completed_at = datetime.now(UTC)
 
+        # Persist CANCELLED status
+        await self._persist_execution(execution)
+
         await self.audit.log(
+            session=self.session,
             action=AuditAction.WORKFLOW_EXECUTE,
             user_id=user.id,
             resource_type="workflow_execution",
@@ -418,7 +484,7 @@ class WorkflowExecutor:
         )
 
         if self.event_bus:
-            await self.event_bus.publish(
+            self.event_bus.publish(
                 Event(
                     name="workflow.execution.cancelled",
                     data={
@@ -525,6 +591,39 @@ class WorkflowExecutor:
             task_id=str(task.id),
             execution_id=str(execution.execution_id),
         )
+
+        # Execute the task via TaskExecutor if available
+        if self.task_executor:
+            try:
+                result = await self.task_executor.execute_task(task.id, user)
+                logger.info(
+                    "task_step_executed",
+                    step_id=step.step_id,
+                    task_id=str(task.id),
+                    execution_id=str(execution.execution_id),
+                    success=result.success,
+                )
+                # If the task executor returned a failure, propagate to fail the workflow
+                if not result.success:
+                    error_msg = result.error or "Task execution returned failure"
+                    raise RuntimeError(error_msg)
+                return {
+                    "task_id": str(task.id),
+                    "status": result.metadata.get("task_status", "completed"),
+                    "result": result.output,
+                    "error": result.error,
+                }
+            except Exception as e:
+                error_msg = str(e)
+                logger.error(
+                    "task_step_execution_failed",
+                    step_id=step.step_id,
+                    task_id=str(task.id),
+                    execution_id=str(execution.execution_id),
+                    error=error_msg,
+                )
+                # Re-raise so the workflow execution catches this and sets FAILED status
+                raise
 
         return {"task_id": str(task.id), "status": task.status.value}
 
