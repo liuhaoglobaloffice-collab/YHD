@@ -21,6 +21,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...ai.agents import AgentType
@@ -35,6 +36,7 @@ from ...core.errors import (
     ResourceNotFoundError,
     ValidationError,
 )
+from ...database.models import AiCostRecordModel, BusinessTaskModel
 from ...identity.audit import AuditAction, AuditService
 from ...identity.models import User
 from ...workforce.employee import AIEmployeeService
@@ -393,14 +395,33 @@ async def get_employee_performance(
                 status_code=status.HTTP_404_NOT_FOUND, detail=f"Employee {employee_id} not found"
             )
 
-        # TODO: Implement actual performance tracking
+        # Query BusinessTaskModel for real task statistics
+        stmt = select(BusinessTaskModel).where(
+            BusinessTaskModel.assigned_employee_id == str(employee_id)
+        )
+        rows = list((await employee_service.registry.session.execute(stmt)).scalars().all())
+
+        tasks_completed = sum(1 for r in rows if r.status == "completed")
+        tasks_failed = sum(1 for r in rows if r.status == "failed")
+        total = tasks_completed + tasks_failed
+        success_rate = tasks_completed / total if total > 0 else 0.0
+
+        # Calculate execution time from completed tasks
+        total_execution_time = 0.0
+        for r in rows:
+            if r.status == "completed" and r.completed_at and r.created_at:
+                delta = (r.completed_at - r.created_at).total_seconds()
+                total_execution_time += delta
+
+        average_execution_time = total_execution_time / tasks_completed if tasks_completed > 0 else 0.0
+
         return PerformanceResponse(
             employee_id=str(employee_id),
-            tasks_completed=0,
-            tasks_failed=0,
-            success_rate=0.0,
-            total_execution_time=0.0,
-            average_execution_time=0.0,
+            tasks_completed=tasks_completed,
+            tasks_failed=tasks_failed,
+            success_rate=round(success_rate, 2),
+            total_execution_time=round(total_execution_time, 2),
+            average_execution_time=round(average_execution_time, 2),
         )
 
     except PermissionDeniedError as e:
@@ -432,12 +453,25 @@ async def get_employee_cost(
                 status_code=status.HTTP_404_NOT_FOUND, detail=f"Employee {employee_id} not found"
             )
 
-        # TODO: Implement actual cost tracking
+        # Query AiCostRecordModel for real cost data
+        stmt = select(
+            func.count(AiCostRecordModel.id),
+            func.coalesce(func.sum(AiCostRecordModel.cost_usd), 0),
+            func.coalesce(func.sum(AiCostRecordModel.total_tokens), 0),
+        ).where(AiCostRecordModel.employee_id == str(employee_id))
+
+        result = await employee_service.registry.session.execute(stmt)
+        row = result.one()
+
+        api_calls = row[0]
+        total_cost = float(row[1])
+        total_tokens = row[2] if row[2] else 0
+
         return CostResponse(
             employee_id=str(employee_id),
-            total_cost_usd=0.0,
-            api_calls=0,
-            tokens_used=0,
+            total_cost_usd=round(total_cost, 6),
+            api_calls=api_calls,
+            tokens_used=total_tokens,
         )
 
     except PermissionDeniedError as e:

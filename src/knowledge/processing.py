@@ -277,19 +277,68 @@ class DocumentProcessor:
             return content.decode("utf-8")
 
         elif file_type == "application/pdf":
-            # TODO: Use PyPDF2 or pdfplumber
-            # For now, return placeholder
-            return f"[PDF Content - {len(content)} bytes]\n\nPDF parsing requires PyPDF2 library."
+            try:
+                import io
+
+                from pypdf import PdfReader
+
+                reader = PdfReader(io.BytesIO(content))
+                pages = []
+                for i, page in enumerate(reader.pages):
+                    text = page.extract_text()
+                    if text and text.strip():
+                        pages.append(f"--- Page {i + 1} ---\n{text.strip()}")
+                result = "\n\n".join(pages)
+                if not result.strip():
+                    result = f"[PDF Content - {len(content)} bytes, no extractable text]"
+                return result
+            except Exception as e:
+                return f"[PDF Parse Error: {e}]"
 
         elif file_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-            # TODO: Use python-docx
-            return f"[DOCX Content - {len(content)} bytes]\n\nDOCX parsing requires python-docx library."
+            try:
+                import io
+
+                from docx import Document
+
+                doc = Document(io.BytesIO(content))
+                paragraphs = []
+                for para in doc.paragraphs:
+                    if para.text.strip():
+                        paragraphs.append(para.text.strip())
+                # Also extract tables
+                for table in doc.tables:
+                    for row in table.rows:
+                        cells = [cell.text.strip() for cell in row.cells if cell.text.strip()]
+                        if cells:
+                            paragraphs.append(" | ".join(cells))
+                return "\n\n".join(paragraphs) if paragraphs else "[DOCX Content - no text found]"
+            except Exception as e:
+                return f"[DOCX Parse Error: {e}]"
 
         elif file_type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
-            # TODO: Use openpyxl
-            return (
-                f"[XLSX Content - {len(content)} bytes]\n\nXLSX parsing requires openpyxl library."
-            )
+            try:
+                import io
+
+                from openpyxl import load_workbook
+
+                wb = load_workbook(io.BytesIO(content), data_only=True, read_only=True)
+                sheets = []
+                for sheet_name in wb.sheetnames:
+                    ws = wb[sheet_name]
+                    rows = []
+                    for row in ws.iter_rows(values_only=True):
+                        cells = [str(c) if c is not None else "" for c in row]
+                        line = "\t".join(cells).strip()
+                        if line:
+                            rows.append(line)
+                    if rows:
+                        sheets.append(f"--- Sheet: {sheet_name} ---")
+                        sheets.extend(rows)
+                wb.close()
+                return "\n".join(sheets) if sheets else "[XLSX Content - no data found]"
+            except Exception as e:
+                return f"[XLSX Parse Error: {e}]"
 
         else:
             return f"[Unsupported file type: {file_type}]"

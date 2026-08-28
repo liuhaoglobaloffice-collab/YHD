@@ -459,6 +459,7 @@ class AIBrain:
         self.audit = audit_service or get_dependency(AuditService)
 
         # Initialize AI Brain components
+        self._commands: Dict[UUID, "CEOCommand"] = {}
         self.command_processor = CEOCommandProcessor()
         self.planner = IntelligentPlanner()
         self.agent_router = AgentRouter(session)
@@ -522,6 +523,7 @@ class AIBrain:
             priority=priority or CommandPriority.NORMAL,
             status=CommandStatus.PENDING,
         )
+        self._commands[command.command_id] = command
 
         try:
             # Step 1: Parse command
@@ -631,17 +633,96 @@ class AIBrain:
         if not await self.rbac.check_permission_by_id(user.id, Permission.AI_BRAIN_PLAN_READ):
             raise PermissionError("User lacks AI_BRAIN_PLAN_READ permission")
 
-        # Phase 3.1: Return placeholder
-        # Future: Query from database
-        logger.warning(f"get_command_status not fully implemented: {command_id}")
+        command = self._commands.get(command_id)
+        return command
 
-        from .models import CEOCommand, CommandPriority, CommandStatus
+    async def list_commands(
+        self,
+        user_id: UUID,
+        status_filter: Optional["CommandStatus"] = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> List["CEOCommand"]:
+        """
+        List CEO commands with optional status filter.
 
-        return CEOCommand(
-            command_id=command_id,
-            command_text="",
-            user_id=user.id,
-            goal="Status query not implemented",
-            priority=CommandPriority.NORMAL,
-            status=CommandStatus.PENDING,
-        )
+        Args:
+            user_id: User ID for filtering
+            status_filter: Optional status filter
+            limit: Maximum results
+            offset: Pagination offset
+
+        Returns:
+            List of CEOCommand
+        """
+        from .models import CommandStatus
+
+        commands = list(self._commands.values())
+
+        # Filter by user_id
+        commands = [c for c in commands if c.user_id == user_id]
+
+        # Filter by status
+        if status_filter:
+            if isinstance(status_filter, str):
+                status_filter = CommandStatus(status_filter)
+            commands = [c for c in commands if c.status == status_filter]
+
+        # Sort by created_at descending
+        commands.sort(key=lambda c: c.created_at, reverse=True)
+
+        # Apply pagination
+        return commands[offset : offset + limit]
+
+    async def cancel_command(
+        self,
+        command_id: UUID,
+        user_id: UUID,
+    ) -> bool:
+        """
+        Cancel a pending or planning command.
+
+        Args:
+            command_id: Command ID to cancel
+            user_id: User ID requesting cancellation
+
+        Returns:
+            True if cancelled, False if not found or already executing
+        """
+        from .models import CommandStatus
+
+        command = self._commands.get(command_id)
+        if not command:
+            return False
+
+        # Only pending/planning commands can be cancelled
+        if command.status not in (CommandStatus.PENDING, CommandStatus.PLANNING):
+            return False
+
+        command.status = CommandStatus.CANCELLED
+        command.completed_at = datetime.now(UTC)
+        return True
+
+    async def get_commands_count(
+        self,
+        user_id: UUID,
+        status_filter: Optional["CommandStatus"] = None,
+    ) -> int:
+        """
+        Get total count of commands matching filter.
+
+        Args:
+            user_id: User ID for filtering
+            status_filter: Optional status filter
+
+        Returns:
+            Total count
+        """
+        from .models import CommandStatus
+
+        commands = [c for c in self._commands.values() if c.user_id == user_id]
+        if status_filter:
+            if isinstance(status_filter, str):
+                status_filter = CommandStatus(status_filter)
+            commands = [c for c in commands if c.status == status_filter]
+        return len(commands)

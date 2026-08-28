@@ -293,7 +293,10 @@ async def list_commands(
             offset=offset,
         )
 
-        total = len(commands)  # TODO: Add total count query
+        total = await brain.get_commands_count(
+            user_id=user.id,
+            status_filter=status_filter,
+        )
 
         command_responses = [
             CommandStatusResponse(
@@ -354,7 +357,7 @@ async def cancel_command(
         audit_service = AuditService(session)
         await audit_service.log(
             user_id=user.id,
-            action=AuditAction.AI_BRAIN_COMMAND_CREATED,  # TODO: Add CANCELLED action
+            action=AuditAction.AI_BRAIN_COMMAND_CANCELLED,
             resource_type="ai_brain_command",
             resource_id=str(command_id),
             details={"action": "cancelled"},
