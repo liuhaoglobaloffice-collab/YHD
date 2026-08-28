@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
+from uuid import UUID
 
 from ..core.errors import PermissionDeniedError, ValidationError
 from ..identity.audit import AuditAction, AuditService
@@ -246,9 +247,44 @@ class KnowledgeRetrievalService:
         query: KnowledgeQuery,
     ) -> List[KnowledgeResult]:
         """Search documents"""
-        # TODO: Implement document search using DocumentRepository
-        # For now, return empty
-        return []
+        from ..database.repositories.knowledge import DocumentRepository
+
+        repo = DocumentRepository(self.session)
+
+        # Search documents by title or content
+        models = await repo.search_full_text(query.query, limit=100)
+
+        results = []
+        query_lower = query.query.lower()
+
+        for model in models:
+            # Keyword matching in title and content
+            title = model.title or model.filename or ""
+            content = model.content or ""
+            title_match = query_lower in title.lower()
+            content_match = query_lower in content.lower()
+
+            if title_match or content_match:
+                score = 0.9 if title_match else 0.5
+
+                results.append(
+                    KnowledgeResult(
+                        source=KnowledgeSource.DOCUMENT,
+                        id=str(model.id),
+                        title=title,
+                        content=content[:500] if content else "",
+                        score=score,
+                        metadata={
+                            "file_type": model.file_type,
+                            "tags": model.tags,
+                            "summary": model.summary,
+                        },
+                        created_at=model.created_at,
+                        created_by=str(model.created_by),
+                    )
+                )
+
+        return results
 
     async def _search_memories(
         self,
@@ -351,8 +387,95 @@ class KnowledgeRetrievalService:
         query: KnowledgeQuery,
     ) -> List[KnowledgeResult]:
         """Search facts"""
-        # TODO: Implement when FactRepository is created
-        return []
+        from ..database.repositories.knowledge import CompanyBrainEntityRepository
+        from ..database.repositories.knowledge import CompanyBrainFactRepository
+
+        facts_repo = CompanyBrainFactRepository(self.session)
+        entities_repo = CompanyBrainEntityRepository(self.session)
+
+        query_lower = query.query.lower()
+
+        # Strategy 1: Search entities by name, then get facts for matching entities
+        entities = await entities_repo.search_by_name(query.query, limit=50)
+        seen_fact_ids = set()
+        results = []
+
+        for entity in entities:
+            facts = await facts_repo.list_by_entity(str(entity.id), active_only=True)
+
+            for fact in facts:
+                if fact.id in seen_fact_ids:
+                    continue
+                seen_fact_ids.add(fact.id)
+
+                if (query_lower in fact.attribute.lower() or
+                    query_lower in str(fact.value).lower()):
+                    score = min(fact.priority / 100.0 + 0.1, 0.95)
+
+                    results.append(
+                        KnowledgeResult(
+                            source=KnowledgeSource.FACT,
+                            id=str(fact.id),
+                            title=f"{entity.name}: {fact.attribute}",
+                            content=str(fact.value),
+                            score=score,
+                            metadata={
+                                "entity_id": str(entity.id),
+                                "entity_name": entity.name,
+                                "attribute": fact.attribute,
+                                "priority": fact.priority,
+                                "confidence": fact.confidence,
+                                "source": fact.source,
+                            },
+                            created_at=fact.created_at,
+                            created_by=str(entity.created_by),
+                        )
+                    )
+
+        # Strategy 2: Also search all active facts directly by attribute/value
+        # This catches cases where the query matches fact content but not entity name
+        all_facts = await facts_repo.list_all(limit=200)
+        for fact in all_facts:
+            if not fact.is_active:
+                continue
+            if fact.id in seen_fact_ids:
+                continue
+
+            if (query_lower in fact.attribute.lower() or
+                query_lower in str(fact.value).lower()):
+                seen_fact_ids.add(fact.id)
+
+                # Look up the entity name if we can
+                entity_name = None
+                try:
+                    entity = await entities_repo.get_by_id(UUID(fact.entity_id))
+                    entity_name = entity.name if entity else None
+                except Exception:
+                    pass
+
+                score = min(fact.priority / 100.0 + 0.1, 0.95)
+                prefix = f"{entity_name}: " if entity_name else ""
+                results.append(
+                    KnowledgeResult(
+                        source=KnowledgeSource.FACT,
+                        id=str(fact.id),
+                        title=f"{prefix}{fact.attribute}",
+                        content=str(fact.value),
+                        score=score,
+                        metadata={
+                            "entity_id": fact.entity_id,
+                            "entity_name": entity_name,
+                            "attribute": fact.attribute,
+                            "priority": fact.priority,
+                            "confidence": fact.confidence,
+                            "source": fact.source,
+                        },
+                        created_at=fact.created_at,
+                        created_by=fact.created_by,
+                    )
+                )
+
+        return results
 
     async def build_context(
         self,
