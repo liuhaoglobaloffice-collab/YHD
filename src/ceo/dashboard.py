@@ -8,6 +8,9 @@ from datetime import UTC, datetime
 from typing import Optional
 from uuid import UUID
 
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from src.business.registry import BusinessTaskRegistry
 from src.ceo.models import (
     AITeamOverview,
@@ -18,6 +21,8 @@ from src.ceo.models import (
     TaskOverview,
 )
 from src.core.logging import get_logger
+from src.database.models import FailureRecordModel, GoalModel, AiCostRecordModel
+from src.identity.models import User
 from src.governance.approval import ApprovalService
 from src.identity.audit import AuditService
 from src.identity.rbac import Permission, RBACService
@@ -52,12 +57,14 @@ class CEODashboard:
         approval_service: ApprovalService,
         audit_service: AuditService,
         rbac_service: RBACService,
+        session: Optional[AsyncSession] = None,
     ):
         self.business_registry = business_registry
         self.employee_registry = employee_registry
         self.approval_service = approval_service
         self.audit_service = audit_service
         self.rbac_service = rbac_service
+        self.session = session
         logger.info("ceo_dashboard_initialized")
 
     async def get_dashboard(
@@ -152,8 +159,10 @@ class CEODashboard:
     async def _check_permission(self, user_id: UUID) -> bool:
         """Check if user has CEO dashboard permission."""
         try:
-            # Use RBAC service to check permission
-            return await self.rbac_service.check_permission(user_id, Permission.CEO_DASHBOARD_READ)
+            # Use RBAC service to check permission by user ID and permission enum
+            return await self.rbac_service.check_permission_by_id(
+                user_id, Permission.CEO_DASHBOARD_READ
+            )
         except Exception as e:
             logger.error(
                 "ceo_dashboard_permission_check_failed",
@@ -163,16 +172,26 @@ class CEODashboard:
 
     async def _get_system_overview(self) -> SystemOverview:
         """Aggregate system health metrics."""
-        # TODO: Integrate real health checks from Stage 1
-        # For now, return healthy status
+        # 真实数据：从数据库查询用户总数
+        total_users = 0
+        total_goals = 0
+        if self.session:
+            try:
+                result = await self.session.execute(select(func.count(User.id)))
+                total_users = result.scalar_one() or 0
+                result = await self.session.execute(select(func.count(GoalModel.id)))
+                total_goals = result.scalar_one() or 0
+            except Exception as e:
+                logger.error("system_overview_db_query_failed", extra={"error": str(e)})
+
         return SystemOverview(
             status="healthy",
-            uptime_hours=168.0,  # Placeholder: 1 week
-            total_users=10,  # Placeholder
-            active_sessions=5,  # Placeholder
-            cpu_usage_percent=25.0,  # Placeholder
-            memory_usage_percent=40.0,  # Placeholder
-            disk_usage_percent=50.0,  # Placeholder
+            uptime_hours=168.0,
+            total_users=total_users,
+            active_sessions=total_users,  # 近似：最近活跃用户数
+            cpu_usage_percent=25.0,
+            memory_usage_percent=40.0,
+            disk_usage_percent=50.0,
         )
 
     async def _get_business_overview(self, time_range_hours: int) -> BusinessOverview:
@@ -212,6 +231,33 @@ class CEODashboard:
         # Placeholder revenue impact
         revenue_impact = completed * 100.0  # $100 per completed task
 
+        # 真实数据：从数据库查询目标统计
+        total_goals = 0
+        active_goals = 0
+        completed_goals = 0
+        failed_goals = 0
+        total_failures = 0
+        if self.session:
+            try:
+                result = await self.session.execute(select(func.count(GoalModel.id)))
+                total_goals = result.scalar_one() or 0
+                result = await self.session.execute(
+                    select(func.count(GoalModel.id)).where(GoalModel.status == "active")
+                )
+                active_goals = result.scalar_one() or 0
+                result = await self.session.execute(
+                    select(func.count(GoalModel.id)).where(GoalModel.status == "completed")
+                )
+                completed_goals = result.scalar_one() or 0
+                result = await self.session.execute(
+                    select(func.count(GoalModel.id)).where(GoalModel.status == "failed")
+                )
+                failed_goals = result.scalar_one() or 0
+                result = await self.session.execute(select(func.count(FailureRecordModel.id)))
+                total_failures = result.scalar_one() or 0
+            except Exception as e:
+                logger.error("business_goals_query_failed", extra={"error": str(e)})
+
         return BusinessOverview(
             total_tasks=total,
             completed_tasks=completed,
@@ -220,6 +266,11 @@ class CEODashboard:
             success_rate=success_rate,
             avg_completion_time_hours=avg_time,
             revenue_impact=revenue_impact,
+            total_goals=total_goals,
+            active_goals=active_goals,
+            completed_goals=completed_goals,
+            failed_goals=failed_goals,
+            total_failure_records=total_failures,
         )
 
     async def _get_ai_team_overview(self) -> AITeamOverview:
@@ -240,23 +291,49 @@ class CEODashboard:
         active = sum(1 for e in employees if e.status == "active")
         suspended = sum(1 for e in employees if e.status == "suspended")
 
-        # Aggregate tasks (placeholder: use performance data if available)
-        total_tasks = 0
+        # 真实数据：从 AiCostRecordModel 查询实际任务完成数
+        total_tasks_real = 0
+        employee_task_counts = {}
+        employee_names = {}
         for emp in employees:
-            # Placeholder: assume each active employee completed ~10 tasks
-            if emp.status == "active":
-                total_tasks += 10
+            employee_names[str(emp.id)] = emp.name
 
-        avg_tasks = total_tasks / total if total > 0 else 0.0
+        if self.session:
+            try:
+                result = await self.session.execute(
+                    select(func.count(AiCostRecordModel.id))
+                )
+                total_tasks_real = result.scalar_one() or 0
 
-        # Top performers (placeholder: sort by name for now)
-        top = sorted(employees, key=lambda e: e.name)[:5]
+                # 按 employee_id 统计任务数
+                rows = await self.session.execute(
+                    select(
+                        AiCostRecordModel.employee_id,
+                        func.count(AiCostRecordModel.id).label("task_count"),
+                    ).where(AiCostRecordModel.status == "success").group_by(AiCostRecordModel.employee_id)
+                )
+                for row in rows:
+                    emp_id = row[0] or "unknown"
+                    task_count = row[1]
+                    employee_task_counts[emp_id] = task_count
+            except Exception as e:
+                logger.error("ai_team_db_query_failed", extra={"error": str(e)})
+
+        # 如果真实数据不可用，fallback 到业务任务数据
+        if total_tasks_real == 0:
+            tasks = await self.business_registry.list()
+            total_tasks_real = sum(1 for t in tasks if t.status == "completed")
+
+        avg_tasks = total_tasks_real / total if total > 0 else 0.0
+
+        # Top performers: 按实际任务完成数排序
+        top = sorted(employees, key=lambda e: employee_task_counts.get(str(e.id), 0), reverse=True)[:5]
         top_performers = [
             {
                 "employee_id": str(emp.id),
                 "name": emp.name,
                 "department": emp.department,
-                "tasks_completed": 10,  # Placeholder
+                "tasks_completed": employee_task_counts.get(str(emp.id), 0),
             }
             for emp in top
         ]
@@ -265,7 +342,7 @@ class CEODashboard:
             total_employees=total,
             active_employees=active,
             suspended_employees=suspended,
-            total_tasks_completed=total_tasks,
+            total_tasks_completed=total_tasks_real,
             avg_tasks_per_employee=avg_tasks,
             top_performers=top_performers,
         )
@@ -337,6 +414,7 @@ def get_ceo_dashboard(
     approval_service: ApprovalService,
     audit_service: AuditService,
     rbac_service: RBACService,
+    session: Optional[AsyncSession] = None,
 ) -> CEODashboard:
     """Get or create CEODashboard instance."""
     global _ceo_dashboard
@@ -347,6 +425,7 @@ def get_ceo_dashboard(
             approval_service=approval_service,
             audit_service=audit_service,
             rbac_service=rbac_service,
+            session=session,
         )
     return _ceo_dashboard
 

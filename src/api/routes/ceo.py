@@ -57,6 +57,7 @@ def get_dashboard_service(
         approval_service=approval_service,
         audit_service=audit_service,
         rbac_service=rbac_service,
+        session=session,
     )
 
 

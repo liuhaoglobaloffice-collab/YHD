@@ -64,7 +64,7 @@ class UpdateTaskStatusRequest(BaseModel):
 class AssignTaskRequest(BaseModel):
     """Assign task request."""
 
-    agent_ids: List[str] = Field(..., min_items=1)
+    agent_ids: List[str] = Field(..., min_length=1)
 
 
 class CompleteTaskRequest(BaseModel):

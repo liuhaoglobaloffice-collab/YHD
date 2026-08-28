@@ -42,6 +42,7 @@ Usage in API:
 from typing import AsyncGenerator
 
 import structlog
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from src.database.base import Base, get_database_url
@@ -162,6 +163,37 @@ async def init_database():
     engine = get_engine()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # SQLite 轻量迁移：create_all 不更新已有表，手动补齐新增列
+        if engine.dialect.name == "sqlite":
+            migrations = {
+                "users": {
+                    "approval_status": "VARCHAR(20)",
+                    "ai_budget_monthly": "FLOAT",
+                },
+                "leads": {
+                    "quote_amount": "FLOAT",
+                    "won_amount": "FLOAT",
+                    "expected_close_at": "DATETIME",
+                    "lost_reason": "VARCHAR(500)",
+                },
+                "business_tasks": {
+                    "owner_user_id": "INTEGER",
+                    "created_by": "INTEGER",
+                },
+            }
+            for table, columns in migrations.items():
+                cols = [
+                    r[1]
+                    for r in (
+                        await conn.execute(text(f"PRAGMA table_info({table})"))
+                    ).fetchall()
+                ]
+                for col, coltype in columns.items():
+                    if col not in cols:
+                        await conn.execute(
+                            text(f"ALTER TABLE {table} ADD COLUMN {col} {coltype}")
+                        )
+                        logger.info("migration_add_column", table=table, column=col)
     logger.info("database_tables_created")
 
 

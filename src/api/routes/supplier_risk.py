@@ -6,7 +6,7 @@ Module 48.4 - Supplier Risk Assessment API
 """
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import List
 
 import structlog
@@ -56,8 +56,7 @@ class RiskAssessmentResponse(BaseModel):
     recommendations: List[str]
     is_active: bool
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 
 class HighRiskSupplierResponse(BaseModel):
@@ -114,7 +113,7 @@ async def trigger_risk_assessment(
             risk_level=assessment.get("risk_level", "MEDIUM"),
             risk_score=assessment.get("risk_score", assessment.get("overall_score", 50.0)),
             risk_factors=assessment.get("risk_factors", {}),
-            assessment_date=datetime.utcnow().isoformat(),
+            assessment_date=datetime.now(UTC).isoformat(),
             assessor=request.assessor or current_user.username,
             recommendations=assessment.get("recommendations", []),
             is_active=True,

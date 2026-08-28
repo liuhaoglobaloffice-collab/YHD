@@ -48,6 +48,8 @@ tmp/
 temp/
 *.tmp
 *.swp
+*.zip
+*.tsbuildinfo
 
 # Coverage
 coverage/
@@ -58,3 +60,5 @@ coverage/
 # OS
 .DS_Store
 Thumbs.db
+
+*storybook.log

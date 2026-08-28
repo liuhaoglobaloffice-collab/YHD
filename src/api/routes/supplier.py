@@ -13,7 +13,7 @@ Architecture:
 
 import json
 from typing import List, Optional, Dict, Any
-from datetime import datetime
+from datetime import UTC, datetime
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -28,6 +28,7 @@ from src.business.supplier.models import SupplierStatus, BusinessType
 from src.business.supplier.risk_agent import SupplierRiskAgent
 from src.identity.audit import AuditAction, AuditService
 from src.identity.models import User
+from src.identity.visibility import DataScopeFilter
 
 logger = structlog.get_logger(__name__)
 
@@ -101,8 +102,7 @@ class SupplierResponse(BaseModel):
     created_at: str
     updated_at: str
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 
 class SupplierListResponse(BaseModel):
@@ -134,8 +134,7 @@ class RiskAssessmentResponse(BaseModel):
     recommendations: List[str]
     is_active: bool
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 
 class ContactResponse(BaseModel):
@@ -148,8 +147,7 @@ class ContactResponse(BaseModel):
     phone: Optional[str]
     is_primary: bool
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 
 # ==================== API Endpoints ====================
@@ -245,24 +243,36 @@ async def list_suppliers(
     查询供应商列表
 
     需要权限: supplier:read
+    数据范围：根据当前用户的 data_scope 过滤
     """
-    crud = SupplierCRUD(session)
-    suppliers = await crud.list_suppliers(
-        status=status, business_type=business_type, skip=skip, limit=limit
-    )
-
-    # 获取总数
-    from sqlalchemy import select, func
     from src.business.supplier.models import Supplier
-    
-    query = select(func.count()).select_from(Supplier)
+    from sqlalchemy import select, func as sa_func
+
+    # 应用数据范围过滤
+    filter_ = DataScopeFilter(current_user)
+
+    # 构建查询
+    query = select(Supplier).select_from(Supplier)
+    query = filter_.apply_to_query(query, Supplier, owner_field="created_by", user_id_field="created_by")
+
     if status:
         query = query.where(Supplier.status == status)
     if business_type:
         query = query.where(Supplier.business_type == business_type)
-    
+    query = query.offset(skip).limit(limit)
+
     result = await session.execute(query)
-    total = result.scalar_one()
+    suppliers = list(result.scalars().all())
+
+    # 获取总数（同样应用数据范围过滤）
+    count_query = select(sa_func.count()).select_from(Supplier)
+    count_query = filter_.apply_to_query(count_query, Supplier, owner_field="created_by", user_id_field="created_by")
+    if status:
+        count_query = count_query.where(Supplier.status == status)
+    if business_type:
+        count_query = count_query.where(Supplier.business_type == business_type)
+    count_result = await session.execute(count_query)
+    total = count_result.scalar_one()
 
     items = [
         SupplierResponse(
@@ -308,10 +318,13 @@ async def search_suppliers(
     简单搜索供应商（按名称）
     
     需要权限: supplier:read
+    数据范围：根据当前用户的 data_scope 过滤
     """
     from sqlalchemy import select, or_
     from src.business.supplier.models import Supplier
     
+    filter_ = DataScopeFilter(current_user)
+
     # 模糊搜索名称或法定名称
     stmt = select(Supplier).where(
         or_(
@@ -319,6 +332,9 @@ async def search_suppliers(
             Supplier.legal_name.ilike(f"%{query}%")
         )
     ).limit(100)
+
+    # 应用数据范围过滤
+    stmt = filter_.apply_to_query(stmt, Supplier, owner_field="created_by", user_id_field="created_by")
     
     result = await session.execute(stmt)
     suppliers = result.scalars().all()
@@ -397,7 +413,8 @@ async def advanced_search_suppliers(
         sort_by=sort_by,
         sort_order=sort_order,
         page=page,
-        page_size=page_size
+        page_size=page_size,
+        user=current_user,
     )
     
     return result
@@ -650,7 +667,7 @@ async def export_suppliers(
     file_content = await exporter.export_suppliers(filters=filters if filters else None, file_type=file_type)
     
     # 返回文件
-    filename = f"suppliers_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.{'xlsx' if file_type == 'excel' else 'csv'}"
+    filename = f"suppliers_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}.{'xlsx' if file_type == 'excel' else 'csv'}"
     media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" if file_type == "excel" else "text/csv"
     
     return StreamingResponse(
@@ -726,7 +743,7 @@ async def add_certificate(
     from src.business.supplier.models import SupplierCertificate
     from sqlalchemy import select
     from src.business.supplier.models import Supplier
-    from datetime import datetime
+    from datetime import UTC, datetime
     
     # 验证供应商存在
     result = await session.execute(select(Supplier).where(Supplier.id == supplier_id))

@@ -19,6 +19,7 @@ from uuid import UUID
 import structlog
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.dependencies import get_current_user
@@ -32,7 +33,7 @@ from src.business.models import (
 )
 from src.business.service import BusinessService
 from src.identity.audit import AuditAction, AuditService
-from src.identity.models import User
+from src.identity.models import AccountType, User
 
 logger = structlog.get_logger(__name__)
 
@@ -49,6 +50,9 @@ class CreateBusinessTaskRequest(BaseModel):
     priority: BusinessTaskPriority = BusinessTaskPriority.MEDIUM
     context: Optional[dict] = None
     tags: Optional[List[str]] = None
+    owner_user_id: Optional[int] = Field(
+        None, description="仅主账号可为名下子账号代建（V4），缺省归属创建者本人"
+    )
 
 
 class UpdateBusinessTaskRequest(BaseModel):
@@ -73,6 +77,21 @@ async def create_task(
 
     Phase 2F-2.5: Uses factory dependency for service instantiation.
     """
+    # V4: 主账号可为名下子账号代建任务，缺省归属创建者本人
+    owner_id = request.owner_user_id
+    if owner_id is not None:
+        if current_user.account_type != AccountType.OWNER and not current_user.is_superuser:
+            raise HTTPException(status_code=403, detail="只有主账号可以为子账号代建任务")
+        target = await session.execute(
+            select(User).where(
+                User.id == owner_id,
+                User.account_type == AccountType.SUB,
+                User.parent_user_id == current_user.id,
+            )
+        )
+        if not target.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="只能为你的子账号代建任务")
+
     task = await business_service.create_task(
         user_id=current_user.id,
         domain=request.domain,
@@ -81,6 +100,7 @@ async def create_task(
         priority=request.priority,
         context=request.context,
         tags=request.tags,
+        owner_user_id=request.owner_user_id,
     )
 
     # Audit: Business task created
@@ -95,6 +115,7 @@ async def create_task(
             "domain": request.domain.value,
             "title": request.title,
             "priority": request.priority.value,
+            "owner_user_id": request.owner_user_id,
         },
     )
 
@@ -116,12 +137,17 @@ async def list_tasks(
 
     Phase 2F-2.5: Uses factory dependency for service instantiation.
     """
+    # V4 可见性：子账号只看自己的任务；主账号/管理员看全部
+    is_owner = current_user.account_type == AccountType.OWNER or current_user.is_superuser
+    owner_filter = None if is_owner else current_user.id
+
     tasks = await business_service.list_tasks(
         user_id=current_user.id,
         domain=domain,
         status=status,
         priority=priority,
         assigned_employee_id=assigned_employee_id,
+        owner_user_id=owner_filter,
     )
     return [task.to_dict() for task in tasks]
 

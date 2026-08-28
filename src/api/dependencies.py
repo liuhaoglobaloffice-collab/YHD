@@ -145,11 +145,13 @@ _cost_tracker = None
 _business_service = None
 
 
-def get_employee_registry() -> AIEmployeeRegistry:
+def get_employee_registry(
+    session: AsyncSession = Depends(get_db_session),
+) -> AIEmployeeRegistry:
     """Get AI Employee Registry singleton."""
     global _employee_registry
     if _employee_registry is None:
-        _employee_registry = AIEmployeeRegistry()
+        _employee_registry = AIEmployeeRegistry(session)
     return _employee_registry
 
 

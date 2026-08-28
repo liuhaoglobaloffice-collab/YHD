@@ -39,7 +39,7 @@ from src.knowledge.processing import DocumentProcessor
 from src.knowledge.retrieval import RetrievalService
 from src.knowledge.rag_pipeline import RAGPipeline
 from src.knowledge.retriever import Retriever
-from src.knowledge.vector_store import InMemoryVectorStore
+from src.knowledge.vector_store import InMemoryVectorStore, SQLiteVectorStore
 
 logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/knowledge", tags=["knowledge"])
@@ -141,117 +141,6 @@ class MemoryResponse(BaseModel):
     created_at: str
 
 
-class KnowledgeSearchRequest(BaseModel):
-    """Knowledge search request (Phase 4 Module 2)"""
-
-    query: str = Field(..., min_length=1, max_length=500)
-    sources: list[str] = Field(default=["all"])
-    strategy: str = Field(default="hybrid")
-    entity_type: Optional[str] = None
-    memory_type: Optional[str] = None
-    limit: int = Field(default=10, ge=1, le=50)
-    offset: int = Field(default=0, ge=0)
-
-
-class KnowledgeSearchResponse(BaseModel):
-    """Knowledge search response"""
-
-    results: list[Dict[str, Any]]
-    total: int
-    sources_searched: list[str]
-
-
-class KnowledgeContextRequest(BaseModel):
-    """Knowledge context request for AI Brain"""
-
-    task: str = Field(..., min_length=1, max_length=1000)
-    max_items: int = Field(default=10, ge=1, le=20)
-
-
-class KnowledgeContextResponse(BaseModel):
-    """Knowledge context response"""
-
-    task: str
-    results: list[Dict[str, Any]]
-    total_sources: int
-    query_time: float
-    summary: str
-
-
-class KnowledgeSearchRequest(BaseModel):
-    """Knowledge search request (Phase 4 Module 2)"""
-
-    query: str = Field(..., min_length=1, max_length=500)
-    sources: list[str] = Field(default=["all"])
-    strategy: str = Field(default="hybrid")
-    entity_type: Optional[str] = None
-    memory_type: Optional[str] = None
-    limit: int = Field(default=10, ge=1, le=50)
-    offset: int = Field(default=0, ge=0)
-
-
-class KnowledgeSearchResponse(BaseModel):
-    """Knowledge search response"""
-
-    results: list[Dict[str, Any]]
-    total: int
-    sources_searched: list[str]
-
-
-class KnowledgeContextRequest(BaseModel):
-    """Knowledge context request for AI Brain"""
-
-    task: str = Field(..., min_length=1, max_length=1000)
-    max_items: int = Field(default=10, ge=1, le=20)
-
-
-class KnowledgeContextResponse(BaseModel):
-    """Knowledge context response"""
-
-    task: str
-    results: list[Dict[str, Any]]
-    total_sources: int
-    query_time: float
-    summary: str
-
-
-class KnowledgeSearchRequest(BaseModel):
-    """Knowledge search request (Phase 4 Module 2)"""
-
-    query: str = Field(..., min_length=1, max_length=500)
-    sources: list[str] = Field(default=["all"])
-    strategy: str = Field(default="hybrid")
-    entity_type: Optional[str] = None
-    memory_type: Optional[str] = None
-    limit: int = Field(default=10, ge=1, le=50)
-    offset: int = Field(default=0, ge=0)
-
-
-class KnowledgeSearchResponse(BaseModel):
-    """Knowledge search response"""
-
-    results: list[Dict[str, Any]]
-    total: int
-    sources_searched: list[str]
-
-
-class KnowledgeContextRequest(BaseModel):
-    """Knowledge context request for AI Brain"""
-
-    task: str = Field(..., min_length=1, max_length=1000)
-    max_items: int = Field(default=10, ge=1, le=20)
-
-
-class KnowledgeContextResponse(BaseModel):
-    """Knowledge context response"""
-
-    task: str
-    results: list[Dict[str, Any]]
-    total_sources: int
-    query_time: float
-    summary: str
-
-
 class RAGSearchRequest(BaseModel):
     """Minimal RAG search request for Phase 2.3."""
 
@@ -276,10 +165,86 @@ class RAGStructuredResponse(BaseModel):
     metadata: Dict[str, Any]
 
 
+# Phase 4 Module 2: Knowledge Retrieval models
+
+
+class KnowledgeSearchRequest(BaseModel):
+    """Knowledge search request"""
+
+    query: str = Field(..., min_length=1, max_length=500)
+    sources: List[str] = Field(default_factory=lambda: ["documents", "memory"])
+    strategy: str = "hybrid"
+    entity_type: Optional[str] = None
+    memory_type: Optional[str] = None
+    limit: int = Field(default=10, ge=1, le=100)
+    offset: int = Field(default=0, ge=0)
+
+
+class KnowledgeSearchResult(BaseModel):
+    """A single knowledge search result."""
+
+    source: str
+    content: str
+    score: float
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"source": self.source, "content": self.content, "score": self.score, "metadata": self.metadata}
+
+
+class KnowledgeSearchResponse(BaseModel):
+    """Knowledge search response"""
+
+    results: List[KnowledgeSearchResult]
+    total: int
+    sources_searched: List[str]
+
+
+class KnowledgeContextRequest(BaseModel):
+    """Knowledge context request"""
+
+    task: str = Field(..., min_length=1, max_length=500)
+    max_items: int = Field(default=5, ge=1, le=20)
+
+
+class KnowledgeContextResult(BaseModel):
+    """A single context result."""
+
+    source: str
+    content: str
+    score: float
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"source": self.source, "content": self.content, "score": self.score, "metadata": self.metadata}
+
+
+class KnowledgeContext(BaseModel):
+    """Knowledge context"""
+
+    task: str
+    results: List[KnowledgeContextResult]
+    total_sources: int
+    query_time: float
+
+    def get_summary(self) -> str:
+        return f"Found {self.total_sources} sources for task '{self.task}' in {self.query_time:.2f}s"
+
+
+class KnowledgeContextResponse(BaseModel):
+    """Knowledge context response"""
+
+    task: str
+    results: List[KnowledgeContextResult]
+    total_sources: int
+    query_time: float
+    summary: str
+
+
 # Phase 4: Services now use dependency injection via factories
-# processor and retrieval_service remain global as they don't need DB
+# processor is lightweight; retrieval_service is lazily created via factory
 processor = DocumentProcessor()
-retrieval_service = RetrievalService()
+retrieval_service = None  # Initialized lazily via get_knowledge_retrieval dependency
 
 
 # Phase 2.3 RAG lightweight endpoints
@@ -293,7 +258,7 @@ async def knowledge_search_route(
 ):
     """Vector search adapter endpoint for the Phase 2.3 RAG interface."""
 
-    store = InMemoryVectorStore()
+    store = SQLiteVectorStore()
     retriever = Retriever(store, provider_name="mock")
     hits = await retriever.search(request.query, limit=request.limit)
     return {
@@ -313,198 +278,10 @@ async def knowledge_query_route(
 ):
     """RAG query endpoint that returns the requested output shape."""
 
-    store = InMemoryVectorStore()
+    store = SQLiteVectorStore()
     pipeline = RAGPipeline(store, provider_name="mock")
     result = await pipeline.query(request.query, limit=request.limit)
     return result
-
-
-# Phase 4 Module 2: Knowledge Retrieval endpoints
-
-
-@router.post("/retrieval/search", response_model=KnowledgeSearchResponse)
-async def search_knowledge(
-    request: KnowledgeSearchRequest,
-    current_user: User = Depends(get_current_user),
-    retrieval_service: KnowledgeRetrievalService = Depends(get_knowledge_retrieval),
-    _: None = Depends(require_permission("knowledge", "read")),
-):
-    """
-    Unified knowledge search across all sources.
-
-    Phase 4 Module 2: Multi-source knowledge retrieval.
-
-    Requires: KNOWLEDGE_READ permission
-    """
-    try:
-        # Convert request to KnowledgeQuery
-        query = KnowledgeQuery(
-            query=request.query,
-            sources=[KnowledgeSource(s) for s in request.sources],
-            strategy=SearchStrategy(request.strategy),
-            entity_type=request.entity_type,
-            memory_type=request.memory_type,
-            limit=request.limit,
-            offset=request.offset,
-        )
-
-        # Execute search
-        results = await retrieval_service.search(current_user, query)
-
-        logger.info(
-            "knowledge_search_executed",
-            query=request.query,
-            sources=request.sources,
-            result_count=len(results),
-            user_id=current_user.id,
-        )
-
-        return KnowledgeSearchResponse(
-            results=[r.to_dict() for r in results],
-            total=len(results),
-            sources_searched=request.sources,
-        )
-
-    except Exception as e:
-        logger.error("knowledge_search_failed", error=str(e), user_id=current_user.id)
-        raise HTTPException(status_code=500, detail=f"Knowledge search failed: {str(e)}")
-
-
-@router.post("/retrieval/context", response_model=KnowledgeContextResponse)
-async def build_knowledge_context(
-    request: KnowledgeContextRequest,
-    current_user: User = Depends(get_current_user),
-    retrieval_service: KnowledgeRetrievalService = Depends(get_knowledge_retrieval),
-    _: None = Depends(require_permission("knowledge", "read")),
-):
-    """
-    Build knowledge context for AI Brain task execution.
-
-    Phase 4 Module 2: Context builder for AI task planning.
-
-    Requires: KNOWLEDGE_READ permission
-    """
-    try:
-        # Build context
-        context = await retrieval_service.build_context(
-            user=current_user,
-            task=request.task,
-            max_items=request.max_items,
-        )
-
-        logger.info(
-            "knowledge_context_built",
-            task=request.task,
-            total_sources=context.total_sources,
-            query_time=context.query_time,
-            user_id=current_user.id,
-        )
-
-        return KnowledgeContextResponse(
-            task=context.task,
-            results=[r.to_dict() for r in context.results],
-            total_sources=context.total_sources,
-            query_time=context.query_time,
-            summary=context.get_summary(),
-        )
-
-    except Exception as e:
-        logger.error("knowledge_context_build_failed", error=str(e), user_id=current_user.id)
-        raise HTTPException(status_code=500, detail=f"Context build failed: {str(e)}")
-
-
-# Phase 4 Module 2: Knowledge Retrieval endpoints
-
-
-@router.post("/retrieval/search", response_model=KnowledgeSearchResponse)
-async def search_knowledge(
-    request: KnowledgeSearchRequest,
-    current_user: User = Depends(get_current_user),
-    retrieval_service: KnowledgeRetrievalService = Depends(get_knowledge_retrieval),
-    _: None = Depends(require_permission("knowledge", "read")),
-):
-    """
-    Unified knowledge search across all sources.
-
-    Phase 4 Module 2: Multi-source knowledge retrieval.
-
-    Requires: KNOWLEDGE_READ permission
-    """
-    try:
-        # Convert request to KnowledgeQuery
-        query = KnowledgeQuery(
-            query=request.query,
-            sources=[KnowledgeSource(s) for s in request.sources],
-            strategy=SearchStrategy(request.strategy),
-            entity_type=request.entity_type,
-            memory_type=request.memory_type,
-            limit=request.limit,
-            offset=request.offset,
-        )
-
-        # Execute search
-        results = await retrieval_service.search(current_user, query)
-
-        logger.info(
-            "knowledge_search_executed",
-            query=request.query,
-            sources=request.sources,
-            result_count=len(results),
-            user_id=current_user.id,
-        )
-
-        return KnowledgeSearchResponse(
-            results=[r.to_dict() for r in results],
-            total=len(results),
-            sources_searched=request.sources,
-        )
-
-    except Exception as e:
-        logger.error("knowledge_search_failed", error=str(e), user_id=current_user.id)
-        raise HTTPException(status_code=500, detail=f"Knowledge search failed: {str(e)}")
-
-
-@router.post("/retrieval/context", response_model=KnowledgeContextResponse)
-async def build_knowledge_context(
-    request: KnowledgeContextRequest,
-    current_user: User = Depends(get_current_user),
-    retrieval_service: KnowledgeRetrievalService = Depends(get_knowledge_retrieval),
-    _: None = Depends(require_permission("knowledge", "read")),
-):
-    """
-    Build knowledge context for AI Brain task execution.
-
-    Phase 4 Module 2: Context builder for AI task planning.
-
-    Requires: KNOWLEDGE_READ permission
-    """
-    try:
-        # Build context
-        context = await retrieval_service.build_context(
-            user=current_user,
-            task=request.task,
-            max_items=request.max_items,
-        )
-
-        logger.info(
-            "knowledge_context_built",
-            task=request.task,
-            total_sources=context.total_sources,
-            query_time=context.query_time,
-            user_id=current_user.id,
-        )
-
-        return KnowledgeContextResponse(
-            task=context.task,
-            results=[r.to_dict() for r in context.results],
-            total_sources=context.total_sources,
-            query_time=context.query_time,
-            summary=context.get_summary(),
-        )
-
-    except Exception as e:
-        logger.error("knowledge_context_build_failed", error=str(e), user_id=current_user.id)
-        raise HTTPException(status_code=500, detail=f"Context build failed: {str(e)}")
 
 
 # Phase 4 Module 2: Knowledge Retrieval endpoints
@@ -717,7 +494,7 @@ async def list_documents(
         raise HTTPException(status_code=500, detail=f"List failed: {str(e)}")
 
 
-@router.post("/search", response_model=SearchResponse)
+@router.post("/documents/search", response_model=SearchResponse)
 async def search_documents(
     request: SearchRequest,
     session: AsyncSession = Depends(get_db),

@@ -12,7 +12,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 
 from ...identity.models import User
-from ...jarvis import JarvisService
+from ...jarvis import JarvisService, TTSBackend
 from ...jarvis.wake_word import WakeWordConfig
 from ..dependencies import get_current_user
 
@@ -52,7 +52,10 @@ class JarvisConfigResponse(BaseModel):
 
     wake_words: list[str]
     asr_language: Optional[str]
+    tts_backend: str
     tts_voice: str
+    current_language: str
+    auto_detect: bool
 
 
 # ============================================================
@@ -136,5 +139,8 @@ async def get_jarvis_config(jarvis: JarvisService = Depends(get_jarvis_service))
     return JarvisConfigResponse(
         wake_words=jarvis.wake_word_detector.config.wake_words,
         asr_language=jarvis.speech_recognizer.language,
+        tts_backend=jarvis.tts.backend_type.value,
         tts_voice=jarvis.tts.voice,
+        current_language=jarvis._current_language,
+        auto_detect=jarvis.enable_auto_detect,
     )

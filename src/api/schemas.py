@@ -7,7 +7,7 @@ from typing import Optional
 
 from pydantic import BaseModel, EmailStr, Field
 
-from src.identity.models import ApprovalStatus, RiskLevel, RoleEnum
+from src.identity.models import ApprovalStatus, BusinessRole, RiskLevel, RoleEnum
 
 
 # User schemas
@@ -31,12 +31,25 @@ class UserResponse(UserBase):
 
     id: int
     role: RoleEnum
+    business_role: Optional[BusinessRole] = None
+    account_type: Optional[str] = None
     is_active: bool
+    data_scope: Optional[str] = None
     created_at: datetime
     last_login: Optional[datetime] = None
+    approval_status: Optional[str] = None
+    permissions_config: Optional[dict] = None
+    ai_budget_monthly: Optional[float] = None
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
+
+
+class UserDetailResponse(UserResponse):
+    """User response with S1 account fields"""
+
+    account_type: Optional[str] = None
+    parent_user_id: Optional[int] = None
+    tenant_id: Optional[str] = None
 
 
 # Auth schemas
@@ -84,8 +97,7 @@ class RoleResponse(BaseModel):
     is_system: bool
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 
 # Permission schemas
@@ -99,8 +111,7 @@ class PermissionResponse(BaseModel):
     description: Optional[str] = None
     code: str
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 
 # User management schemas
@@ -153,8 +164,7 @@ class ApprovalRequestResponse(BaseModel):
     reviewed_at: Optional[datetime] = None
     expires_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 
 class ApprovalDecision(BaseModel):
@@ -184,8 +194,7 @@ class AuditLogResponse(BaseModel):
     error_message: Optional[str] = None
     timestamp: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 
 class AuditLogListResponse(BaseModel):

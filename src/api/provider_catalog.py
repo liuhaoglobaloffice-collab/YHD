@@ -31,6 +31,16 @@ _PROVIDER_CATALOG: Dict[ProviderType, Dict] = {
         "models": ["grok-2", "grok-beta"],
         "env_var": "XAI_API_KEY",
     },
+    ProviderType.DEEPSEEK: {
+        "name": "DeepSeek",
+        "models": ["deepseek-chat", "deepseek-reasoner"],
+        "env_var": "DEEPSEEK_API_KEY",
+    },
+    ProviderType.MOONSHOT: {
+        "name": "Moonshot Kimi",
+        "models": ["moonshot-v1-8k", "moonshot-v1-32k"],
+        "env_var": "MOONSHOT_API_KEY",
+    },
     ProviderType.OLLAMA: {
         "name": "Ollama Local",
         "models": ["qwen2.5:7b", "llama3.1:8b"],

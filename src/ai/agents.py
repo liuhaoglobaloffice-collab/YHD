@@ -260,6 +260,81 @@ class AgentRuntime:
 
         return execution
 
+    async def execute_stream(
+        self,
+        agent_type: AgentType,
+        messages: List[Dict[str, Any]],
+        context: AgentContext,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+    ):
+        """
+        Execute agent task with streaming output.
+
+        Yields chunk dicts: {"delta": str} for text fragments, and a final
+        {"done": True, "output": str} marker with the full assembled text.
+        """
+        # Get agent config
+        try:
+            config = self._registry.get(agent_type)
+        except ResourceNotFoundError:
+            yield {"error": f"Unknown agent: {agent_type}", "done": True, "output": ""}
+            return
+
+        # Prepare messages with system prompt
+        full_messages = []
+        if config.system_prompt:
+            full_messages.append({"role": "system", "content": config.system_prompt})
+        full_messages.extend(messages)
+
+        execution = AgentExecution(
+            execution_id=uuid4(),
+            agent_type=agent_type,
+            context=context,
+            status=AgentStatus.RUNNING,
+            input_messages=messages,
+        )
+        self._active_executions[execution.execution_id] = execution
+
+        output_parts: List[str] = []
+        try:
+            async for chunk in self._provider_gateway.stream_complete(
+                provider=config.provider,
+                model_id=config.model_id,
+                messages=full_messages,
+                trace_id=context.trace_id,
+                actor_id=context.actor_id,
+                temperature=temperature or config.temperature,
+                max_tokens=max_tokens or config.max_tokens,
+            ):
+                if chunk.get("error"):
+                    execution.status = AgentStatus.FAILED
+                    execution.error = chunk.get("error")
+                    yield {"delta": "", "error": chunk["error"], "done": True, "output": ""}
+                    return
+                if chunk.get("delta"):
+                    output_parts.append(chunk["delta"])
+                    yield {"delta": chunk["delta"], "done": False}
+                if chunk.get("done"):
+                    break
+
+            execution.status = AgentStatus.COMPLETED
+            execution.output = "".join(output_parts)
+            execution.completed_at = datetime.now(UTC)
+            yield {"done": True, "output": "".join(output_parts)}
+
+        except Exception as e:
+            execution.status = AgentStatus.FAILED
+            execution.error = str(e)
+            execution.completed_at = datetime.now(UTC)
+            logger.error(
+                f"Agent stream execution failed: {agent_type} "
+                f"(execution_id={execution.execution_id}): {e}"
+            )
+            yield {"delta": "", "error": str(e), "done": True, "output": "".join(output_parts)}
+        finally:
+            self._active_executions.pop(execution.execution_id, None)
+
     def get_execution(self, execution_id: UUID) -> Optional[AgentExecution]:
         """Get execution status."""
         return self._active_executions.get(execution_id)

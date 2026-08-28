@@ -126,6 +126,8 @@ class BusinessTaskRegistry:
             "assigned_employee_id": updated_model.assigned_employee_id,
             "assigned_by": updated_model.assigned_by,
             "assigned_at": updated_model.assigned_at,
+            "owner_user_id": updated_model.owner_user_id,
+            "created_by": updated_model.created_by,
             "context": updated_model.context,
             "tags": updated_model.tags,
             "result": updated_model.result,
@@ -165,6 +167,7 @@ class BusinessTaskRegistry:
         status: Optional[BusinessTaskStatus] = None,
         priority: Optional[BusinessTaskPriority] = None,
         assigned_employee_id: Optional[UUID] = None,
+        owner_user_id: Optional[int] = None,
     ) -> List[BusinessTask]:
         """
         List tasks with optional filters.
@@ -174,6 +177,7 @@ class BusinessTaskRegistry:
             status: Filter by status
             priority: Filter by priority
             assigned_employee_id: Filter by assigned employee
+            owner_user_id: V4 归属过滤（int = users.id），None 表示不过滤
 
         Returns:
             List of matching tasks
@@ -193,6 +197,9 @@ class BusinessTaskRegistry:
 
         if assigned_employee_id:
             tasks = [t for t in tasks if t.assigned_employee_id == assigned_employee_id]
+
+        if owner_user_id is not None:
+            tasks = [t for t in tasks if t.owner_user_id == owner_user_id]
 
         return tasks
 

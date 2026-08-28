@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.errors import PermissionDeniedError
-from src.identity.models import RoleEnum, User
+from src.identity.models import AccountType, BusinessRole, RoleEnum, User
 
 logger = structlog.get_logger(__name__)
 
@@ -121,6 +121,30 @@ class Permission(str, Enum):
     SUPPLIER_UPDATE = "supplier:update"
     SUPPLIER_DELETE = "supplier:delete"
 
+    # S1 - Data Import (操作台资料导入)
+    IMPORT_CREATE = "import:create"
+    IMPORT_READ = "import:read"
+
+    # S2 - Multi-platform Integration (多平台接入)
+    PLATFORM_CREATE = "platform:create"
+    PLATFORM_READ = "platform:read"
+    PLATFORM_DELETE = "platform:delete"
+    PLATFORM_MESSAGE_SEND = "platform:message_send"
+
+    # S3 - Acquisition & CRM (自动获客 + 供应商分析)
+    LEAD_CREATE = "lead:create"
+    LEAD_READ = "lead:read"
+    LEAD_UPDATE = "lead:update"
+    LEAD_DELETE = "lead:delete"
+    CUSTOMS_READ = "customs:read"
+
+    # S4 - Website & SEO (独立站 + SEO)
+    SITE_CREATE = "site:create"
+    SITE_READ = "site:read"
+    SITE_UPDATE = "site:update"
+    SITE_DELETE = "site:delete"
+    SEO_READ = "seo:read"
+
     # CEO AI OS System (Stage 8)
     CEO_COMMAND_EXECUTE = "ceo:command_execute"
     CEO_ANALYTICS_READ = "ceo:analytics_read"
@@ -130,9 +154,182 @@ class Permission(str, Enum):
     # CEO Dashboard
     CEO_DASHBOARD_READ = "ceo_dashboard:read"
 
+    # Quotation Management (P3f)
+    QUOTE_CREATE = "quote:create"
+    QUOTE_READ = "quote:read"
+    QUOTE_UPDATE = "quote:update"
+    QUOTE_DELETE = "quote:delete"
+    QUOTE_SEND = "quote:send"
+
 
 # All available permissions
 PERMISSIONS = list(Permission)
+
+# ==================== 业务角色权限预设 ====================
+# 每个子账号分配一个业务角色，角色包含一组默认权限
+# 主账号可在权限控制中心为每个子账号单独调整
+
+BUSINESS_ROLE_PERMISSIONS: dict[BusinessRole, list[Permission]] = {
+    BusinessRole.SALES: [  # 销售 - 客户开发、CRM、社媒营销
+        Permission.USER_READ,
+        Permission.TASK_CREATE,
+        Permission.TASK_READ,
+        Permission.TASK_UPDATE,
+        Permission.TASK_EXECUTE,
+        Permission.AGENT_READ,
+        Permission.AGENT_EXECUTE,
+        Permission.WORKFLOW_READ,
+        Permission.WORKFLOW_EXECUTE,
+        Permission.LEAD_CREATE,
+        Permission.LEAD_READ,
+        Permission.LEAD_UPDATE,
+        Permission.LEAD_DELETE,
+        Permission.PLATFORM_READ,
+        Permission.PLATFORM_MESSAGE_SEND,
+        Permission.IMPORT_CREATE,
+        Permission.IMPORT_READ,
+        Permission.BUSINESS_CREATE,
+        Permission.BUSINESS_READ,
+        Permission.BUSINESS_UPDATE,
+        Permission.BUSINESS_EXECUTE,
+        Permission.BUSINESS_TASK_CREATE,
+        Permission.BUSINESS_TASK_READ,
+        Permission.BUSINESS_TASK_UPDATE,
+        Permission.BUSINESS_METRICS_READ,
+        Permission.EMPLOYEE_READ,
+        Permission.QUOTE_CREATE,
+        Permission.QUOTE_READ,
+        Permission.QUOTE_UPDATE,
+        Permission.QUOTE_SEND,
+    ],
+    BusinessRole.PURCHASING: [  # 采购 - 供应商搜索、分析、采购谈判
+        Permission.USER_READ,
+        Permission.TASK_CREATE,
+        Permission.TASK_READ,
+        Permission.TASK_UPDATE,
+        Permission.TASK_EXECUTE,
+        Permission.WORKFLOW_READ,
+        Permission.WORKFLOW_EXECUTE,
+        Permission.SUPPLIER_CREATE,
+        Permission.SUPPLIER_READ,
+        Permission.SUPPLIER_UPDATE,
+        Permission.SUPPLIER_DELETE,
+        Permission.CUSTOMS_READ,
+        Permission.LEAD_READ,
+        Permission.BUSINESS_CREATE,
+        Permission.BUSINESS_READ,
+        Permission.BUSINESS_UPDATE,
+        Permission.BUSINESS_EXECUTE,
+        Permission.BUSINESS_TASK_CREATE,
+        Permission.BUSINESS_TASK_READ,
+        Permission.BUSINESS_TASK_UPDATE,
+        Permission.BUSINESS_METRICS_READ,
+        Permission.QUOTE_READ,
+        Permission.QUOTE_UPDATE,
+    ],
+    BusinessRole.OPERATIONS: [  # 运营 - 数据运营、SEO、独立站、内容发布
+        Permission.USER_READ,
+        Permission.TASK_CREATE,
+        Permission.TASK_READ,
+        Permission.TASK_UPDATE,
+        Permission.TASK_EXECUTE,
+        Permission.WORKFLOW_READ,
+        Permission.WORKFLOW_EXECUTE,
+        Permission.SITE_CREATE,
+        Permission.SITE_READ,
+        Permission.SITE_UPDATE,
+        Permission.SITE_DELETE,
+        Permission.SEO_READ,
+        Permission.BUSINESS_CREATE,
+        Permission.BUSINESS_READ,
+        Permission.BUSINESS_UPDATE,
+        Permission.BUSINESS_EXECUTE,
+        Permission.BUSINESS_TASK_CREATE,
+        Permission.BUSINESS_TASK_READ,
+        Permission.BUSINESS_TASK_UPDATE,
+        Permission.BUSINESS_METRICS_READ,
+        Permission.LEAD_READ,
+        Permission.SUPPLIER_READ,
+        Permission.CEO_DASHBOARD_READ,
+        Permission.AUDIT_READ,
+    ],
+    BusinessRole.AI_ADMIN: [  # AI管理员 - 管理AI员工、技能、模型配置
+        Permission.USER_READ,
+        Permission.ROLE_READ,
+        Permission.PERMISSION_READ,
+        Permission.AUDIT_READ,
+        Permission.APPROVAL_READ,
+        Permission.APPROVAL_CREATE,
+        Permission.TASK_CREATE,
+        Permission.TASK_READ,
+        Permission.TASK_UPDATE,
+        Permission.TASK_EXECUTE,
+        Permission.WORKFLOW_CREATE,
+        Permission.WORKFLOW_READ,
+        Permission.WORKFLOW_EXECUTE,
+        Permission.AGENT_CREATE,
+        Permission.AGENT_READ,
+        Permission.AGENT_UPDATE,
+        Permission.AGENT_DELETE,
+        Permission.AGENT_EXECUTE,
+        Permission.WORKFORCE_CREATE,
+        Permission.WORKFORCE_READ,
+        Permission.WORKFORCE_UPDATE,
+        Permission.WORKFORCE_DELETE,
+        Permission.EMPLOYEE_CREATE,
+        Permission.EMPLOYEE_READ,
+        Permission.EMPLOYEE_UPDATE,
+        Permission.EMPLOYEE_DELETE,
+        Permission.EMPLOYEE_ACTIVATE,
+        Permission.EMPLOYEE_SUSPEND,
+        Permission.EMPLOYEE_PERFORMANCE_READ,
+        Permission.EMPLOYEE_COST_READ,
+        Permission.KNOWLEDGE_READ,
+        Permission.KNOWLEDGE_WRITE,
+        Permission.BUSINESS_READ,
+        Permission.BUSINESS_METRICS_READ,
+        Permission.CEO_DASHBOARD_READ,
+        Permission.AI_BRAIN_COMMAND_EXECUTE,
+        Permission.AI_BRAIN_PLAN_READ,
+        Permission.AI_BRAIN_TASK_READ,
+    ],
+    BusinessRole.GENERAL: [  # 通用 - 多功能综合岗
+        Permission.USER_READ,
+        Permission.TASK_CREATE,
+        Permission.TASK_READ,
+        Permission.TASK_UPDATE,
+        Permission.TASK_EXECUTE,
+        Permission.WORKFLOW_READ,
+        Permission.WORKFLOW_EXECUTE,
+        Permission.AGENT_READ,
+        Permission.AGENT_EXECUTE,
+        Permission.LEAD_CREATE,
+        Permission.LEAD_READ,
+        Permission.LEAD_UPDATE,
+        Permission.SUPPLIER_CREATE,
+        Permission.SUPPLIER_READ,
+        Permission.SUPPLIER_UPDATE,
+        Permission.CUSTOMS_READ,
+        Permission.PLATFORM_READ,
+        Permission.PLATFORM_MESSAGE_SEND,
+        Permission.SITE_READ,
+        Permission.SITE_UPDATE,
+        Permission.SEO_READ,
+        Permission.BUSINESS_CREATE,
+        Permission.BUSINESS_READ,
+        Permission.BUSINESS_UPDATE,
+        Permission.BUSINESS_EXECUTE,
+        Permission.BUSINESS_TASK_CREATE,
+        Permission.BUSINESS_TASK_READ,
+        Permission.BUSINESS_TASK_UPDATE,
+        Permission.BUSINESS_METRICS_READ,
+        Permission.EMPLOYEE_READ,
+        Permission.QUOTE_CREATE,
+        Permission.QUOTE_READ,
+        Permission.QUOTE_UPDATE,
+        Permission.CEO_DASHBOARD_READ,
+    ],
+}
 
 # Role-Permission mapping
 ROLE_PERMISSIONS = {
@@ -210,6 +407,26 @@ ROLE_PERMISSIONS = {
         Permission.SUPPLIER_READ,
         Permission.SUPPLIER_UPDATE,
         Permission.SUPPLIER_DELETE,
+        # S1 - Data Import
+        Permission.IMPORT_CREATE,
+        Permission.IMPORT_READ,
+        # S2 - Multi-platform Integration
+        Permission.PLATFORM_CREATE,
+        Permission.PLATFORM_READ,
+        Permission.PLATFORM_DELETE,
+        Permission.PLATFORM_MESSAGE_SEND,
+        # S3 - Acquisition & CRM
+        Permission.LEAD_CREATE,
+        Permission.LEAD_READ,
+        Permission.LEAD_UPDATE,
+        Permission.LEAD_DELETE,
+        Permission.CUSTOMS_READ,
+        # S4 - Website & SEO
+        Permission.SITE_CREATE,
+        Permission.SITE_READ,
+        Permission.SITE_UPDATE,
+        Permission.SITE_DELETE,
+        Permission.SEO_READ,
         # Stage 8 - CEO AI OS
         Permission.CEO_COMMAND_EXECUTE,
         Permission.CEO_ANALYTICS_READ,
@@ -245,7 +462,9 @@ ROLE_PERMISSIONS = {
         Permission.AGENT_EXECUTE,
         # Stage 6 - AI Workforce (limited)
         Permission.WORKFORCE_READ,
+        Permission.EMPLOYEE_CREATE,
         Permission.EMPLOYEE_READ,
+        Permission.EMPLOYEE_UPDATE,
         Permission.EMPLOYEE_PERFORMANCE_READ,
         # Stage 7 - Business OS (operational)
         Permission.BUSINESS_CREATE,
@@ -261,6 +480,26 @@ ROLE_PERMISSIONS = {
         Permission.SUPPLIER_READ,
         Permission.SUPPLIER_UPDATE,
         Permission.SUPPLIER_DELETE,
+        # S1 - Data Import
+        Permission.IMPORT_CREATE,
+        Permission.IMPORT_READ,
+        # S2 - Multi-platform Integration (operational)
+        Permission.PLATFORM_CREATE,
+        Permission.PLATFORM_READ,
+        Permission.PLATFORM_DELETE,
+        Permission.PLATFORM_MESSAGE_SEND,
+        # S3 - Acquisition & CRM (operational)
+        Permission.LEAD_CREATE,
+        Permission.LEAD_READ,
+        Permission.LEAD_UPDATE,
+        Permission.LEAD_DELETE,
+        Permission.CUSTOMS_READ,
+        # S4 - Website & SEO (operational)
+        Permission.SITE_CREATE,
+        Permission.SITE_READ,
+        Permission.SITE_UPDATE,
+        Permission.SITE_DELETE,
+        Permission.SEO_READ,
         # Phase 3.1 - AI Brain (operational)
         Permission.AI_BRAIN_PLAN_READ,
         Permission.AI_BRAIN_TASK_READ,
@@ -286,6 +525,16 @@ ROLE_PERMISSIONS = {
         Permission.BUSINESS_METRICS_READ,
         # Week 7 - Supplier Management (read-only)
         Permission.SUPPLIER_READ,
+        # S1 - Data Import (read-only)
+        Permission.IMPORT_READ,
+        # S2 - Multi-platform Integration (read-only)
+        Permission.PLATFORM_READ,
+        # S3 - Acquisition & CRM (read-only)
+        Permission.LEAD_READ,
+        Permission.CUSTOMS_READ,
+        # S4 - Website & SEO (read-only)
+        Permission.SITE_READ,
+        Permission.SEO_READ,
         # Stage 8 - CEO Dashboard (read-only)
         Permission.CEO_DASHBOARD_READ,
         # Phase 3.1 - AI Brain (read-only)
@@ -313,7 +562,45 @@ def has_permission(user: User, permission: Permission) -> bool:
     if user.is_superuser:
         return True
 
-    # Check role permissions
+    # 主账号（OWNER）拥有所有操作权限
+    if user.account_type == AccountType.OWNER:
+        return True
+
+    # 检查用户自定义权限配置（permissions_config 覆盖业务角色默认权限）
+    perm_code = permission.value
+    if user.permissions_config and perm_code in user.permissions_config:
+        result = user.permissions_config[perm_code]
+        logger.info(
+            "permission_check_custom",
+            user_id=user.id,
+            permission=perm_code,
+            result=result,
+        )
+        return result
+
+    # 检查业务角色权限
+    if user.business_role:
+        role_perms = BUSINESS_ROLE_PERMISSIONS.get(user.business_role, [])
+        if permission in role_perms:
+            logger.info(
+                "permission_check_business_role",
+                user_id=user.id,
+                business_role=user.business_role,
+                permission=permission,
+                result=True,
+            )
+            return True
+        # 有业务角色但权限不在预设中 → 拒绝（不继续回退到系统角色）
+        logger.info(
+            "permission_check_business_role_denied",
+            user_id=user.id,
+            business_role=user.business_role,
+            permission=permission,
+            result=False,
+        )
+        return False
+
+    # 检查系统角色权限（fallback，仅当无业务角色时）
     role_perms = ROLE_PERMISSIONS.get(user.role, [])
     has_perm = permission in role_perms
 
@@ -321,6 +608,7 @@ def has_permission(user: User, permission: Permission) -> bool:
         "permission_check",
         user_id=user.id,
         role=user.role,
+        business_role=user.business_role,
         permission=permission,
         result=has_perm,
     )
@@ -516,6 +804,25 @@ class RBACService:
         if user.is_superuser:
             return [p.value for p in Permission]
 
-        # Get permissions from role
-        role_perms = ROLE_PERMISSIONS.get(user.role, [])
-        return [p.value for p in role_perms]
+        # 主账号拥有所有权限
+        if user.account_type == AccountType.OWNER:
+            return [p.value for p in Permission]
+
+        # 从业务角色获取基础权限
+        base_perms: set[str] = set()
+        if user.business_role:
+            role_perms = BUSINESS_ROLE_PERMISSIONS.get(user.business_role, [])
+            base_perms = {p.value for p in role_perms}
+        else:
+            role_perms = ROLE_PERMISSIONS.get(user.role, [])
+            base_perms = {p.value for p in role_perms}
+
+        # 自定义权限配置覆盖业务角色/系统角色权限
+        if user.permissions_config:
+            for perm_code, enabled in user.permissions_config.items():
+                if enabled:
+                    base_perms.add(perm_code)
+                else:
+                    base_perms.discard(perm_code)
+
+        return sorted(base_perms)

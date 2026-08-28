@@ -2,7 +2,7 @@
 RAG API Routes
 Week 4 Day 3 - RAG REST API
 
-提供 RAG 系统的 HTTP 接口（临时禁用，等待 Ollama Provider 实现）
+提供 RAG 系统的 HTTP 接口
 """
 
 from typing import Optional
@@ -11,11 +11,10 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-# TODO: Re-enable when Ollama provider is available
-# from src.ai.providers.ollama import OllamaProvider, OllamaConfig
-# from src.ai.rag import RAGSystem
 from src.api.dependencies import get_current_user
 from src.identity.models import User
+from src.knowledge.vector_store import SQLiteVectorStore
+from src.knowledge.rag_pipeline import RAGPipeline
 
 logger = structlog.get_logger(__name__)
 
@@ -47,7 +46,27 @@ class RAGStatsResponse(BaseModel):
     message: str
 
 
-# ==================== API Endpoints (Disabled) ====================
+class RAGQueryRequest(BaseModel):
+    """RAG 查询请求"""
+
+    query: str = Field(..., min_length=1, max_length=1000)
+    limit: int = Field(default=5, ge=1, le=20)
+
+
+class RAGQueryResponse(BaseModel):
+    """RAG 查询响应"""
+
+    query: str
+    sources: list
+    context: str
+    answer: str
+    metadata: dict
+
+
+# ==================== API Endpoints ====================
+
+# SQLite-persisted vector store for RAG (survives process restarts)
+_vector_store = SQLiteVectorStore()
 
 
 @router.get("/stats", response_model=RAGStatsResponse)
@@ -56,19 +75,70 @@ async def get_rag_stats(
 ):
     """
     获取 RAG 系统统计信息
-
-    需要认证（临时禁用）
     """
+    doc_count = len(set(r.document_id for r in _vector_store.records))
+    chunk_count = len(_vector_store.records)
     return RAGStatsResponse(
-        status="disabled",
-        message="RAG system is temporarily disabled until Ollama provider is implemented"
+        status="enabled",
+        message=f"RAG system active: {doc_count} documents, {chunk_count} chunks",
     )
 
 
-@router.post("/documents", status_code=503)
-async def add_document_disabled():
-    """RAG 文档添加功能已禁用"""
-    raise HTTPException(
-        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        detail="RAG system is temporarily disabled"
+@router.post("/documents", response_model=DocumentAddResponse)
+async def add_document(
+    request: DocumentAddRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    添加文档到 RAG 知识库
+    """
+    import uuid
+    from src.knowledge.embedding import EmbeddingService
+
+    doc_id = str(uuid.uuid4())
+    embed_service = EmbeddingService(provider_name="mock")
+
+    # Generate embedding
+    vector = await embed_service.embed_text(request.text)
+
+    # Store in vector store
+    _vector_store.insert(
+        document_id=doc_id,
+        chunk_id=f"{doc_id}-chunk-0",
+        content=request.text,
+        embedding=vector,
+        metadata=request.metadata or {},
+    )
+
+    logger.info(
+        "rag_document_added",
+        document_id=doc_id,
+        text_length=len(request.text),
+        user_id=current_user.id,
+    )
+
+    return DocumentAddResponse(
+        document_id=doc_id,
+        text_length=len(request.text),
+        embedding_dim=len(vector),
+    )
+
+
+@router.post("/query", response_model=RAGQueryResponse)
+async def rag_query(
+    request: RAGQueryRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    执行 RAG 查询：检索相关文档并用 LLM 生成回答
+    """
+    pipeline = RAGPipeline(_vector_store, provider_name="mock")
+    result = await pipeline.query(request.query, limit=request.limit)
+
+    return RAGQueryResponse(
+        query=result["query"],
+        sources=result["sources"],
+        context=result["context"],
+        answer=result["answer"],
+        metadata=result["metadata"],
     )

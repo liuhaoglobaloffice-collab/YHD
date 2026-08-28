@@ -1,6 +1,6 @@
 ﻿import asyncio
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -45,8 +45,8 @@ def test_create_task_from_assessment_creates_task_and_audit():
                 opportunities=json.dumps(["o"]),
                 threats=json.dumps(["t"]),
                 recommendations=json.dumps(["rec"]),
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow(),
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
             )
             session.add(assessment)
             await session.commit()

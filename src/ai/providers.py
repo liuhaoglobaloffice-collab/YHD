@@ -21,7 +21,6 @@ from ..core.errors import (
     ResourceNotFoundError,
     ValidationError,
 )
-from ..identity.audit import AuditService
 from ..security.secrets import SecretsManager
 
 logger = logging.getLogger(__name__)
@@ -325,11 +324,10 @@ class ProviderGateway:
     - Single Source of Truth: Only one gateway
     """
 
-    def __init__(self, audit_service: AuditService):
+    def __init__(self):
         self._providers: Dict[ProviderType, BaseProvider] = {}
         self._provider_configs: Dict[ProviderType, ProviderConfig] = {}
         self._model_registry = ModelRegistry()
-        self._audit_service = audit_service
         logger.info("Provider Gateway initialized")
 
     def register_provider(self, provider: BaseProvider):
@@ -413,6 +411,13 @@ class ProviderGateway:
             logger.info(f"Lazy initialized provider: {provider_type}")
             return provider
 
+        elif provider_type == ProviderType.OLLAMA:
+            # Ollama doesn't need a secrets manager
+            provider = OllamaProvider(config)
+            self._providers[provider_type] = provider
+            logger.info(f"Lazy initialized provider: {provider_type}")
+            return provider
+
         # Provider not registered at all
         raise ResourceNotFoundError(
             f"Provider not registered: {provider_type}", resource=f"provider:{provider_type}"
@@ -444,17 +449,6 @@ class ProviderGateway:
         """
         # Validate provider exists
         if provider not in self._providers:
-            await self._audit_service.log(
-                action="provider_call_denied",
-                status="denied",
-                actor_id=actor_id,
-                target_id=None,
-                details={
-                    "reason": "unknown_provider",
-                    "provider": provider,
-                    "trace_id": str(trace_id),
-                },
-            )
             raise ResourceNotFoundError(
                 f"Provider not registered: {provider}", resource=f"provider:{provider}"
             )
@@ -463,18 +457,6 @@ class ProviderGateway:
         try:
             model_config = self._model_registry.get(provider, model_id)
         except ResourceNotFoundError:
-            await self._audit_service.log(
-                action="model_call_denied",
-                status="denied",
-                actor_id=actor_id,
-                target_id=None,
-                details={
-                    "reason": "unknown_model",
-                    "provider": provider,
-                    "model_id": model_id,
-                    "trace_id": str(trace_id),
-                },
-            )
             raise
 
         # Create request
@@ -503,42 +485,9 @@ class ProviderGateway:
             # Update provider metrics with cost
             provider_instance._metrics.total_cost += cost
 
-            # Audit successful call
-            await self._audit_service.log(
-                action="provider_call_success",
-                status="success",
-                actor_id=actor_id,
-                target_id=None,
-                details={
-                    "provider": provider,
-                    "model_id": model_id,
-                    "request_id": str(request.request_id),
-                    "trace_id": str(trace_id),
-                    "input_tokens": response.usage.input_tokens,
-                    "output_tokens": response.usage.output_tokens,
-                    "total_tokens": response.usage.total_tokens,
-                    "cost_usd": cost,
-                    "response_time_ms": response.response_time_ms,
-                },
-            )
-
             return response
 
         except Exception as e:
-            # Audit failed call
-            await self._audit_service.log(
-                action="provider_call_failure",
-                status="failure",
-                actor_id=actor_id,
-                target_id=None,
-                details={
-                    "provider": provider,
-                    "model_id": model_id,
-                    "request_id": str(request.request_id),
-                    "trace_id": str(trace_id),
-                    "error": str(e),
-                },
-            )
             raise
 
     def _calculate_cost(self, model: ModelConfig, usage: TokenUsage) -> float:
@@ -546,6 +495,60 @@ class ProviderGateway:
         input_cost = (usage.input_tokens / 1000.0) * model.input_cost_per_1k
         output_cost = (usage.output_tokens / 1000.0) * model.output_cost_per_1k
         return input_cost + output_cost
+
+    async def stream_complete(
+        self,
+        provider: ProviderType,
+        model_id: str,
+        messages: List[Dict[str, Any]],
+        trace_id: UUID,
+        actor_id: Optional[UUID] = None,
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ):
+        """
+        Execute a streaming completion through the provider gateway.
+
+        Yields chunk dicts: {"delta": str} for text fragments, and a final
+        {"done": True, "usage": {...}} marker.
+
+        Raises:
+            ResourceNotFoundError: Unknown provider/model
+        """
+        # Validate provider exists
+        if provider not in self._providers and provider not in self._provider_configs:
+            raise ResourceNotFoundError(
+                f"Provider not registered: {provider}", resource=f"provider:{provider}"
+            )
+
+        # Validate model exists
+        model_config = self._model_registry.get(provider, model_id)
+
+        request = ProviderRequest(
+            request_id=uuid4(),
+            trace_id=trace_id,
+            provider=provider,
+            model_id=model_id,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens or model_config.max_tokens,
+            stream=True,
+            metadata=metadata or {},
+        )
+
+        provider_instance = self._get_or_create_provider(provider)
+
+        # Check provider supports streaming
+        if not hasattr(provider_instance, "stream_complete"):
+            raise ConfigurationError(
+                f"Provider {provider} does not support streaming",
+                field="provider",
+                value=str(provider),
+            )
+
+        async for chunk in provider_instance.stream_complete(request):
+            yield chunk
 
     async def get_provider_status(self, provider: ProviderType) -> ProviderStatus:
         """Get provider health status."""
@@ -576,6 +579,75 @@ class ProviderGateway:
 # ============================================================================
 # Concrete Provider Implementations
 # ============================================================================
+
+
+class MockProvider(BaseProvider):
+    """Mock provider that returns a canned response for development/testing."""
+
+    def __init__(self, config: Optional[ProviderConfig] = None):
+        if config is None:
+            config = ProviderConfig(
+                provider=ProviderType.OPENAI,
+                api_key_name="",
+                enabled=True,
+            )
+        super().__init__(config)
+        self._request_count = 0
+
+    async def complete(self, request: ProviderRequest) -> ProviderResponse:
+        """Return a mock completion response."""
+        self._request_count += 1
+
+        # Extract the last user message content for the mock response
+        user_msg = ""
+        for msg in reversed(request.messages):
+            if msg.get("role") == "user":
+                user_msg = msg.get("content", "")
+                break
+
+        return ProviderResponse(
+            request_id=request.request_id,
+            trace_id=request.trace_id,
+            provider=self.provider_type,
+            model_id=request.model_id,
+            content=(
+                f"[Mock Response #{self._request_count}] "
+                f"Received your request. Model: {request.model_id}. "
+                f"Your message was: \"{user_msg[:100]}{'...' if len(user_msg) > 100 else ''}\""
+            ),
+            usage=TokenUsage(
+                input_tokens=len(user_msg.split()),
+                output_tokens=50,
+                total_tokens=len(user_msg.split()) + 50,
+            ),
+            finish_reason="stop",
+            response_time_ms=5.0,
+            metadata={"mock": True, "request_count": self._request_count},
+        )
+
+    async def stream_complete(self, request: ProviderRequest):
+        """Yield mock chunks for streaming clients."""
+        user_msg = ""
+        for msg in reversed(request.messages):
+            if msg.get("role") == "user":
+                user_msg = msg.get("content", "")
+                break
+
+        text = (
+            f"[Mock Stream] Model: {request.model_id}. Your message was: "
+            f"\"{user_msg[:100]}\""
+        )
+        # Yield in small chunks to simulate streaming
+        for i in range(0, len(text), 12):
+            yield {"delta": text[i:i + 12]}
+        yield {
+            "done": True,
+            "usage": {
+                "prompt_tokens": len(user_msg.split()),
+                "completion_tokens": 20,
+                "total_tokens": len(user_msg.split()) + 20,
+            },
+        }
 
 
 class OpenAIProvider(BaseProvider):
@@ -897,6 +969,8 @@ class OllamaProvider(BaseProvider):
         self._client = None
         # Ollama doesn't require API key for local instances
         self._host = config.base_url or "http://localhost:11434"
+        # Use the configured model from metadata, fall back to model_id
+        self._ollama_model = config.metadata.get("model", "qwen2.5:7b")
 
     def _get_client(self):
         """Lazy-load Ollama client."""
@@ -929,7 +1003,7 @@ class OllamaProvider(BaseProvider):
             # Ollama chat API call
             start_time = datetime.now(timezone.utc)
             response = await client.chat(
-                model=request.model_id,
+                model=self._ollama_model,
                 messages=messages,
                 options={
                     "temperature": request.temperature,
@@ -971,4 +1045,58 @@ class OllamaProvider(BaseProvider):
             raise ExternalServiceError(
                 f"Ollama API error: {str(e)}",
                 details={"request_id": str(request.request_id), "host": self._host}
+            )
+
+    async def stream_complete(
+        self,
+        request: ProviderRequest,
+    ) -> Any:
+        """
+        Execute Ollama completion with streaming (SSE/NDJSON chunks).
+
+        Yields dicts with {"delta": str} for each text fragment and a final
+        {"done": True, "usage": {...}} marker for token statistics.
+
+        Returns:
+            Async iterator of chunk dicts
+        """
+        client = self._get_client()
+
+        messages = [
+            {"role": msg.get("role", "user"), "content": msg.get("content", "")}
+            for msg in request.messages
+        ]
+
+        try:
+            # ollama AsyncClient.chat with stream=True returns a coroutine
+            # resolving to an async iterator of message chunks.
+            response = await client.chat(
+                model=self._ollama_model,
+                messages=messages,
+                options={
+                    "temperature": request.temperature,
+                    "num_predict": request.max_tokens or 1024,
+                },
+                stream=True,
+            )
+
+            async for chunk in response:
+                if chunk.get("done"):
+                    usage_data = chunk.get("usage", {})
+                    yield {
+                        "done": True,
+                        "usage": {
+                            "prompt_tokens": usage_data.get("prompt_tokens", 0),
+                            "completion_tokens": usage_data.get("completion_tokens", 0),
+                            "total_tokens": usage_data.get("prompt_tokens", 0)
+                            + usage_data.get("completion_tokens", 0),
+                        },
+                        "total_duration": chunk.get("total_duration"),
+                    }
+                    return
+                yield {"delta": chunk.get("message", {}).get("content", "")}
+        except Exception as e:
+            raise ExternalServiceError(
+                f"Ollama stream error: {str(e)}",
+                details={"host": self._host}
             )

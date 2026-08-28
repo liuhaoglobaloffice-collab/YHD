@@ -6,33 +6,72 @@
 - 当前定位：面向外贸业务的企业级 AI 操作系统原型，优先构建“供应商（Supplier）”业务闭环，整合 AI 风险评估、任务驱动与审计链路。
 - 当前完成阶段：Step 2 已完成（Supplier 风险评估 → 评估持久化 → 从评估创建 Task → Audit 日志链路）。当前进入 Step 3 文档收口与交付准备。
 
-环境要求
-- Python 版本：3.10 或 3.11（建议使用 3.10+）
-- 依赖安装（推荐使用 venv）：
-  - python -m venv .venv
-  - .\.venv\Scripts\activate  (Windows)
-  - pip install --upgrade pip
-  - pip install -r requirements.txt
-- 运行环境说明：当前代码使用 FastAPI + SQLAlchemy（异步）实现后端，测试使用 pytest。默认测试环境可使用 SQLite（内存）以避免修改实际数据库。
+## Productization installation and startup
 
-必要环境变量（示例）
-- SECRET_KEY: 用于应用加密/配置（请设置为长度 >= 32 的随机字符串）
-- JWT_SECRET_KEY: 用于 JWT 签名（请设置为长度 >= 32 的随机字符串）
-- DATABASE_URL: SQLAlchemy 连接字符串，例如 sqlite+aiosqlite:///./dev.db 或 PostgreSQL 连接串
+This repository now exposes an additive productization starter with a root `requirements.txt`, an environment template `.env.example`, an API launcher `scripts/start_api.sh`, a frontend `package.json` and Vite/Tailwind configuration, and a `docker-compose.yml` that contains backend, frontend, and database services.
 
-测试运行需要的环境说明：
-- 在执行 pytest 前，请确保 SECRET_KEY 和 JWT_SECRET_KEY 已在环境变量中设置（可以临时导出或在 CI 中注入），否则部分配置加载会失败。
+## Environment requirements
 
-本地运行方式
-1. 安装依赖（见上）
-2. 启动服务（开发模式示例）：
-   - set SECRET_KEY="$(head -c 32 /dev/urandom | base64)"  (在 Windows PowerShell 中请使用合适的随机生成方法)
-   - set JWT_SECRET_KEY="<your_jwt_secret_key>"
-   - set DATABASE_URL="sqlite+aiosqlite:///./dev.db"
-   - uvicorn src.api.app:app --reload --host 0.0.0.0 --port 8000
-3. 测试命令：
-   - pytest -q
-   - 关键集成测试（见下）可单独运行以验证 Supplier 风险链路。
+- Python 3.10 or 3.11
+- Node.js / npm for the frontend package
+- Posgres or SQLite testing configuration support
+
+## Install
+
+```bash
+python -m venv .venv
+.\.venv\Scripts\activate
+pip install -r requirements.txt
+cd frontend
+npm install
+cd ..
+```
+
+## Environment configuration
+
+Copy `.env.example` to `.env` and then fill in the required secrets.
+
+```bash
+copy .env.example .env
+```
+
+## Backend start
+
+```bash
+bash scripts/start_api.sh
+```
+
+The script starts:
+
+```bash
+uvicorn src.api.app:app --reload --host 0.0.0.0 --port 8000
+```
+
+## Frontend start
+
+```bash
+bash scripts/start_frontend.sh
+```
+
+The script uses the npm package manifest in `frontend/package.json` and launches Vite on `http://localhost:3000`.
+
+## Database initialization
+
+The repository expects `DATABASE_URL` to point to a sqlite file or postgres database. The default dev example in `.env.example` is `sqlite+aiosqlite:///./dev.db`.
+
+## Testing
+
+```bash
+pytest -q
+```
+
+## Docker
+
+```bash
+docker-compose up --build
+```
+
+The compose file includes backend, frontend, and database services.
 
 当前已完成能力（真实对应代码）
 - Supplier Risk Assessment（关键函数与行为）

@@ -25,12 +25,28 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from src.database.base import Base
 
 
+class BusinessRole(str, enum.Enum):
+    """预定义业务角色（外贸企业团队分工）"""
+
+    SALES = "sales"           # 销售 - 客户开发、CRM跟进、WhatsApp/Facebook营销
+    PURCHASING = "purchasing" # 采购 - 供应商搜索、分析、采购谈判
+    OPERATIONS = "operations" # 运营 - 数据运营、SEO、内容发布、社媒运营
+    AI_ADMIN = "ai_admin"     # AI管理员 - 管理AI员工、技能、模型配置
+    GENERAL = "general"       # 通用 - 多功能综合岗
+
 class RoleEnum(str, enum.Enum):
-    """User roles (simplified RBAC for Stage 1)"""
+    """System roles (RBAC base level)"""
 
     ADMIN = "admin"
     USER = "user"
     VIEWER = "viewer"
+
+
+class AccountType(str, enum.Enum):
+    """Account type for main/sub account hierarchy (S1)."""
+
+    OWNER = "owner"  # 主账号（老板）- 可指挥鎏灏
+    SUB = "sub"  # 子账号（受限，只读/协作）
 
 
 class ApprovalStatus(str, enum.Enum):
@@ -72,21 +88,56 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     full_name: Mapped[Optional[str]] = mapped_column(String(255))
 
+    # Productization tenant binding
+    tenant_id: Mapped[Optional[str]] = mapped_column(ForeignKey("tenants.id"), nullable=True, index=True)
+
     # Role
     role: Mapped[RoleEnum] = mapped_column(SQLEnum(RoleEnum), default=RoleEnum.USER, nullable=False)
+
+    # 业务角色（子账号按外贸分工分类）
+    business_role: Mapped[Optional[BusinessRole]] = mapped_column(
+        SQLEnum(BusinessRole), nullable=True
+    )
+
+    # S1: 主/子账号体系
+    account_type: Mapped[AccountType] = mapped_column(
+        SQLEnum(AccountType), default=AccountType.OWNER, nullable=False
+    )
+    parent_user_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id"), nullable=True, index=True
+    )
+    # V4: 子账号月度 AI 预算（USD/月，NULL=不限）
+    ai_budget_monthly: Mapped[Optional[float]] = mapped_column(nullable=True)
+
+    # 数据权限范围
+    # all = 全公司数据，department = 本部门，self = 仅本人数据
+    class DataScope(str, enum.Enum):
+        ALL = "all"
+        DEPARTMENT = "department"
+        SELF = "self"
+
+    data_scope: Mapped[str] = mapped_column(
+        String(20), default=DataScope.SELF.value, nullable=False
+    )
+
+    # 权限配置（细粒度权限开关，JSON存储）
+    # 格式: {"customer:read": true, "whatsapp:send": false, ...}
+    permissions_config: Mapped[Optional[dict]] = mapped_column(JSON)
 
     # Status
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_superuser: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # 子账号自助注册审批状态: pending / approved / rejected；None 视为已通过（存量/主账号直接创建）
+    approval_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(UTC), nullable=False
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(UTC), onupdate=datetime.utcnow, nullable=False
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC), nullable=False
     )
-    last_login: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    last_login: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     # Relationships
     audit_logs: Mapped[list["AuditLog"]] = relationship(
@@ -142,7 +193,7 @@ class AuditLog(Base):
 
     # When
     timestamp: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(UTC), nullable=False, index=True
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False, index=True
     )
 
     def __repr__(self) -> str:
@@ -159,10 +210,10 @@ class Role(Base):
     description: Mapped[Optional[str]] = mapped_column(Text)
     is_system: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(UTC), nullable=False
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(UTC), onupdate=datetime.utcnow, nullable=False
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC), nullable=False
     )
 
     # Relationships
@@ -185,7 +236,7 @@ class Permission(Base):
     scope: Mapped[Optional[str]] = mapped_column(String(100))
     description: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(UTC), nullable=False
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
     )
 
     # Relationships
@@ -217,10 +268,10 @@ class Session(Base):
     user_agent: Mapped[Optional[str]] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(UTC), nullable=False
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
     )
-    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
-    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="sessions")
@@ -250,10 +301,10 @@ class ApprovalRequest(Base):
     review_reason: Mapped[Optional[str]] = mapped_column(Text)
     audit_log_id: Mapped[Optional[int]] = mapped_column(ForeignKey("audit_logs.id"))
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(UTC), nullable=False, index=True
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False, index=True
     )
-    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     # Relationships
     requester: Mapped["User"] = relationship(

@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         case_sensitive=False,
         extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
     )
 
     # Application
@@ -70,11 +72,6 @@ class Settings(BaseSettings):
         default="abcdefghijklmnopqrstuvwxyz1234567890ABCDEF",
         description="MUST be set via environment variable; test/dev fallback is provided",
     )
-    # Ollama (Week 4: Local LLM)
-    ollama_host: str = Field(default="http://localhost:11434", description="Ollama API endpoint")
-    ollama_default_model: str = Field(default="qwen2.5:7b", description="Default Ollama model")
-    ollama_timeout: int = Field(default=60, description="Ollama request timeout in seconds")
-    ollama_enabled: bool = Field(default=False, description="Enable Ollama provider")
     jwt_algorithm: str = Field(default="HS256")
     jwt_expiration_hours: int = Field(default=24)
 
@@ -83,7 +80,7 @@ class Settings(BaseSettings):
     policy_unknown_deny: bool = Field(default=True, description="DENY for unknown resources")
 
     # Feature Flags (Security First - all disabled by default)
-    feature_provider_gateway: bool = Field(default=False)
+    feature_provider_gateway: bool = Field(default=True)
     feature_network_gateway: bool = Field(default=False)
     feature_browser_gateway: bool = Field(default=False)
     feature_external_tools: bool = Field(default=False)

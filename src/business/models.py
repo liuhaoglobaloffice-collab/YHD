@@ -62,6 +62,10 @@ class BusinessTask:
     priority: BusinessTaskPriority = BusinessTaskPriority.MEDIUM
     status: BusinessTaskStatus = BusinessTaskStatus.CREATED
 
+    # V4: 多租户归属（int = users.id）。owner_user_id=归属账号，created_by=代建者
+    owner_user_id: Optional[int] = None
+    created_by: Optional[int] = None
+
     # Assignment
     assigned_employee_id: Optional[UUID] = None
     assigned_by: Optional[UUID] = None  # User ID
@@ -93,6 +97,8 @@ class BusinessTask:
             "description": self.description,
             "priority": self.priority.value,
             "status": self.status.value,
+            "owner_user_id": self.owner_user_id,
+            "created_by": self.created_by,
             "assigned_employee_id": (
                 str(self.assigned_employee_id) if self.assigned_employee_id else None
             ),

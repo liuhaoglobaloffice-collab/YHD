@@ -40,6 +40,11 @@ class BusinessOverview(BaseModel):
     success_rate: float = Field(..., description="Success rate percentage")
     avg_completion_time_hours: float = Field(..., description="Average completion time in hours")
     revenue_impact: float = Field(..., description="Estimated revenue impact in USD")
+    total_goals: int = Field(0, description="Total goals")
+    active_goals: int = Field(0, description="Active goals")
+    completed_goals: int = Field(0, description="Completed goals")
+    failed_goals: int = Field(0, description="Failed goals")
+    total_failure_records: int = Field(0, description="Total failure records")
 
 
 class AITeamOverview(BaseModel):

@@ -10,7 +10,7 @@ Week 3 Day 1 - Supplier API Enhancement
 
 import re
 from typing import Optional, Dict, Any
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -219,7 +219,7 @@ class SupplierValidator:
                 "error": "证书过期日期必须晚于签发日期"
             }
         
-        if expiry_date < datetime.utcnow():
+        if expiry_date < datetime.now(UTC):
             return {
                 "valid": False,
                 "error": f"证书已过期（过期日期: {expiry_date.strftime('%Y-%m-%d')}）"

@@ -6,9 +6,12 @@ from datetime import UTC, datetime
 
 import structlog
 from fastapi import APIRouter, Depends
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import __version__
 from src.api.dependencies import get_current_user_optional
+from src.api.dependencies.database import get_db
 from src.api.schemas import HealthResponse, SystemInfoResponse
 from src.core.config import get_settings
 from src.core.lifecycle import get_lifecycle_manager
@@ -39,6 +42,34 @@ async def health_check():
         environment=settings.app_env,
         timestamp=datetime.now(UTC),
     )
+
+
+@router.get("/ready")
+async def ready_check(
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    Comprehensive readiness check (database connectivity + lifecycle).
+    Used by Kubernetes/Docker health checks.
+    """
+    settings = get_settings()
+    lifecycle = get_lifecycle_manager()
+    checks = {"lifecycle": lifecycle.is_ready(), "database": False}
+
+    try:
+        await session.execute(text("SELECT 1"))
+        checks["database"] = True
+    except Exception as e:
+        logger.warning("health_db_check_failed", error=str(e))
+
+    all_healthy = all(checks.values())
+    return {
+        "status": "healthy" if all_healthy else "degraded",
+        "version": __version__,
+        "environment": settings.app_env,
+        "checks": checks,
+        "timestamp": datetime.now(UTC),
+    }
 
 
 @router.get("/ping")

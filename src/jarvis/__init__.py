@@ -7,8 +7,9 @@ Jarvis Voice Interaction Module
 from .service import JarvisService
 from .speech_recognition import SpeechRecognizer
 from .state_machine import JarvisState, VoiceInteractionStateMachine
-from .tts import TextToSpeech
+from .tts import TTSBackend, TextToSpeech
 from .wake_word import WakeWordConfig, WakeWordDetector
+from .language_detector import detect_language, get_asr_language, get_cantonese_system_prompt
 
 __all__ = [
     "JarvisService",
@@ -18,4 +19,8 @@ __all__ = [
     "WakeWordConfig",
     "SpeechRecognizer",
     "TextToSpeech",
+    "TTSBackend",
+    "detect_language",
+    "get_asr_language",
+    "get_cantonese_system_prompt",
 ]

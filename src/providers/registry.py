@@ -27,11 +27,10 @@ def register_provider(name: str, provider_cls: Type[Union[RiskAssessmentProvider
 
 
 def get_provider(name: str = "mock") -> Union[RiskAssessmentProvider, LLMProvider]:
-    """Return an instantiated provider object, defaulting to the mock one.
+    """Return an instantiated provider object, defaulting to mock.
 
-    Preserves the existing SupplierRiskAgent risk-assessment contract, while
-    also recognizing the Phase 2.1 LLM provider aliases: mock, openai,
-    self_host/self-host/selfhost.
+    Falls back to mock if the requested provider is not registered.
+    Recognized aliases: mock, openai, self_host/self-host/selfhost.
     """
     key = _normalize_name(name)
     cls = _REGISTRY.get(key)

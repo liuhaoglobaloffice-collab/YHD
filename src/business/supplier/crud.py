@@ -3,7 +3,7 @@
 提供供应商数据的增删改查操作
 """
 from typing import List, Optional, Dict, Any
-from datetime import datetime
+from datetime import UTC, datetime
 from sqlalchemy import select, and_, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -199,7 +199,7 @@ class SupplierCRUD:
             if hasattr(supplier, key):
                 setattr(supplier, key, value)
         
-        supplier.updated_at = datetime.utcnow()
+        supplier.updated_at = datetime.now(UTC)
         
         await self.session.commit()
         await self.session.refresh(supplier)
@@ -222,7 +222,7 @@ class SupplierCRUD:
         
         # 软删除：改为INACTIVE状态
         supplier.status = SupplierStatus.INACTIVE
-        supplier.updated_at = datetime.utcnow()
+        supplier.updated_at = datetime.now(UTC)
         
         await self.session.commit()
         return True
@@ -248,7 +248,7 @@ class SupplierCRUD:
         
         supplier.status = SupplierStatus.BLACKLIST
         supplier.notes = f"[BLACKLIST] {reason}\n\n{supplier.notes or ''}"
-        supplier.updated_at = datetime.utcnow()
+        supplier.updated_at = datetime.now(UTC)
         
         await self.session.commit()
         await self.session.refresh(supplier)
@@ -318,7 +318,7 @@ class SupplierCRUD:
             if hasattr(contact, key):
                 setattr(contact, key, value)
         
-        contact.updated_at = datetime.utcnow()
+        contact.updated_at = datetime.now(UTC)
         
         await self.session.commit()
         await self.session.refresh(contact)
@@ -405,7 +405,7 @@ class SupplierCRUD:
         
         if not include_expired:
             query = query.where(
-                SupplierCertificate.expiry_date > datetime.utcnow()
+                SupplierCertificate.expiry_date > datetime.now(UTC)
             )
         
         query = query.order_by(SupplierCertificate.expiry_date.desc())
@@ -431,7 +431,7 @@ class SupplierCRUD:
             if hasattr(certificate, key):
                 setattr(certificate, key, value)
         
-        certificate.updated_at = datetime.utcnow()
+        certificate.updated_at = datetime.now(UTC)
         
         await self.session.commit()
         await self.session.refresh(certificate)
@@ -502,7 +502,7 @@ class SupplierCRUD:
         
         # 同步更新供应商表的risk_score
         supplier.risk_score = overall_score
-        supplier.updated_at = datetime.utcnow()
+        supplier.updated_at = datetime.now(UTC)
         
         await self.session.commit()
         await self.session.refresh(assessment)
@@ -699,7 +699,7 @@ class SupplierCRUD:
                 for key, value in update_data.items():
                     setattr(supplier, key, value)
                 
-                supplier.updated_at = datetime.utcnow()
+                supplier.updated_at = datetime.now(UTC)
                 success_count += 1
             except Exception as e:
                 failed_count += 1
@@ -761,30 +761,31 @@ class SupplierCRUD:
         sort_by: Optional[str] = None,
         sort_order: str = "asc",
         page: int = 1,
-        page_size: int = 20
+        page_size: int = 20,
+        user: Optional[Any] = None,
     ) -> Dict[str, Any]:
         """
         高级搜索（多条件组合）
         
         Args:
-            filters: 搜索条件字典，支持字段：
-                - name: 名称（模糊匹配）
-                - status: 状态（精确匹配）
-                - country: 国家（精确匹配）
-                - business_type: 业务类型（精确匹配）
-                - capital_min: 注册资本最小值
-                - capital_max: 注册资本最大值
-                - established_after: 成立时间后（日期）
-                - established_before: 成立时间前（日期）
+            filters: 搜索条件字典
             sort_by: 排序字段
             sort_order: 排序方向 (asc/desc)
             page: 页码
             page_size: 每页数量
+            user: 当前用户（用于数据范围过滤）
         
         Returns:
             搜索结果：{"items": List, "total": int, "page": int, "page_size": int, "stats": Dict}
         """
         query = select(Supplier)
+
+        # 数据范围过滤（如果传入 user）
+        if user is not None:
+            from src.identity.visibility import DataScopeFilter
+            filter_ = DataScopeFilter(user)
+            query = filter_.apply_to_query(query, Supplier, owner_field="created_by", user_id_field="created_by")
+
         conditions = []
         
         # 构建查询条件

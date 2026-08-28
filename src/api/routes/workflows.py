@@ -12,7 +12,7 @@ Architecture (Phase 2F-2.5):
 """
 
 import logging
-from typing import List
+from typing import List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -116,6 +116,87 @@ class ExecutionResponse(BaseModel):
 # ============================================================
 # Workflow CRUD Endpoints
 # ============================================================
+
+
+# ==================== 外贸业务模板 ====================
+# NOTE: 必须放在 {workflow_id} 路由之前，避免路径冲突
+
+
+@router.get("/trade-templates", tags=["trade"])
+async def list_trade_templates(
+    category: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+):
+    """列出外贸业务工作流模板。"""
+    from src.workflow.trade_templates import list_trade_templates as _list
+
+    templates = _list(category)
+    return {"items": templates, "total": len(templates)}
+
+
+@router.get("/trade-templates/{template_id}", tags=["trade"])
+async def get_trade_template(
+    template_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """获取外贸业务模板详情。"""
+    from src.workflow.trade_templates import get_trade_template as _get
+
+    try:
+        return _get(template_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.post("/trade-templates/{template_id}/instantiate", tags=["trade"])
+async def instantiate_trade_template(
+    template_id: str,
+    request: ExecuteWorkflowRequest,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(require_permission("workflow", "execute")),
+):
+    """实例化并执行外贸业务模板。
+
+    将模板转换为工作流定义，并立即执行。
+    支持: customer_development, supplier_procurement, deal_closure
+    """
+    from src.workflow.trade_templates import get_trade_template as _get
+    from src.workflow.trade_actions import TradeActionHandler
+
+    try:
+        template = _get(template_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    inputs = request.input_data or {}
+    steps = template.get("steps", [])
+    step_results = []
+
+    # 依次执行每个步骤
+    handler = TradeActionHandler(session, current_user.id)
+    for step in steps:
+        step_config = {
+            **inputs,
+            "step_name": step.get("name", ""),
+            "step_type": step.get("type", ""),
+        }
+        result = await handler.execute(step.get("type", ""), step_config)
+        step_results.append({
+            "name": step.get("name", ""),
+            "type": step.get("type", ""),
+            "result": result,
+        })
+
+    return {
+        "template_id": template_id,
+        "template_name": template.get("name", ""),
+        "status": "completed",
+        "inputs": inputs,
+        "steps": step_results,
+        "total_steps": len(steps),
+        "completed_steps": len(step_results),
+    }
 
 
 @router.post("", response_model=WorkflowResponse, status_code=status.HTTP_201_CREATED)

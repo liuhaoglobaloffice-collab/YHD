@@ -33,7 +33,7 @@ from .retrieval import (
 )
 from .chunker import TextChunker, Chunk, chunk_text
 from .embedding import EmbeddingService, EmbeddingPipeline
-from .vector_store import InMemoryVectorStore, VectorRecord
+from .vector_store import InMemoryVectorStore, SQLiteVectorStore, VectorRecord
 from .retriever import Retriever
 from .rag_pipeline import RAGPipeline
 from .security import KnowledgeSecurityPolicy, KnowledgeSecurityEvent, validate_user_access
@@ -52,6 +52,7 @@ __all__ = [
     "EmbeddingService",
     "EmbeddingPipeline",
     "InMemoryVectorStore",
+    "SQLiteVectorStore",
     "VectorRecord",
     "Retriever",
     "RAGPipeline",

@@ -12,15 +12,18 @@ from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set
 from uuid import UUID, uuid4
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from ..core.errors import (
     ConfigurationError,
     ResourceNotFoundError,
     ValidationError,
 )
-from ..governance.approval import ApprovalRequest, ApprovalService
+from ..governance.approval import ApprovalService
 from ..governance.risk import RiskEvaluator, RiskLevel
 from ..identity.audit import AuditService
-from ..identity.rbac import has_permission
+from ..identity.models import ApprovalStatus
+from ..identity.rbac import RBACService
 from ..security.policy import PolicyAction, PolicyEngine
 
 logger = logging.getLogger(__name__)
@@ -104,6 +107,8 @@ class ToolRegistry:
         policy_engine: PolicyEngine,
         approval_service: ApprovalService,
         risk_evaluator: RiskEvaluator,
+        session: Optional[AsyncSession] = None,
+        rbac_service: Optional[RBACService] = None,
     ):
         self._tools: Dict[str, ToolConfig] = {}
         self._handlers: Dict[str, Callable] = {}
@@ -111,6 +116,8 @@ class ToolRegistry:
         self._policy_engine = policy_engine
         self._approval_service = approval_service
         self._risk_evaluator = risk_evaluator
+        self._session = session
+        self._rbac_service = rbac_service
         self._executions: Dict[str, ToolExecution] = {}  # idempotency tracking
         self._rate_limits: Dict[str, List[datetime]] = {}
         logger.info("Tool Registry initialized")
@@ -172,17 +179,19 @@ class ToolRegistry:
         try:
             config = self.get_tool(tool_id)
         except (ResourceNotFoundError, ValidationError) as e:
-            await self._audit_service.log(
-                action="tool_execution_denied",
-                status="denied",
-                actor_id=actor_id,
-                target_id=None,
-                details={
-                    "reason": "unknown_or_disabled_tool",
-                    "tool_id": tool_id,
-                    "trace_id": str(trace_id),
-                },
-            )
+            if self._session:
+                await AuditService.log(
+                    session=self._session,
+                    action="tool_execution_denied",
+                    resource_type="tool",
+                    status="denied",
+                    user_id=actor_id,
+                    details={
+                        "reason": "unknown_or_disabled_tool",
+                        "tool_id": tool_id,
+                        "trace_id": str(trace_id),
+                    },
+                )
             execution = ToolExecution(
                 execution_id=uuid4(),
                 tool_id=tool_id,
@@ -204,18 +213,20 @@ class ToolRegistry:
             and "*" not in config.allowed_agents
             and agent_type not in config.allowed_agents
         ):
-            await self._audit_service.log(
-                action="tool_execution_denied",
-                status="denied",
-                actor_id=actor_id,
-                target_id=None,
-                details={
-                    "reason": "agent_not_allowed",
-                    "tool_id": tool_id,
-                    "agent_type": agent_type,
-                    "trace_id": str(trace_id),
-                },
-            )
+            if self._session:
+                await AuditService.log(
+                    session=self._session,
+                    action="tool_execution_denied",
+                    resource_type="tool",
+                    status="denied",
+                    user_id=actor_id,
+                    details={
+                        "reason": "agent_not_allowed",
+                        "tool_id": tool_id,
+                        "agent_type": agent_type,
+                        "trace_id": str(trace_id),
+                    },
+                )
             execution = ToolExecution(
                 execution_id=uuid4(),
                 tool_id=tool_id,
@@ -231,22 +242,27 @@ class ToolRegistry:
                 self._executions[idempotency_key] = execution
             return execution
 
-        # Check RBAC permissions
-        if config.required_permissions and actor_id:
-            for perm in config.required_permissions:
-                if not has_permission(actor_id, perm):
-                    await self._audit_service.log(
-                        action="tool_execution_denied",
-                        status="denied",
-                        actor_id=actor_id,
-                        target_id=None,
-                        details={
-                            "reason": "permission_denied",
-                            "tool_id": tool_id,
-                            "required_permission": perm,
-                            "trace_id": str(trace_id),
-                        },
-                    )
+        # Check RBAC permissions via RBACService
+        if config.required_permissions and self._rbac_service:
+            for perm_str in config.required_permissions:
+                from src.identity.rbac import Permission
+                perm_enum = perm_str if isinstance(perm_str, Permission) else Permission(perm_str)
+                has_perm = await self._rbac_service.check_permission_by_id(actor_id, perm_enum)
+                if not has_perm:
+                    if self._session:
+                        await AuditService.log(
+                            session=self._session,
+                            action="tool_execution_denied",
+                            resource_type="tool",
+                            status="denied",
+                            user_id=actor_id,
+                            details={
+                                "reason": "permission_denied",
+                                "tool_id": tool_id,
+                                "required_permission": perm,
+                                "trace_id": str(trace_id),
+                            },
+                        )
                     execution = ToolExecution(
                         execution_id=uuid4(),
                         tool_id=tool_id,
@@ -272,19 +288,21 @@ class ToolRegistry:
         )
 
         if policy_decision.action != PolicyAction.ALLOW:
-            await self._audit_service.log(
-                action="tool_execution_denied",
-                status="denied",
-                actor_id=actor_id,
-                target_id=None,
-                details={
-                    "reason": "policy_denied",
-                    "tool_id": tool_id,
-                    "policy_decision": policy_decision.action.value,
-                    "policy_reason": policy_decision.reason,
-                    "trace_id": str(trace_id),
-                },
-            )
+            if self._session:
+                await AuditService.log(
+                    session=self._session,
+                    action="tool_execution_denied",
+                    resource_type="tool",
+                    status="denied",
+                    user_id=actor_id,
+                    details={
+                        "reason": "policy_denied",
+                        "tool_id": tool_id,
+                        "policy_decision": policy_decision.action.value,
+                        "policy_reason": policy_decision.reason,
+                        "trace_id": str(trace_id),
+                    },
+                )
             execution = ToolExecution(
                 execution_id=uuid4(),
                 tool_id=tool_id,
@@ -303,12 +321,16 @@ class ToolRegistry:
         # Evaluate risk
         risk_level = config.risk_level
 
-        # Request approval if needed
+        # Request approval if needed — real persistence flow
         approval_id = None
-        if config.requires_approval:
-            ApprovalRequest(
+        if config.requires_approval and self._session:
+            # 1. Create persistence approval request via ApprovalService
+            # We construct a minimal User-like object for the requester
+            from src.identity.models import User
+            requester_mock = User(id=int(actor_id) if actor_id and str(actor_id).isdigit() else 0)
+            approval_request = await self._approval_service.create_request(
+                requester=requester_mock,
                 request_type="tool_execution",
-                requester_id=actor_id,  # Assuming actor_id is user ID
                 target_resource="tool",
                 target_action="execute",
                 target_id=tool_id,
@@ -318,20 +340,93 @@ class ToolRegistry:
                     "parameters": parameters,
                     "trace_id": str(trace_id),
                 },
-                risk_level=risk_level,
                 reason=f"Execute tool: {config.name}",
+                context={"risk_level": risk_level.value, "tool_category": config.category.value},
             )
 
-            # Note: In production, this would wait for approval
-            # For Stage 3, we'll log the requirement but proceed
-            logger.warning(f"Tool {tool_id} requires approval - approval flow not yet complete")
-            await self._audit_service.log(
-                action="tool_approval_required",
-                status="pending",
-                actor_id=actor_id,
-                target_id=None,
-                details={"tool_id": tool_id, "risk_level": risk_level, "trace_id": str(trace_id)},
+            # 2. Check if auto-approved (low risk) or needs manual approval
+            is_auto_approved = await self._approval_service.check_auto_approval(
+                requester=requester_mock,
+                request_type="tool_execution",
+                target_resource="tool",
+                target_action="execute",
+                context={"risk_level": risk_level.value},
             )
+
+            if is_auto_approved:
+                # Auto-approve: execute immediately
+                approval_request.status = ApprovalStatus.APPROVED
+                approval_request.approver_id = 0  # system
+                approval_request.reviewed_at = datetime.now(UTC)
+                await self._session.commit()
+                approval_id = str(approval_request.id)
+                logger.info(
+                    f"Tool {tool_id} auto-approved (low risk), approval_id={approval_request.id}"
+                )
+                await AuditService.log(
+                    session=self._session,
+                    action="tool_approval_auto",
+                    resource_type="tool",
+                    status="approved",
+                    user_id=actor_id,
+                    details={
+                        "tool_id": tool_id,
+                        "approval_id": approval_request.id,
+                        "trace_id": str(trace_id),
+                        "risk_level": risk_level.value,
+                    },
+                )
+            else:
+                # Manual approval required: return DENIED with approval_id
+                approval_id = str(approval_request.id)
+                logger.warning(
+                    f"Tool {tool_id} requires manual approval, approval_id={approval_request.id}"
+                )
+                await AuditService.log(
+                    session=self._session,
+                    action="tool_approval_required",
+                    resource_type="tool",
+                    status="pending",
+                    user_id=actor_id,
+                    details={
+                        "tool_id": tool_id,
+                        "approval_id": approval_request.id,
+                        "risk_level": risk_level.value,
+                        "trace_id": str(trace_id),
+                    },
+                )
+                execution = ToolExecution(
+                    execution_id=uuid4(),
+                    tool_id=tool_id,
+                    agent_type=agent_type,
+                    actor_id=actor_id,
+                    trace_id=trace_id,
+                    status=ToolStatus.PENDING,
+                    parameters=parameters,
+                    approval_id=approval_id,
+                    risk_level=risk_level,
+                    error=f"Tool requires manual approval. Approval request ID: {approval_request.id}",
+                    idempotency_key=idempotency_key,
+                )
+                if idempotency_key:
+                    self._executions[idempotency_key] = execution
+                return execution
+        elif config.requires_approval and not self._session:
+            logger.warning(f"Tool {tool_id} requires approval but no session available - denying")
+            execution = ToolExecution(
+                execution_id=uuid4(),
+                tool_id=tool_id,
+                agent_type=agent_type,
+                actor_id=actor_id,
+                trace_id=trace_id,
+                status=ToolStatus.DENIED,
+                parameters=parameters,
+                error="Approval required but database session unavailable",
+                idempotency_key=idempotency_key,
+            )
+            if idempotency_key:
+                self._executions[idempotency_key] = execution
+            return execution
 
         # Check rate limits
         if config.rate_limit_per_hour:
@@ -347,18 +442,20 @@ class ToolRegistry:
             ]
 
             if len(self._rate_limits[rate_key]) >= config.rate_limit_per_hour:
-                await self._audit_service.log(
-                    action="tool_execution_denied",
-                    status="denied",
-                    actor_id=actor_id,
-                    target_id=None,
-                    details={
-                        "reason": "rate_limit_exceeded",
-                        "tool_id": tool_id,
-                        "limit": config.rate_limit_per_hour,
-                        "trace_id": str(trace_id),
-                    },
-                )
+                if self._session:
+                    await AuditService.log(
+                        session=self._session,
+                        action="tool_execution_denied",
+                        resource_type="tool",
+                        status="denied",
+                        user_id=actor_id,
+                        details={
+                            "reason": "rate_limit_exceeded",
+                            "tool_id": tool_id,
+                            "limit": config.rate_limit_per_hour,
+                            "trace_id": str(trace_id),
+                        },
+                    )
                 execution = ToolExecution(
                     execution_id=uuid4(),
                     tool_id=tool_id,
@@ -405,19 +502,22 @@ class ToolRegistry:
             execution.completed_at = datetime.now(UTC)
 
             # Audit success
-            await self._audit_service.log(
-                action="tool_execution_success",
-                status="success",
-                actor_id=actor_id,
-                target_id=None,
-                details={
-                    "tool_id": tool_id,
-                    "agent_type": agent_type,
-                    "execution_id": str(execution.execution_id),
-                    "trace_id": str(trace_id),
-                    "risk_level": risk_level,
-                },
-            )
+            if self._session:
+                await AuditService.log(
+                    session=self._session,
+                    action="tool_execution_success",
+                    resource_type="tool",
+                    status="success",
+                    user_id=actor_id,
+                    resource_id=tool_id,
+                    details={
+                        "tool_id": tool_id,
+                        "agent_type": agent_type,
+                        "execution_id": str(execution.execution_id),
+                        "trace_id": str(trace_id),
+                        "risk_level": risk_level.value if hasattr(risk_level, 'value') else str(risk_level),
+                    },
+                )
 
             logger.info(
                 f"Tool executed successfully: {tool_id} (execution_id={execution.execution_id})"
@@ -430,19 +530,22 @@ class ToolRegistry:
             execution.completed_at = datetime.now(UTC)
 
             # Audit failure
-            await self._audit_service.log(
-                action="tool_execution_failure",
-                status="failure",
-                actor_id=actor_id,
-                target_id=None,
-                details={
-                    "tool_id": tool_id,
-                    "agent_type": agent_type,
-                    "execution_id": str(execution.execution_id),
-                    "trace_id": str(trace_id),
-                    "error": str(e),
-                },
-            )
+            if self._session:
+                await AuditService.log(
+                    session=self._session,
+                    action="tool_execution_failure",
+                    resource_type="tool",
+                    status="failure",
+                    user_id=actor_id,
+                    resource_id=tool_id,
+                    details={
+                        "tool_id": tool_id,
+                        "agent_type": agent_type,
+                        "execution_id": str(execution.execution_id),
+                        "trace_id": str(trace_id),
+                        "error": str(e),
+                    },
+                )
 
             logger.error(
                 f"Tool execution failed: {tool_id} (execution_id={execution.execution_id}): {e}"
@@ -470,3 +573,128 @@ class ToolRegistry:
             if execution.execution_id == execution_id:
                 return execution
         return None
+
+    async def execute_approved(
+        self,
+        execution_id: UUID,
+        approval_id: str,
+        trace_id: UUID,
+        actor_id: Optional[UUID] = None,
+    ) -> ToolExecution:
+        """
+        Execute a tool after it has been approved.
+
+        This is called after the approval request has been approved by a human.
+        Verifies the approval is still valid, then executes the tool.
+
+        Args:
+            execution_id: The execution ID from the pending execution
+            approval_id: The approval request ID that was approved
+            trace_id: Original trace ID for auditing
+            actor_id: User/agent who approved the execution
+
+        Returns:
+            ToolExecution with execution result
+        """
+        # Find the pending execution
+        execution = None
+        for exec_key, stored_exec in self._executions.items():
+            if stored_exec.execution_id == execution_id:
+                execution = stored_exec
+                break
+
+        if not execution:
+            if self._session:
+                await AuditService.log(
+                    session=self._session,
+                    action="tool_approval_execution_failed",
+                    resource_type="tool",
+                    status="failed",
+                    user_id=actor_id,
+                    details={
+                        "reason": "execution_not_found",
+                        "execution_id": str(execution_id),
+                        "trace_id": str(trace_id),
+                    },
+                )
+            raise ResourceNotFoundError(f"Execution not found: {execution_id}")
+
+        # Verify approval is valid
+        if self._session:
+            is_approved = await self._approval_service.is_approved(int(approval_id))
+            if not is_approved:
+                execution.status = ToolStatus.DENIED
+                execution.error = "Approval was not granted or has expired"
+                execution.completed_at = datetime.now(UTC)
+                if self._session:
+                    await AuditService.log(
+                        session=self._session,
+                        action="tool_execution_denied",
+                        resource_type="tool",
+                        status="denied",
+                        user_id=actor_id,
+                        resource_id=execution.tool_id,
+                        details={
+                            "reason": "approval_not_granted",
+                            "execution_id": str(execution_id),
+                            "approval_id": approval_id,
+                            "trace_id": str(trace_id),
+                        },
+                    )
+                return execution
+
+        # Execute the tool
+        execution.status = ToolStatus.EXECUTING
+        execution.started_at = datetime.now(UTC)
+
+        try:
+            handler = self._handlers[execution.tool_id]
+            result = await handler(execution.parameters)
+
+            execution.status = ToolStatus.COMPLETED
+            execution.result = result
+            execution.completed_at = datetime.now(UTC)
+
+            if self._session:
+                await AuditService.log(
+                    session=self._session,
+                    action="tool_execution_success",
+                    resource_type="tool",
+                    status="success",
+                    user_id=actor_id,
+                    resource_id=execution.tool_id,
+                    details={
+                        "tool_id": execution.tool_id,
+                        "execution_id": str(execution_id),
+                        "approval_id": approval_id,
+                        "trace_id": str(trace_id),
+                    },
+                )
+
+            logger.info(
+                f"Approved tool executed: {execution.tool_id} (execution_id={execution_id})"
+            )
+
+        except Exception as e:
+            execution.status = ToolStatus.FAILED
+            execution.error = str(e)
+            execution.completed_at = datetime.now(UTC)
+
+            if self._session:
+                await AuditService.log(
+                    session=self._session,
+                    action="tool_execution_failure",
+                    resource_type="tool",
+                    status="failure",
+                    user_id=actor_id,
+                    resource_id=execution.tool_id,
+                    details={
+                        "tool_id": execution.tool_id,
+                        "execution_id": str(execution_id),
+                        "approval_id": approval_id,
+                        "trace_id": str(trace_id),
+                        "error": str(e),
+                    },
+                )
+
+        return execution

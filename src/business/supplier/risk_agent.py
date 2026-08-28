@@ -5,8 +5,10 @@
 """
 
 import json
-from datetime import datetime
+import os
+from datetime import UTC, datetime
 from typing import Optional, Dict, Any, List
+from uuid import uuid4
 
 import structlog
 from sqlalchemy import select, desc
@@ -279,14 +281,46 @@ Provide ONLY the JSON output, no additional text."""
         """
         调用 AI 进行分析
 
+        优先使用 Provider Gateway（统一 LLM 调用链，支持 OpenAI / Ollama 真实模型）；
+        若 Gateway 未就绪或未配置真实 Provider，则回退到旧版 provider adapter；
+        最后回退到内置 mock 兜底 JSON。
+
         Args:
             prompt: AI Prompt
 
         Returns:
             AI 响应文本.
         """
-        # Preserve the existing mock fallback path while allowing a provider
-        # adapter object to supply the underlying analysis output.
+        # 1) 尝试 Provider Gateway 统一链路（LLM_PROVIDER != mock 时启用真实 LLM）
+        try:
+            provider_str = os.getenv("LLM_PROVIDER", "mock").lower().strip()
+            if provider_str in ("openai", "ollama"):
+                from src.ai.gateway import get_gateway
+
+                gateway = get_gateway()
+                # 任选一个已注册 provider + model（真实 Provider 已在启动时注册）
+                providers = gateway.list_providers()
+                if providers:
+                    ptype = providers[0]
+                    models = gateway.list_models(ptype)
+                    model_id = models[0].model_id if models else ptype.value
+                    response = await gateway.complete(
+                        provider=ptype,
+                        model_id=model_id,
+                        messages=[{"role": "user", "content": prompt}],
+                        trace_id=uuid4(),
+                        temperature=0.2,
+                        max_tokens=2048,
+                    )
+                    if response and response.content:
+                        logger.info(
+                            "risk_ai_gateway_used", provider=ptype.value, model=model_id
+                        )
+                        return response.content
+        except Exception as e:
+            logger.warning("risk_ai_gateway_failed_falling_back", error=str(e))
+
+        # 2) 回退到旧版 provider adapter（默认 mock）
         if hasattr(self, "provider") and self.provider is not None:
             return await self.provider.analyze(prompt)
         return json.dumps({
@@ -406,8 +440,8 @@ Provide ONLY the JSON output, no additional text."""
             recommendations=json.dumps(risk_data.get("recommendations", []), ensure_ascii=False),
             assessor_id=assessor_id,
             assessment_method="ai" if assessor else "manual",
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
         
         self.db.add(assessment)
@@ -587,7 +621,7 @@ Provide ONLY the JSON output, no additional text."""
         """
         from datetime import timedelta
         
-        cutoff_date = datetime.utcnow() - timedelta(days=lookback_days)
+        cutoff_date = datetime.now(UTC) - timedelta(days=lookback_days)
         
         stmt = select(SupplierRiskAssessment).where(
             SupplierRiskAssessment.supplier_id == supplier_id,

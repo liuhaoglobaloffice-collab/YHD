@@ -71,6 +71,7 @@ class BusinessService:
         priority: BusinessTaskPriority = BusinessTaskPriority.MEDIUM,
         context: Optional[Dict[str, Any]] = None,
         tags: Optional[List[str]] = None,
+        owner_user_id: Optional[int] = None,
     ) -> BusinessTask:
         """
         Create a business task.
@@ -83,6 +84,8 @@ class BusinessService:
             priority: Task priority
             context: Optional context data
             tags: Optional tags
+            owner_user_id: V4 归属账号（int = users.id）。主账号可为子账号代建；
+                缺省归属创建者本人。
 
         Returns:
             Created business task
@@ -102,6 +105,7 @@ class BusinessService:
         if not description:
             raise ValidationError("Task description is required")
 
+        author = user_id if isinstance(user_id, int) else None
         # Create task
         task = BusinessTask(
             domain=domain,
@@ -109,6 +113,8 @@ class BusinessService:
             description=description,
             priority=priority,
             status=BusinessTaskStatus.CREATED,
+            owner_user_id=owner_user_id if owner_user_id is not None else author,
+            created_by=author,
             context=context or {},
             tags=tags or [],
         )
@@ -413,6 +419,7 @@ class BusinessService:
         status: Optional[BusinessTaskStatus] = None,
         priority: Optional[BusinessTaskPriority] = None,
         assigned_employee_id: Optional[UUID] = None,
+        owner_user_id: Optional[int] = None,
     ) -> List[BusinessTask]:
         """
         List tasks with filters.
@@ -423,6 +430,8 @@ class BusinessService:
             status: Filter by status
             priority: Filter by priority
             assigned_employee_id: Filter by assigned employee
+            owner_user_id: V4 可见性过滤（int = users.id）。
+                子账号传自己的 id 只看自己的任务；主账号/管理员传 None 看全部。
 
         Returns:
             List of tasks
@@ -439,6 +448,7 @@ class BusinessService:
             status=status,
             priority=priority,
             assigned_employee_id=assigned_employee_id,
+            owner_user_id=owner_user_id,
         )
 
     async def get_domain_metrics(

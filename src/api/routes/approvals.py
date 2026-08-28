@@ -8,7 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.dependencies import get_current_user, require_permission
+from src.api.dependencies import get_current_user
+from src.api.dependencies.permissions import require_permission
 from src.api.schemas import (
     ApprovalDecision,
     ApprovalListResponse,
@@ -29,7 +30,8 @@ async def list_approval_requests(
     status_filter: Optional[str] = Query(None, alias="status"),
     skip: int = 0,
     limit: int = 100,
-    current_user: User = Depends(require_permission("approval", "read")),
+    _: None = Depends(require_permission("approval", "read")),
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
     """
@@ -74,7 +76,8 @@ async def list_approval_requests(
 @router.get("/{request_id}", response_model=ApprovalRequestResponse)
 async def get_approval_request(
     request_id: int,
-    current_user: User = Depends(require_permission("approval", "read")),
+    _: None = Depends(require_permission("approval", "read")),
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
     """
@@ -102,7 +105,8 @@ async def get_approval_request(
 @router.post("", response_model=ApprovalRequestResponse, status_code=status.HTTP_201_CREATED)
 async def create_approval_request(
     request_data: ApprovalRequestCreate,
-    current_user: User = Depends(require_permission("approval", "create")),
+    _: None = Depends(require_permission("approval", "create")),
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
     """
@@ -131,7 +135,8 @@ async def create_approval_request(
 async def approve_request(
     request_id: int,
     decision: ApprovalDecision,
-    current_user: User = Depends(require_permission("approval", "approve")),
+    _: None = Depends(require_permission("approval", "approve")),
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
     """
@@ -167,7 +172,8 @@ async def approve_request(
 async def reject_request(
     request_id: int,
     decision: ApprovalDecision,
-    current_user: User = Depends(require_permission("approval", "approve")),
+    _: None = Depends(require_permission("approval", "approve")),
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
     """

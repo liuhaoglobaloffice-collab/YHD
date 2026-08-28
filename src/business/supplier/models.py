@@ -4,7 +4,7 @@
 定义供应商、联系人、证书和风险评估的数据结构。
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Optional
 from enum import Enum
 
@@ -117,7 +117,7 @@ class Supplier(Base):
     industry = Column(String(100), nullable=True, index=True, comment="所属行业")
 
     # 企业规模
-    established_date = Column(DateTime, nullable=True, comment="成立日期")
+    established_date = Column(DateTime(timezone=True), nullable=True, comment="成立日期")
     registered_capital = Column(Float, nullable=True, comment="注册资本（USD）")
     employee_count = Column(Integer, nullable=True, comment="员工数量")
     annual_revenue = Column(Float, nullable=True, comment="年营业额（USD）")
@@ -168,16 +168,16 @@ class Supplier(Base):
 
     # 时间戳
     created_at = Column(
-        DateTime, nullable=False, default=datetime.utcnow, comment="创建时间"
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), comment="创建时间"
     )
     updated_at = Column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
         comment="更新时间",
     )
-    last_contacted_at = Column(DateTime, nullable=True, comment="最后联系时间")
+    last_contacted_at = Column(DateTime(timezone=True), nullable=True, comment="最后联系时间")
 
     # 创建人
     created_by = Column(Integer, nullable=True, comment="创建人ID")
@@ -244,16 +244,16 @@ class SupplierContact(Base):
 
     # 时间戳
     created_at = Column(
-        DateTime, nullable=False, default=datetime.utcnow, comment="创建时间"
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), comment="创建时间"
     )
     updated_at = Column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
         comment="更新时间",
     )
-    last_contacted_at = Column(DateTime, nullable=True, comment="最后联系时间")
+    last_contacted_at = Column(DateTime(timezone=True), nullable=True, comment="最后联系时间")
 
     # 关系
     supplier = relationship("Supplier", back_populates="contacts")
@@ -296,8 +296,8 @@ class SupplierCertificate(Base):
     issuing_country = Column(String(100), nullable=True, comment="颁发国家")
 
     # 有效期
-    issue_date = Column(DateTime, nullable=True, comment="颁发日期")
-    expiry_date = Column(DateTime, nullable=True, comment="到期日期")
+    issue_date = Column(DateTime(timezone=True), nullable=True, comment="颁发日期")
+    expiry_date = Column(DateTime(timezone=True), nullable=True, comment="到期日期")
     is_permanent = Column(Boolean, default=False, comment="是否永久有效")
 
     # 文件
@@ -306,7 +306,7 @@ class SupplierCertificate(Base):
 
     # 验证状态
     is_verified = Column(Boolean, default=False, comment="是否已验证")
-    verified_at = Column(DateTime, nullable=True, comment="验证时间")
+    verified_at = Column(DateTime(timezone=True), nullable=True, comment="验证时间")
     verified_by = Column(Integer, nullable=True, comment="验证人ID")
 
     # 备注
@@ -314,13 +314,13 @@ class SupplierCertificate(Base):
 
     # 时间戳
     created_at = Column(
-        DateTime, nullable=False, default=datetime.utcnow, comment="创建时间"
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), comment="创建时间"
     )
     updated_at = Column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
         comment="更新时间",
     )
 
@@ -393,7 +393,7 @@ class SupplierRiskAssessment(Base):
 
     # 评估信息
     assessment_date = Column(
-        DateTime, nullable=False, default=datetime.utcnow, comment="评估日期"
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), comment="评估日期"
     )
     assessor_id = Column(Integer, nullable=True, comment="评估人ID（用户或AI Agent）")
     assessment_method = Column(
@@ -407,13 +407,13 @@ class SupplierRiskAssessment(Base):
 
     # 时间戳
     created_at = Column(
-        DateTime, nullable=False, default=datetime.utcnow, comment="创建时间"
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), comment="创建时间"
     )
     updated_at = Column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
         comment="更新时间",
     )
 

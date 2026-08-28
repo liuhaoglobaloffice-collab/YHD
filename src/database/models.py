@@ -7,7 +7,7 @@ Note: Models from other modules (identity, supplier)
 are imported by their respective __init__.py files to avoid circular imports.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import (
     JSON,
@@ -24,6 +24,36 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 from .base import Base
+
+# =============================================================================
+# Identity Foundation: Enterprise / Tenant persistence
+# =============================================================================
+
+
+class EnterpriseModel(Base):
+    """Minimal enterprise persistence model for identity binding."""
+
+    __tablename__ = "enterprises"
+
+    id = Column(String(36), primary_key=True)
+    name = Column(String(255), nullable=False, unique=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
+
+
+class TenantModel(Base):
+    """Minimal tenant persistence model for identity binding."""
+
+    __tablename__ = "tenants"
+
+    id = Column(String(36), primary_key=True)
+    tenant_id = Column(String(64), unique=True, nullable=False)
+    tenant_name = Column(String(255), nullable=False)
+    enterprise_id = Column(String(36), ForeignKey("enterprises.id"), nullable=False)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    admin_user = Column(String(255), nullable=False)
+    status = Column(String(50), nullable=False, default="ACTIVE")
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
 # =============================================================================
 # Stage 4: Knowledge + Company Brain
@@ -67,8 +97,8 @@ class DocumentModel(Base):
     status = Column(String(50), nullable=False)  # uploaded, processing, indexed, available
 
     # Timestamps
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
     # Indexes
     __table_args__ = (
@@ -96,7 +126,7 @@ class DocumentChunkModel(Base):
     chunk_text = Column(Text, nullable=False)
     chunk_index = Column(Integer, nullable=False, default=0)
     metadata_ = Column("metadata", JSON, default=dict)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
 
     document = relationship("DocumentModel", back_populates="chunks")
 
@@ -116,7 +146,7 @@ class EmbeddingStorageModel(Base):
     vector = Column(JSON, nullable=False)
     dimension = Column(Integer, nullable=False, default=3)
     provider = Column(String(80), nullable=False, default="mock")
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
 
     document = relationship("DocumentModel", back_populates="embeddings")
 
@@ -157,10 +187,10 @@ class MemoryModel(Base):
     task_id = Column(String(255))  # For working memory
 
     # Timestamps
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    last_accessed_at = Column(DateTime)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
+    last_accessed_at = Column(DateTime(timezone=True))
     access_count = Column(Integer, default=0)
-    expires_at = Column(DateTime)  # For short-term and working memory expiration
+    expires_at = Column(DateTime(timezone=True))  # For short-term and working memory expiration
 
     # Indexes
     __table_args__ = (
@@ -206,8 +236,8 @@ class CompanyBrainEntityModel(Base):
     created_by = Column(String(36), nullable=False)
 
     # Timestamps
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
     # Indexes
     __table_args__ = (
@@ -259,8 +289,8 @@ class CompanyBrainFactModel(Base):
     created_by = Column(String(36))
 
     # Timestamps
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
     # Indexes
     __table_args__ = (
@@ -307,8 +337,8 @@ class WorkflowModel(Base):
     created_by = Column(String(36), nullable=False)
 
     # Timestamps
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
     # Relationships
     executions = relationship(
@@ -351,9 +381,9 @@ class WorkflowExecutionModel(Base):
     meta = Column(JSON)
 
     # Timestamps
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    started_at = Column(DateTime)
-    completed_at = Column(DateTime)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
+    started_at = Column(DateTime(timezone=True))
+    completed_at = Column(DateTime(timezone=True))
 
     # Relationships
     workflow = relationship("WorkflowModel", back_populates="executions")
@@ -410,11 +440,11 @@ class TaskModel(Base):
     tags = Column(JSON)  # List[str]
 
     # Timestamps
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
-    started_at = Column(DateTime)
-    completed_at = Column(DateTime)
-    deadline = Column(DateTime)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+    started_at = Column(DateTime(timezone=True))
+    completed_at = Column(DateTime(timezone=True))
+    deadline = Column(DateTime(timezone=True))
 
     # Indexes
     __table_args__ = (
@@ -453,7 +483,7 @@ class TaskResultModel(Base):
     meta = Column(JSON)
 
     # Timestamps
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
 
     # Indexes
     __table_args__ = (
@@ -502,8 +532,8 @@ class AIEmployeeModel(Base):
     tags = Column(JSON)  # List[str]
 
     # Timestamps
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
     # Relationships
     performance_records = relationship(
@@ -518,6 +548,98 @@ class AIEmployeeModel(Base):
         Index("idx_ai_employees_status", "status"),
         Index("idx_ai_employees_department", "department"),
         Index("idx_ai_employees_position", "position"),
+    )
+
+
+class AgentMemoryModel(Base):
+    """
+    Agent 会话记忆（AI 记忆层 V3）。
+
+    按 用户 × AI员工 自动记录对话/任务历史，供下次执行时回忆注入，
+    让鎏灏跨会话记住上下文。
+
+    四级记忆分级策略：
+    - 短期（short-term）: 当前会话，7天内，全保留
+    - 中期（medium-term）: 1个月内，保留重要对话
+    - 长期（long-term）: 永久，保留核心结论/决策
+    - 核心（core）: 永远保留，关键业务数据/决策
+    """
+
+    __tablename__ = "agent_memories"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, nullable=False, index=True)  # 操作用户
+    agent_id = Column(String(36), nullable=False, index=True)  # AI 员工 UUID
+    role = Column(String(20), nullable=False, default="user")  # user / assistant
+    content = Column(Text, nullable=False)
+    task_id = Column(String(64), nullable=True)  # 可选：执行记录 ID
+    # 记忆分级存储
+    memory_level = Column(String(20), nullable=False, default="short_term")
+    # 重要性评分 0.0-1.0，决定保留优先级
+    importance = Column(Float, nullable=False, default=0.5)
+    # 是否永久保留（核心记忆永远不清理）
+    is_core = Column(Boolean, nullable=False, default=False)
+    # 过期时间（自动清理）
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+    # 访问统计
+    last_accessed_at = Column(DateTime(timezone=True), nullable=True)
+    access_count = Column(Integer, nullable=False, default=0)
+    # 预留：tokens/耗时等扩展
+    meta = Column(JSON)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), index=True)
+
+    __table_args__ = (
+        Index("idx_agent_memories_user_agent", "user_id", "agent_id", "created_at"),
+        Index("idx_agent_memories_level_expires", "memory_level", "expires_at"),
+        Index("idx_agent_memories_core", "is_core"),
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "agent_id": self.agent_id,
+            "role": self.role,
+            "content": self.content,
+            "task_id": self.task_id,
+            "memory_level": self.memory_level,
+            "importance": self.importance,
+            "is_core": self.is_core,
+            "expires_at": self.expires_at.isoformat() if self.expires_at else None,
+            "last_accessed_at": self.last_accessed_at.isoformat() if self.last_accessed_at else None,
+            "access_count": self.access_count,
+            "meta": self.meta,
+            "created_at": self.created_at.isoformat(),
+        }
+
+
+class AiCostRecordModel(Base):
+    """
+    AI 成本追踪记录（V3 · 能量系统落地）。
+
+    记录每次 AI 任务执行的 Token 用量、估算成本与耗时，
+    供"老板视角"成本仪表盘使用。
+    """
+
+    __tablename__ = "ai_cost_records"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, nullable=False, index=True)  # 操作用户
+    employee_id = Column(String(36), nullable=True, index=True)  # AI 员工 UUID
+    agent_type = Column(String(100), nullable=True)
+    provider = Column(String(50), nullable=False)  # openai / ollama / mock ...
+    model = Column(String(100), nullable=True)
+    input_tokens = Column(Integer, default=0)
+    output_tokens = Column(Integer, default=0)
+    total_tokens = Column(Integer, default=0)
+    cost_usd = Column(Float, default=0.0)  # 估算成本（USD）
+    latency_ms = Column(Float, nullable=True)
+    status = Column(String(20), default="success")  # success / failed
+    meta = Column(JSON)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), index=True)
+
+    __table_args__ = (
+        Index("idx_ai_cost_records_user_created", "user_id", "created_at"),
     )
 
 
@@ -546,14 +668,14 @@ class EmployeePerformanceModel(Base):
     user_rating = Column(Float)  # 0.0 - 5.0
 
     # Time Period
-    period_start = Column(DateTime, nullable=False)
-    period_end = Column(DateTime, nullable=False)
+    period_start = Column(DateTime(timezone=True), nullable=False)
+    period_end = Column(DateTime(timezone=True), nullable=False)
 
     # Metadata
     meta = Column(JSON)
 
     # Timestamps
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
 
     # Relationships
     employee = relationship("AIEmployeeModel", back_populates="performance_records")
@@ -586,14 +708,14 @@ class EmployeeCostModel(Base):
     cost_usd = Column(Float, nullable=False, default=0.0)
 
     # Time Period
-    period_start = Column(DateTime, nullable=False)
-    period_end = Column(DateTime, nullable=False)
+    period_start = Column(DateTime(timezone=True), nullable=False)
+    period_end = Column(DateTime(timezone=True), nullable=False)
 
     # Metadata
     meta = Column(JSON)
 
     # Timestamps
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
 
     # Relationships
     employee = relationship("AIEmployeeModel", back_populates="cost_records")
@@ -636,7 +758,11 @@ class BusinessTaskModel(Base):
     # Assignment
     assigned_employee_id = Column(String(36))  # AI Employee ID
     assigned_by = Column(String(36))  # User ID
-    assigned_at = Column(DateTime)
+    assigned_at = Column(DateTime(timezone=True))
+
+    # V4: 多租户归属（int = users.id）。owner_user_id=归属账号，created_by=代建者
+    owner_user_id = Column(Integer, index=True)
+    created_by = Column(Integer, nullable=True)
 
     # Data
     context = Column(JSON)  # Dict[str, Any] - business context
@@ -648,9 +774,9 @@ class BusinessTaskModel(Base):
     tags = Column(JSON)  # List[str]
 
     # Timestamps
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
-    completed_at = Column(DateTime)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+    completed_at = Column(DateTime(timezone=True))
 
     # Indexes
     __table_args__ = (
@@ -658,4 +784,186 @@ class BusinessTaskModel(Base):
         Index("idx_business_tasks_status", "status"),
         Index("idx_business_tasks_priority", "priority"),
         Index("idx_business_tasks_assigned_employee_id", "assigned_employee_id"),
+    )
+
+
+# =============================================================================
+# Weekly Meeting Chat
+# =============================================================================
+
+
+class MeetingModel(Base):
+    """Weekly meeting model."""
+
+    __tablename__ = "meetings"
+
+    id = Column(String(36), primary_key=True)
+    title = Column(String(255), nullable=False)
+    date = Column(String(10), nullable=False)  # YYYY-MM-DD
+    status = Column(String(20), nullable=False, default="active")  # active, completed
+    created_by = Column(String(36), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+
+    __table_args__ = (
+        Index("idx_meetings_date", "date"),
+        Index("idx_meetings_status", "status"),
+    )
+
+
+class MessageModel(Base):
+    """Meeting chat message model."""
+
+    __tablename__ = "messages"
+
+    id = Column(String(36), primary_key=True)
+    meeting_id = Column(String(36), ForeignKey("meetings.id"), nullable=False)
+    sender = Column(String(100), nullable=False)
+    role = Column(String(20), nullable=False, default="member")  # admin, member
+    content = Column(Text, nullable=False)
+    time = Column(String(10), nullable=False)  # HH:MM
+
+    # Relationships
+    meeting = relationship("MeetingModel", backref="messages")
+
+    __table_args__ = (
+        Index("idx_messages_meeting_id", "meeting_id"),
+    )
+
+
+class ProductModel(Base):
+    """产品目录模型"""
+
+    __tablename__ = "products"
+
+    id = Column(Integer, primary_key=True, index=True, comment="产品ID")
+    name = Column(String(255), nullable=False, comment="产品名称")
+    category = Column(String(100), nullable=True, comment="产品类别")
+    description = Column(Text, nullable=True, comment="产品描述")
+    price = Column(Float, nullable=True, comment="价格（USD）")
+    unit = Column(String(50), nullable=True, default="件", comment="单位")
+    moq = Column(Integer, nullable=True, comment="最小起订量")
+    image_url = Column(String(500), nullable=True, comment="图片URL")
+    status = Column(String(20), nullable=False, default="active", comment="状态: active/inactive")
+    tags = Column(String(500), nullable=True, comment="标签（逗号分隔）")
+
+    # 归属
+    created_by = Column(Integer, nullable=True, comment="创建人ID")
+    tenant_id = Column(String(64), nullable=True, index=True, comment="租户ID")
+
+    # 时间戳
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), comment="创建时间")
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC), comment="更新时间")
+
+    __table_args__ = (
+        Index("idx_products_category", "category"),
+        Index("idx_products_status", "status"),
+        Index("idx_products_tenant", "tenant_id"),
+    )
+
+
+# =============================================================================
+# P1: 老板目标中心 + 失败恢复链
+# =============================================================================
+
+
+class GoalModel(Base):
+    """老板目标模型 — 持久化存储目标、KPI、进度、预算。"""
+
+    __tablename__ = "goals"
+
+    id = Column(Integer, primary_key=True, autoincrement=True, comment="目标ID")
+    title = Column(String(500), nullable=False, comment="目标标题")
+    description = Column(Text, nullable=True, comment="目标描述")
+
+    # 状态
+    status = Column(String(50), nullable=False, default="draft", comment="状态: draft/active/completed/failed/cancelled")
+
+    # 优先级
+    priority = Column(String(50), nullable=False, default="normal", comment="优先级: low/normal/high/critical")
+
+    # KPI
+    kpi_name = Column(String(255), nullable=True, comment="KPI 名称")
+    kpi_target = Column(Float, nullable=True, comment="KPI 目标值")
+    kpi_current = Column(Float, nullable=True, default=0.0, comment="KPI 当前值")
+    kpi_unit = Column(String(50), nullable=True, comment="KPI 单位")
+
+    # 预算
+    budget_total = Column(Float, nullable=True, comment="总预算（USD）")
+    budget_spent = Column(Float, nullable=True, default=0.0, comment="已花费（USD）")
+
+    # 时间范围
+    time_start = Column(DateTime(timezone=True), nullable=True, comment="开始时间")
+    time_end = Column(DateTime(timezone=True), nullable=True, comment="截止时间")
+
+    # 执行计划（JSON 存储 Parser+Planner 输出）
+    plan_data = Column(JSON, nullable=True, comment="执行计划数据")
+    workflow_id = Column(String(36), nullable=True, comment="关联的 Workflow ID")
+
+    # 进度
+    progress_pct = Column(Float, nullable=True, default=0.0, comment="完成进度百分比 0-100")
+
+    # 归属
+    created_by = Column(Integer, nullable=False, comment="创建人ID (OWNER)")
+    tenant_id = Column(String(64), nullable=True, index=True, comment="租户ID")
+
+    # 时间戳
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), comment="创建时间")
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC), comment="更新时间")
+    completed_at = Column(DateTime(timezone=True), nullable=True, comment="完成时间")
+
+    __table_args__ = (
+        Index("idx_goals_status", "status"),
+        Index("idx_goals_priority", "priority"),
+        Index("idx_goals_created_by", "created_by"),
+        Index("idx_goals_tenant", "tenant_id"),
+        Index("idx_goals_workflow", "workflow_id"),
+    )
+
+
+class FailureRecordModel(Base):
+    """失败恢复记录模型 — 记录任务失败原因、策略调整、经验沉淀。"""
+
+    __tablename__ = "failure_records"
+
+    id = Column(Integer, primary_key=True, autoincrement=True, comment="记录ID")
+    goal_id = Column(Integer, ForeignKey("goals.id"), nullable=True, comment="关联目标ID")
+    task_id = Column(String(36), nullable=True, comment="关联任务ID")
+    workflow_id = Column(String(36), nullable=True, comment="关联 Workflow ID")
+
+    # 失败分类
+    failure_category = Column(String(100), nullable=False, comment="失败分类: provider_error/network_error/timeout/rate_limit/auth_error/agent_error/business_logic_error/unknown")
+    failure_summary = Column(Text, nullable=False, comment="失败摘要")
+    failure_detail = Column(Text, nullable=True, comment="失败详情/错误堆栈")
+
+    # 重试信息
+    retry_count = Column(Integer, nullable=False, default=0, comment="已重试次数")
+    max_retries = Column(Integer, nullable=False, default=3, comment="最大重试次数")
+
+    # 策略调整
+    strategy_action = Column(String(100), nullable=True, comment="策略调整动作: switch_agent/switch_provider/adjust_params/change_approach/request_boss/abort")
+    strategy_detail = Column(JSON, nullable=True, comment="策略调整详情")
+
+    # 经验沉淀
+    lesson_learned = Column(Text, nullable=True, comment="经验教训")
+    is_successful = Column(Boolean, nullable=True, comment="最终是否成功恢复")
+
+    # 安全阈值
+    threshold_exceeded = Column(Boolean, nullable=False, default=False, comment="是否超过安全阈值")
+    boss_notified = Column(Boolean, nullable=False, default=False, comment="是否已通知老板")
+    boss_decision = Column(String(500), nullable=True, comment="老板决策")
+
+    # 归属
+    created_by = Column(Integer, nullable=False, comment="记录人ID")
+    tenant_id = Column(String(64), nullable=True, index=True, comment="租户ID")
+
+    # 时间戳
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), comment="创建时间")
+    resolved_at = Column(DateTime(timezone=True), nullable=True, comment="解决时间")
+
+    __table_args__ = (
+        Index("idx_failure_records_goal", "goal_id"),
+        Index("idx_failure_records_task", "task_id"),
+        Index("idx_failure_records_category", "failure_category"),
+        Index("idx_failure_records_tenant", "tenant_id"),
     )

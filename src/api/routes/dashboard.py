@@ -4,7 +4,7 @@ CEO 仪表板数据接口
 """
 
 from typing import Dict, List
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import structlog
 from fastapi import APIRouter, Depends
@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.dependencies import get_current_user
 from src.api.dependencies.database import get_db
 from src.business.supplier.models import Supplier, SupplierStatus, BusinessType
+from src.database.models import AIEmployeeModel, TaskModel
 from src.identity.models import User
 
 logger = structlog.get_logger(__name__)
@@ -46,7 +47,7 @@ async def get_dashboard_stats(
     active_suppliers = active_suppliers_result.scalar() or 0
     
     # 本月新增供应商
-    thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+    thirty_days_ago = datetime.now(UTC) - timedelta(days=30)
     new_suppliers_result = await db.execute(
         select(func.count(Supplier.id)).where(
             Supplier.created_at >= thirty_days_ago
@@ -94,7 +95,56 @@ async def get_dashboard_stats(
         "high_risk_suppliers": high_risk_suppliers,
         "business_type_distribution": business_type_stats,
         "risk_distribution": risk_distribution,
-        "last_updated": datetime.utcnow().isoformat(),
+        "last_updated": datetime.now(UTC).isoformat(),
+    }
+
+
+@router.get("/overview")
+async def get_dashboard_overview(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Dict:
+    """
+    Get CEO dashboard overview with key metrics.
+    """
+    logger.info("fetching_dashboard_overview", user_id=current_user.id)
+
+    # AI employees count
+    emp_result = await db.execute(select(func.count(AIEmployeeModel.id)))
+    ai_employees = emp_result.scalar() or 0
+
+    # Task stats
+    running_result = await db.execute(
+        select(func.count(TaskModel.id)).where(TaskModel.status == "running")
+    )
+    running_tasks = running_result.scalar() or 0
+
+    completed_result = await db.execute(
+        select(func.count(TaskModel.id)).where(TaskModel.status == "completed")
+    )
+    completed_tasks = completed_result.scalar() or 0
+
+    failed_result = await db.execute(
+        select(func.count(TaskModel.id)).where(TaskModel.status == "failed")
+    )
+    failed_tasks = failed_result.scalar() or 0
+
+    # System components
+    components = [
+        {"name": "AI Brain", "status": "online", "load": 85},
+        {"name": "Database", "status": "online", "load": 62},
+        {"name": "API Gateway", "status": "online", "load": 45},
+        {"name": "Security", "status": "protected", "load": 100},
+    ]
+
+    return {
+        "ai_employees": ai_employees,
+        "running_tasks": running_tasks,
+        "completed_tasks": completed_tasks,
+        "failed_tasks": failed_tasks,
+        "system_health": "online",
+        "components": components,
+        "last_updated": datetime.now(UTC).isoformat(),
     }
 
 
@@ -110,7 +160,7 @@ async def get_dashboard_trends(
     logger.info("fetching_dashboard_trends", user_id=current_user.id, days=days)
     
     # 计算日期范围
-    end_date = datetime.utcnow()
+    end_date = datetime.now(UTC)
     start_date = end_date - timedelta(days=days)
     
     # 每日新增供应商趋势
@@ -204,7 +254,7 @@ async def get_dashboard_alerts(
             "title": f"高风险供应商: {supplier.name}",
             "message": f"供应商 {supplier.name} 风险等级为 {supplier.risk_level}，建议审查",
             "supplier_id": str(supplier.id),
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
         })
     
     # 黑名单供应商警报
@@ -222,7 +272,7 @@ async def get_dashboard_alerts(
             "title": f"黑名单供应商: {supplier.name}",
             "message": f"供应商 {supplier.name} 已被列入黑名单",
             "supplier_id": str(supplier.id),
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
         })
     
     return alerts
@@ -247,28 +297,28 @@ async def get_system_health(
                 "name": "AI Brain",
                 "status": "online",
                 "load": 85,
-                "last_check": datetime.utcnow().isoformat(),
+                "last_check": datetime.now(UTC).isoformat(),
             },
             {
                 "name": "Database",
                 "status": "online",
                 "load": 62,
-                "last_check": datetime.utcnow().isoformat(),
+                "last_check": datetime.now(UTC).isoformat(),
             },
             {
                 "name": "API Gateway",
                 "status": "online",
                 "load": 45,
-                "last_check": datetime.utcnow().isoformat(),
+                "last_check": datetime.now(UTC).isoformat(),
             },
             {
                 "name": "Security",
                 "status": "protected",
                 "load": 100,
-                "last_check": datetime.utcnow().isoformat(),
+                "last_check": datetime.now(UTC).isoformat(),
             },
         ],
-        "last_updated": datetime.utcnow().isoformat(),
+        "last_updated": datetime.now(UTC).isoformat(),
     }
 
 
@@ -293,7 +343,7 @@ async def get_recent_activity(
     
     activities = []
     for supplier in suppliers:
-        time_diff = datetime.utcnow() - supplier.created_at
+        time_diff = datetime.now(UTC) - supplier.created_at
         if time_diff.seconds < 3600:
             time_ago = f"{time_diff.seconds // 60}分钟前"
         elif time_diff.days == 0:

@@ -1,0 +1,1 @@
+/* empty css              */const e={parameters:{backgrounds:{default:"dark",values:[{name:"dark",value:"#05070f"},{name:"light",value:"#ffffff"}]},controls:{matchers:{color:/(background|color)$/i,date:/Date$/i}}}};export{e as default};

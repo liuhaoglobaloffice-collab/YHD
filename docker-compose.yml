@@ -1,0 +1,62 @@
+# LiuHao AI OS - 生产部署（Y1.0 Beta）
+# 使用: docker compose up -d --build
+# 访问: 前端 http://localhost:80 ，后端 API 经 nginx 代理 /api
+#
+# 开发模式（热重载，本地直跑）见原 dev 注释；生产用镜像构建。
+
+services:
+  backend:
+    build: .
+    container_name: liuhao-backend
+    ports:
+      - "8000:8000"
+    environment:
+      SECRET_KEY: ${SECRET_KEY:-change-me-please-use-a-long-random-value}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-please-use-a-long-random-value}
+      DATABASE_URL: postgresql+asyncpg://liuhao_user:${POSTGRES_PASSWORD:-liuhao_pass}@database:5432/liuhao_ai_os
+      APP_ENV: production
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8000
+      # LLM Provider（生产配置真实 Key）
+      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OLLAMA_ENABLED: ${OLLAMA_ENABLED:-false}
+    depends_on:
+      database:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health/ready').read()"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: liuhao-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  database:
+    image: postgres:16
+    container_name: liuhao-database
+    environment:
+      POSTGRES_DB: liuhao_ai_os
+      POSTGRES_USER: liuhao_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-liuhao_pass}
+    volumes:
+      - liuhao_pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U liuhao_user -d liuhao_ai_os"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  liuhao_pgdata:

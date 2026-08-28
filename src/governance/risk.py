@@ -32,6 +32,17 @@ class RiskEvaluator:
         "data:delete_bulk",
         "database:drop",
         "security:disable",
+        # 外贸业务高风险操作
+        "message:batch_send",       # 批量发送营销消息
+        "lead:bulk_delete",         # 批量删除客户
+        "customer:bulk_delete",     # 批量删除客户资料
+        "supplier:bulk_delete",     # 批量删除供应商
+        "ai:model_config",          # 修改AI模型配置
+        "ai:api_key_manage",         # 管理API Key
+        "system:core_config",       # 修改企业核心配置
+        "data:export_all",          # 导出全部数据
+        "finance:view",             # 查看财务数据
+        "employee:bulk_delete",     # 批量删除员工
     }
 
     CRITICAL_RISK_OPERATIONS = {
@@ -114,6 +125,11 @@ class RiskEvaluator:
         if context.get("bulk_operation") or context.get("batch_size", 0) > 10:
             logger.info("medium_risk_bulk_operation", operation=operation)
             return RiskLevel.MEDIUM
+
+        # 大批量消息发送（>100）自动升级为高风险
+        if context.get("batch_size", 0) > 100 or context.get("recipient_count", 0) > 100:
+            logger.warning("high_risk_large_batch_operation", operation=operation, batch_size=context.get("batch_size", 0))
+            return RiskLevel.HIGH
 
         # Check for financial operations
         if "payment" in resource or "invoice" in resource or "financial" in resource:

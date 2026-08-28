@@ -1,6 +1,9 @@
 """
 Workflow Executor - Stage 5
 Execute workflow definitions with different patterns (sequential, parallel, conditional, loop)
+
+⚠️ 当前实现为同步顺序执行，缺少异步 Task Queue / Worker Pool。
+   长时间运行的工作流会阻塞当前请求，建议后续引入 Celery / Redis Queue。
 """
 
 import asyncio
@@ -9,7 +12,10 @@ from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 import structlog
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.ai.recovery import FailureCategory, RecoveryChain, StrategyAction
+from src.ai.recovery_executor import RecoveryExecutor
 from src.core.di import get_dependency
 from src.core.events import Event, EventBus
 from src.identity.audit import AuditAction, AuditService
@@ -26,6 +32,12 @@ from src.workflow.models import (
 from src.workflow.service import WorkflowService
 
 logger = structlog.get_logger(__name__)
+
+# 单个步骤执行超时（秒），防止长时间任务阻塞
+STEP_TIMEOUT_SECONDS = 300  # 5 分钟
+
+# 失败恢复最大重试次数
+MAX_RECOVERY_RETRIES = 3
 
 
 class WorkflowExecutor:
@@ -52,15 +64,24 @@ class WorkflowExecutor:
         rbac_service: Optional[RBACService] = None,
         audit_service: Optional[AuditService] = None,
         event_bus: Optional[EventBus] = None,
+        session: Optional[AsyncSession] = None,
     ):
         self.workflow_service = workflow_service or get_dependency(WorkflowService)
         self.task_service = task_service or get_dependency(TaskService)
         self.rbac = rbac_service or get_dependency(RBACService)
         self.audit = audit_service or get_dependency(AuditService)
         self.event_bus = event_bus or get_dependency(EventBus)
+        self.session = session
+
+        # 失败恢复链（仅在注入 session 时可用）
+        self._recovery = RecoveryChain(session) if session else None
+        self._recovery_executor = RecoveryExecutor(session) if session else None
 
         # In-memory execution storage
         self._executions: Dict[UUID, WorkflowExecution] = {}
+
+        # 重试追踪
+        self._retry_counts: Dict[str, int] = {}
 
         logger.info("workflow_executor_initialized")
 
@@ -183,9 +204,82 @@ class WorkflowExecutor:
                 )
 
         except Exception as e:
+            error_msg = str(e)
             execution.status = WorkflowExecutionStatus.FAILED
             execution.completed_at = datetime.now(UTC)
-            execution.error = str(e)
+            execution.error = error_msg
+
+            # Step 1: 记录失败到恢复链
+            recovery_strategy = None
+            if self._recovery:
+                try:
+                    record = await self._recovery.record_failure(
+                        failure_summary=f"Workflow {workflow_id} execution failed",
+                        failure_detail=error_msg,
+                        workflow_id=str(workflow_id),
+                        created_by=user.id,
+                        tenant_id=getattr(user, "tenant_id", None),
+                    )
+                    # 确定恢复策略
+                    strategy = await self._recovery.determine_strategy(record)
+                    recovery_strategy = strategy.value
+                    execution.metadata["recovery_record_id"] = record.id
+                    execution.metadata["recovery_strategy"] = strategy.value
+
+                    # Step 2: 通过 RecoveryExecutor 自动执行恢复策略
+                    if self._recovery_executor:
+                        strategy_result = await self._recovery_executor.execute_strategy(
+                            record, context={"workflow_id": str(workflow_id), "error": error_msg}
+                        )
+                        execution.metadata["recovery_result"] = {
+                            "success": strategy_result.success,
+                            "action": strategy_result.action,
+                            "message": strategy_result.message,
+                        }
+
+                        # Step 3: 如果策略是 RETRY 且未超过阈值，重新执行工作流
+                        if strategy == StrategyAction.RETRY and strategy_result.success:
+                            retry_count = record.retry_count
+                            logger.info(
+                                "workflow_recovery_retry",
+                                workflow_id=str(workflow_id),
+                                attempt=retry_count,
+                                max_retries=MAX_RECOVERY_RETRIES,
+                            )
+                            # 重置执行状态，重新执行
+                            execution.status = WorkflowExecutionStatus.RUNNING
+                            execution.error = None
+                            execution.completed_at = None
+                            try:
+                                results = []
+                                for step in workflow.steps:
+                                    step_result = await self._execute_step(step, execution, user)
+                                    results.append(step_result)
+                                execution.status = WorkflowExecutionStatus.COMPLETED
+                                execution.completed_at = datetime.now(UTC)
+                                execution.result = {
+                                    "results": results,
+                                    "recovered": True,
+                                    "retry_attempt": retry_count,
+                                }
+                                # 记录成功恢复经验
+                                await self._recovery.record_lesson(
+                                    record.id,
+                                    f"RecoveryExecutor retry succeeded on attempt {retry_count}",
+                                    True,
+                                )
+                            except Exception as retry_e:
+                                execution.status = WorkflowExecutionStatus.FAILED
+                                execution.completed_at = datetime.now(UTC)
+                                execution.error = str(retry_e)
+                                await self._recovery.record_lesson(
+                                    record.id,
+                                    f"RecoveryExecutor retry failed: {retry_e}",
+                                    False,
+                                )
+
+                except Exception as recovery_e:
+                    logger.error("recovery_chain_error", error=str(recovery_e))
 
             # Audit failure
             await self.audit.log(
@@ -193,33 +287,38 @@ class WorkflowExecutor:
                 user_id=user.id,
                 resource_type="workflow",
                 resource_id=str(workflow_id),
-                status="failed",
+                status="failed" if execution.status == WorkflowExecutionStatus.FAILED else "completed",
                 details={
                     "execution_id": str(execution.execution_id),
-                    "error": str(e),
+                    "error": error_msg,
+                    "recovery_strategy": recovery_strategy,
                 },
             )
 
             # Emit event
             if self.event_bus:
+                event_name = "workflow.execution.recovered" if execution.status == WorkflowExecutionStatus.COMPLETED else "workflow.execution.failed"
                 await self.event_bus.publish(
                     Event(
-                        name="workflow.execution.failed",
+                        name=event_name,
                         data={
                             "workflow_id": str(workflow_id),
                             "execution_id": str(execution.execution_id),
                             "user_id": user.id,
-                            "error": str(e),
+                            "error": execution.error,
+                            "recovery_strategy": recovery_strategy,
                         },
                     )
                 )
 
-            logger.error(
-                "workflow_execution_failed",
-                workflow_id=str(workflow_id),
-                execution_id=str(execution.execution_id),
-                error=str(e),
-            )
+            if execution.status == WorkflowExecutionStatus.FAILED:
+                logger.error(
+                    "workflow_execution_failed",
+                    workflow_id=str(workflow_id),
+                    execution_id=str(execution.execution_id),
+                    error=error_msg,
+                    recovery_strategy=recovery_strategy,
+                )
 
         return execution
 
@@ -366,19 +465,39 @@ class WorkflowExecutor:
             execution_id=str(execution.execution_id),
         )
 
-        if step_type == WorkflowStepType.TASK:
-            return await self._execute_task_step(step, execution, user)
-        elif step_type == WorkflowStepType.SEQUENTIAL:
-            return await self._execute_sequential_step(step, execution, user)
-        elif step_type == WorkflowStepType.PARALLEL:
-            return await self._execute_parallel_step(step, execution, user)
-        elif step_type == WorkflowStepType.CONDITIONAL:
-            return await self._execute_conditional_step(step, execution, user)
-        elif step_type == WorkflowStepType.LOOP:
-            return await self._execute_loop_step(step, execution, user)
-        else:
-            # Fail Closed: Unknown step type
-            raise ValueError(f"Unknown step type: {step.step_type}")
+        # 带超时的步骤执行
+        try:
+            if step_type == WorkflowStepType.TASK:
+                return await asyncio.wait_for(
+                    self._execute_task_step(step, execution, user),
+                    timeout=STEP_TIMEOUT_SECONDS,
+                )
+            elif step_type == WorkflowStepType.SEQUENTIAL:
+                return await asyncio.wait_for(
+                    self._execute_sequential_step(step, execution, user),
+                    timeout=STEP_TIMEOUT_SECONDS,
+                )
+            elif step_type == WorkflowStepType.PARALLEL:
+                return await asyncio.wait_for(
+                    self._execute_parallel_step(step, execution, user),
+                    timeout=STEP_TIMEOUT_SECONDS,
+                )
+            elif step_type == WorkflowStepType.CONDITIONAL:
+                return await asyncio.wait_for(
+                    self._execute_conditional_step(step, execution, user),
+                    timeout=STEP_TIMEOUT_SECONDS,
+                )
+            elif step_type == WorkflowStepType.LOOP:
+                return await asyncio.wait_for(
+                    self._execute_loop_step(step, execution, user),
+                    timeout=STEP_TIMEOUT_SECONDS,
+                )
+            else:
+                raise ValueError(f"Unknown step type: {step.step_type}")
+        except asyncio.TimeoutError:
+            error_msg = f"Step '{step.name}' timed out after {STEP_TIMEOUT_SECONDS}s"
+            logger.error("step_timeout", step_id=step.step_id, error=error_msg)
+            raise TimeoutError(error_msg)
 
     async def _execute_task_step(
         self, step: WorkflowStep, execution: WorkflowExecution, user: User
@@ -386,7 +505,7 @@ class WorkflowExecutor:
         config = step.task_config or {}
 
         # Create task via TaskService
-        task = self.task_service.create_task(
+        task = await self.task_service.create_task(
             title=step.name,
             description=config.get("description", ""),
             task_type=TaskType(config.get("task_type", "general")),
