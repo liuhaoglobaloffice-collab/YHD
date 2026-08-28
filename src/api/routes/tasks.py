@@ -21,7 +21,8 @@ Architecture (Phase 2F-2.5):
     Database
 """
 
-from typing import List, Optional
+from dataclasses import field
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -32,9 +33,10 @@ from ...api.dependencies import get_current_user
 from ...api.dependencies.approval import require_approval_for
 from ...api.dependencies.database import get_db
 from ...api.dependencies.permissions import require_permission
-from ...api.factories import get_task_service
+from ...api.factories import get_task_executor, get_task_service
 from ...identity.audit import AuditAction, AuditService
 from ...identity.models import User
+from ...tasks.executor import TaskExecutor
 from ...tasks.models import TaskPriority, TaskStatus, TaskType
 from ...tasks.service import TaskService
 
@@ -403,5 +405,60 @@ async def delete_task(
         raise HTTPException(status_code=403, detail=str(e))
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class ExecuteTaskResponse(BaseModel):
+    """Execute task response."""
+    task_id: str
+    status: str
+    result: Optional[dict] = None
+    error: Optional[str] = None
+    started_at: str
+    completed_at: str
+    metadata: dict = field(default_factory=dict)
+
+    @classmethod
+    def from_task(cls, task):
+        """Convert task to response."""
+        return cls(
+            task_id=str(task.id),
+            status=task.status.value,
+            result=task.result.to_dict() if task.result else None,
+            error=task.error,
+            started_at=task.started_at.isoformat() if task.started_at else "",
+            completed_at=task.completed_at.isoformat() if task.completed_at else "",
+            metadata=task.metadata,
+        )
+
+
+@router.post("/{task_id}/execute", response_model=ExecuteTaskResponse, status_code=200)
+async def execute_task(
+    task_id: UUID,
+    executor: TaskExecutor = Depends(get_task_executor),
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(require_permission("task", "execute")),
+):
+    """
+    Execute a pending task.
+
+    Triggers actual execution:
+    - If task is assigned to an AI employee, delegates execution to that employee
+    - Updates task status through the lifecycle: pending → running → completed/failed
+    - Persists the result/error to the database
+    - Returns the completed task with result
+
+    Requires: task has execute permission
+    """
+    try:
+        result = await executor.execute_task(task_id, current_user)
+        updated_task = await executor.task_service.get_task(task_id, current_user)
+        return ExecuteTaskResponse.from_task(updated_task)
+
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

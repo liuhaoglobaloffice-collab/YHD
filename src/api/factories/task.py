@@ -11,7 +11,9 @@ Handles:
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.api.dependencies import get_employee_service, get_db
 from src.api.dependencies.database import get_db
+from src.tasks.executor import TaskExecutor
 from src.tasks.service import TaskService
 
 
@@ -36,4 +38,24 @@ async def get_task_service(
     return TaskService(
         session=session,
         audit_service=None,  # Optional audit service
+    )
+
+
+async def get_task_executor(
+    task_service: TaskService = Depends(get_task_service),
+    employee_service = Depends(get_employee_service),
+) -> TaskExecutor:
+    """
+    Create TaskExecutor with dependencies.
+
+    Dependencies:
+    - TaskService (for task state management)
+    - AIEmployeeService (for AI task execution delegation)
+
+    Returns:
+        Fully configured TaskExecutor instance
+    """
+    return TaskExecutor(
+        task_service=task_service,
+        employee_service=employee_service,
     )

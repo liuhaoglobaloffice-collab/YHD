@@ -27,7 +27,7 @@ Factories handle:
 
 from .business import get_business_service
 from .knowledge import get_company_brain, get_document_service, get_memory_service
-from .task import get_task_service
+from .task import get_task_executor, get_task_service
 from .workflow import get_workflow_service
 from .workforce import get_workforce_service
 
@@ -35,6 +35,7 @@ __all__ = [
     "get_business_service",
     "get_workflow_service",
     "get_task_service",
+    "get_task_executor",
     "get_workforce_service",
     "get_document_service",
     "get_memory_service",

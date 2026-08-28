@@ -196,7 +196,7 @@ def task_to_model(task: Task) -> TaskModel:
         ),
         input_data=task.input_data,
         result_data=task.result.output if task.result else None,
-        error=task.error,
+        error=task.result.error if task.result else task.error,
         meta=task.metadata,
         tags=task.tags,
         created_at=task.created_at,
@@ -219,11 +219,13 @@ def model_to_task(model: TaskModel) -> Task:
                 )
             )
 
-    # Convert result_data to TaskResult if present
+    # Convert result_data/error to TaskResult if present
     result = None
-    if model.result_data:
+    if model.result_data or model.error:
         result = TaskResult(
-            success=model.status == TaskStatus.COMPLETED.value, output=model.result_data
+            success=model.status == TaskStatus.COMPLETED.value,
+            output=model.result_data,
+            error=model.error,
         )
 
     return Task(

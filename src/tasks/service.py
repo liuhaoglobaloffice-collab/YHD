@@ -3,7 +3,7 @@ Task Service - Stage 5
 Task lifecycle management
 """
 
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Union
 from uuid import UUID, uuid4
 
 import structlog
@@ -96,13 +96,23 @@ class TaskService:
             raise ValidationError("Task title is required")
 
         # Create task
+        # creator_id must be UUID, convert from int user.id if needed
+        creator_id: Union[UUID, None] = None
+        if isinstance(user.id, int):
+            # User.id is int - create a deterministic UUID from it
+            creator_id = UUID(int=user.id)
+        elif isinstance(user.id, UUID):
+            creator_id = user.id
+        elif isinstance(user.id, str):
+            creator_id = UUID(user.id)
+
         task = Task(
             title=title.strip(),
             description=description.strip() if description else "",
             task_type=task_type,
             priority=priority,
             assigned_to=assigned_to or [],
-            creator_id=user.id,
+            creator_id=creator_id,
             workflow_id=workflow_id,
             parent_task_id=parent_task_id,
             dependencies=dependencies or [],
