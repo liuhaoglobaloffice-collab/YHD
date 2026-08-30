@@ -6,6 +6,7 @@ S2 多平台接入 - 平台服务
 """
 
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set
 
@@ -25,6 +26,11 @@ from src.integrations.models import (
 )
 from src.integrations.providers import MockPlatformProvider
 from src.integrations.translation import TranslationService
+
+# 执行模式常量
+EXECUTION_MODE_REAL = "REAL"
+EXECUTION_MODE_MOCK = "MOCK"
+EXECUTION_MODE_NOT_CONFIGURED = "NOT_CONFIGURED"
 
 logger = logging.getLogger(__name__)
 
@@ -219,6 +225,12 @@ class PlatformService:
             translated = tr
 
         provider = self._get_provider(account)
+        is_mock = isinstance(provider, MockPlatformProvider)
+
+        # 生产环境阻止 Mock 发送
+        if is_mock and os.getenv("APP_ENV", "development") == "production":
+            raise ValueError("生产环境不允许使用 Mock 平台 Provider 发送消息，请配置真实凭据")
+
         message = PlatformMessage(
             platform=account.platform,
             account_id=account.id,
@@ -231,6 +243,7 @@ class PlatformService:
             translated_content=send_content if translated else None,
             source_lang=(translated or {}).get("source_lang"),
             target_lang=target_lang,
+            source_type=EXECUTION_MODE_MOCK if is_mock else EXECUTION_MODE_REAL,
             status=MessageStatus.QUEUED,
             owner_user_id=owner_user_id,
             tenant_id=tenant_id,
@@ -283,6 +296,7 @@ class PlatformService:
             to_id=account.account_id,
             to_name=account.name,
             content=reply_text,
+            source_type=EXECUTION_MODE_MOCK,
             status=MessageStatus.RECEIVED,
             owner_user_id=owner_user_id,
             tenant_id=tenant_id,
@@ -323,6 +337,7 @@ class PlatformService:
             raise ValueError("平台账号不存在")
 
         provider = self._get_provider(account)
+        is_mock = isinstance(provider, MockPlatformProvider)
         # 真实 Provider 尝试拉取远端（多数平台以 Webhook 推送，此处留空）
         try:
             remote = await provider.fetch_messages()
@@ -337,6 +352,7 @@ class PlatformService:
                 from_name=item.get("from_name"),
                 to_id=account.account_id,
                 content=item.get("content", ""),
+                source_type=EXECUTION_MODE_MOCK if is_mock else EXECUTION_MODE_REAL,
                 status=MessageStatus.RECEIVED,
                 owner_user_id=owner_user_id,
             )
@@ -430,6 +446,7 @@ class PlatformService:
                 "translated_content": msg.translated_content,
                 "source_lang": msg.source_lang,
                 "target_lang": msg.target_lang,
+                "source_type": msg.source_type,
                 "status": msg.status.value,
                 "created_at": msg.created_at.isoformat() if msg.created_at else None,
                 "remote_id": msg.remote_id,

@@ -187,6 +187,7 @@ class WebhookService:
             to_id=account.account_id,
             to_name=account.name,
             content=content,
+            source_type="REAL",
             status=MessageStatus.RECEIVED,
             remote_id=remote_id,
             owner_user_id=account.owner_user_id,

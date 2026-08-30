@@ -86,6 +86,7 @@ class MessageOut(BaseModel):
     translated_content: Optional[str] = None
     source_lang: Optional[str] = None
     target_lang: Optional[str] = None
+    source_type: str = "MOCK"
     status: str
     created_at: datetime
 
@@ -146,6 +147,7 @@ def _serialize_message(msg) -> MessageOut:
         translated_content=msg.translated_content,
         source_lang=msg.source_lang,
         target_lang=msg.target_lang,
+        source_type=getattr(msg, "source_type", "MOCK"),
         status=msg.status.value,
         created_at=msg.created_at,
     )

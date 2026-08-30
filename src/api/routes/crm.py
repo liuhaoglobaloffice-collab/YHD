@@ -49,6 +49,7 @@ router = APIRouter(prefix="/crm", tags=["crm"])
 class LeadCreate(BaseModel):
     source: str = Field("manual")
     source_detail: Optional[str] = None
+    source_type: Optional[str] = Field(None, description="REAL / MOCK / NOT_CONFIGURED")
     name: str = Field(..., min_length=1)
     company: Optional[str] = None
     country: Optional[str] = None
@@ -182,6 +183,7 @@ def _lead_out(l: Lead) -> Dict[str, Any]:
         "source": l.source.value,
         "source_label": LEAD_SOURCE_LABELS.get(l.source.value, l.source.value),
         "source_detail": l.source_detail,
+        "source_type": l.source_type,
         "name": l.name,
         "company": l.company,
         "country": l.country,
@@ -291,7 +293,7 @@ async def run_acquisition(
                 **{k: v for k, v in l.items() if k in (
                     "name", "company", "country", "city", "industry", "email",
                     "phone", "whatsapp", "wechat", "linkedin", "website",
-                    "product_interest", "score",
+                    "product_interest", "score", "source_type",
                 )},
                 "source": l.get("source", "social"),
                 "source_detail": l.get("source_detail"),
@@ -471,7 +473,7 @@ async def assign_lead(
         lead = await service.assign_to_employee(lead_id, request.employee_id, current_user.id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    return _serialize_lead(lead)
+    return _lead_out(lead)
 
 
 class BatchAssignRequest(BaseModel):

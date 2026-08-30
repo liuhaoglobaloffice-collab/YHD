@@ -141,6 +141,12 @@ class PlatformMessage(Base):
     source_lang = Column(String(20), nullable=True, comment="源语言")
     target_lang = Column(String(20), nullable=True, comment="目标语言")
 
+    # 执行模式
+    source_type = Column(
+        String(20), nullable=False, default="MOCK", index=True,
+        comment="消息来源类型：REAL / MOCK / NOT_CONFIGURED",
+    )
+
     # 状态
     status = Column(
         SQLEnum(MessageStatus),

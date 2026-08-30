@@ -41,6 +41,7 @@ class LeadService:
         lead = Lead(
             source=LeadSource(data.get("source", "manual")),
             source_detail=data.get("source_detail"),
+            source_type=data.get("source_type", "MOCK"),
             name=data.get("name", "").strip(),
             company=data.get("company"),
             country=data.get("country"),
@@ -240,6 +241,7 @@ class LeadService:
         stmt = select(Lead).where(Lead.owner_user_id.in_(list(user_ids)))
         leads = list((await self.session.execute(stmt)).scalars().all())
         by_status: Dict[str, int] = {}
+        by_source_type: Dict[str, int] = {}
         total_value = 0.0
         quote_total = 0.0
         won_total = 0.0
@@ -250,6 +252,8 @@ class LeadService:
         for lead in leads:
             key = lead.status.value
             by_status[key] = by_status.get(key, 0) + 1
+            st = lead.source_type or "MOCK"
+            by_source_type[st] = by_source_type.get(st, 0) + 1
             if lead.estimated_value:
                 total_value += lead.estimated_value
             if lead.quote_amount:
@@ -275,6 +279,7 @@ class LeadService:
         return {
             "total": total,
             "by_status": by_status,
+            "by_source_type": by_source_type,
             "stages": stages,
             "total_estimated_value": round(total_value, 2),
             "quote_total": round(quote_total, 2),

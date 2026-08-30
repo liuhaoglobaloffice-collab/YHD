@@ -75,6 +75,10 @@ class Lead(Base):
     # 来源
     source = Column(SQLEnum(LeadSource), nullable=False, index=True, comment="线索来源")
     source_detail = Column(String(255), nullable=True, comment="来源详情（如平台/关键词）")
+    source_type = Column(
+        String(20), nullable=False, default="MOCK", index=True,
+        comment="执行模式：REAL / MOCK / NOT_CONFIGURED",
+    )
 
     # 基本信息
     name = Column(String(255), nullable=False, index=True, comment="客户/联系人名称")

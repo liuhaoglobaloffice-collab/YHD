@@ -3,17 +3,26 @@ S3 自动获客 + 供应商分析 - 获客引擎
 
 包含三路线索挖掘：社媒（social）、谷歌搜索（google）、海关数据（customs），
 以及海关数据 Provider 与国内供应商发现引擎。
-未配置真实数据源时自动回退到 Mock 数据（开发模式）。
+
+执行模式（每条线索的 source_type 字段）：
+  - REAL           真实数据源返回的数据
+  - MOCK           测试/开发用示例数据
+  - NOT_CONFIGURED 未配置真实数据源，不返回数据
 """
 
 import logging
 import os
 import random
+from datetime import UTC, datetime
 from typing import Any, Dict, List, Optional
 
 import httpx
 
 logger = logging.getLogger(__name__)
+
+EXECUTION_MODE_REAL = "REAL"
+EXECUTION_MODE_MOCK = "MOCK"
+EXECUTION_MODE_NOT_CONFIGURED = "NOT_CONFIGURED"
 
 
 class LeadAcquisitionEngine:
@@ -180,19 +189,24 @@ class LeadAcquisitionEngine:
         for l in leads:
             l["source"] = "social"
             l["source_detail"] = random.choice(keywords)
+            l["source_type"] = EXECUTION_MODE_MOCK
         return leads
 
     async def _google_leads(self, keywords: List[str], limit: int) -> List[Dict[str, Any]]:
         """谷歌搜索线索。配置了 Custom Search API 时走真实接口，否则 Mock。"""
         if self.google_api_key and self.google_cx:
             try:
-                return await self._google_real(keywords, limit)
+                leads = await self._google_real(keywords, limit)
+                for l in leads:
+                    l["source_type"] = EXECUTION_MODE_REAL
+                return leads
             except Exception as e:  # noqa: BLE001
                 logger.warning("google_search_failed_falling_back error=%s", str(e))
         leads = [dict(l) for l in self.GOOGLE_SAMPLE[:limit]]
         for l in leads:
             l["source"] = "google"
             l["source_detail"] = random.choice(keywords)
+            l["source_type"] = EXECUTION_MODE_MOCK
         return leads
 
     async def _google_real(self, keywords: List[str], limit: int) -> List[Dict[str, Any]]:
@@ -231,6 +245,7 @@ class LeadAcquisitionEngine:
         for l in leads:
             l["source"] = "customs"
             l["source_detail"] = random.choice(keywords)
+            l["source_type"] = EXECUTION_MODE_MOCK
         return leads
 
 
@@ -292,10 +307,16 @@ class CustomsDataProvider:
         """查询海关数据。"""
         if self.api_url:
             try:
-                return await self._search_real(product, country, limit)
+                records = await self._search_real(product, country, limit)
+                for r in records:
+                    r["source_type"] = EXECUTION_MODE_REAL
+                return records
             except Exception as e:  # noqa: BLE001
                 logger.warning("customs_api_failed_falling_back error=%s", str(e))
-        return self._search_mock(product, country, limit)
+        records = self._search_mock(product, country, limit)
+        for r in records:
+            r["source_type"] = EXECUTION_MODE_MOCK
+        return records
 
     async def _search_real(
         self, product: Optional[str], country: Optional[str], limit: int
@@ -365,5 +386,7 @@ class SupplierDiscoveryEngine:
         for s in self.SAMPLE:
             if product and product.lower() not in s["product_category"].lower():
                 continue
-            results.append(dict(s))
+            r = dict(s)
+            r["source_type"] = EXECUTION_MODE_MOCK
+            results.append(r)
         return results[:limit]
