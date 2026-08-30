@@ -103,6 +103,22 @@ class Settings(BaseSettings):
     log_format: str = Field(default="json")
     log_file: str = Field(default="logs/app.log")
 
+    # SMTP Email (Lead 跟进邮件；未配置时诚实返回 NOT_CONFIGURED)
+    smtp_host: Optional[str] = Field(
+        default=None, description="SMTP server host, e.g. smtp.gmail.com"
+    )
+    smtp_port: int = Field(default=587, description="SMTP port (587 STARTTLS / 465 SSL)")
+    smtp_user: Optional[str] = Field(default=None, description="SMTP username (sender account)")
+    smtp_password: Optional[str] = Field(
+        default=None, description="SMTP password / app password (MUST come from env)"
+    )
+    smtp_from: Optional[str] = Field(
+        default=None, description="From address; defaults to smtp_user when unset"
+    )
+    smtp_use_ssl: bool = Field(
+        default=False, description="Use SMTP_SSL (port 465) instead of STARTTLS (port 587)"
+    )
+
     @field_validator("secret_key", "jwt_secret_key")
     @classmethod
     def validate_secrets(cls, v: str, info) -> str:

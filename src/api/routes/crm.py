@@ -105,6 +105,12 @@ class ActivityCreate(BaseModel):
     next_follow_up_at: Optional[datetime] = None
 
 
+class LeadEmailRequest(BaseModel):
+    subject: str = Field(..., min_length=1, description="邮件主题")
+    body: str = Field(..., min_length=1, description="邮件正文（纯文本）")
+    next_follow_up_at: Optional[datetime] = None
+
+
 class AcquisitionRequest(BaseModel):
     sources: List[str] = Field(default_factory=lambda: ["social", "google", "customs"])
     keywords: Optional[List[str]] = None
@@ -516,6 +522,31 @@ async def add_activity(
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     return _activity_out(activity)
+
+
+@router.post("/leads/{lead_id}/email")
+async def send_lead_email(
+    lead_id: int,
+    request: LeadEmailRequest,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(require_permission("lead", "update")),
+):
+    """向线索客户发送跟进邮件（真实 SMTP；未配置时诚实返回 NOT_CONFIGURED）。"""
+    service = LeadService(session)
+    try:
+        result = await service.send_lead_email(
+            lead_id=lead_id,
+            owner_user_id=current_user.id,
+            subject=request.subject,
+            body=request.body,
+            next_follow_up_at=request.next_follow_up_at,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    # NOT_CONFIGURED 是诚实降级而非错误；FAILED 记录了失败原因也不抛 5xx，
+    # 让老板在前端直接看到真实状态
+    return result
 
 
 # ==================== 海关数据 ====================

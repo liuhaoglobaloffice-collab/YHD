@@ -235,6 +235,57 @@ class LeadService:
         )
         return list((await self.session.execute(stmt)).scalars().all())
 
+    async def send_lead_email(
+        self,
+        lead_id: int,
+        owner_user_id: int,
+        subject: str,
+        body: str,
+        email_service: Optional[Any] = None,
+        next_follow_up_at: Optional[datetime] = None,
+    ) -> Dict[str, Any]:
+        """向线索客户发送跟进邮件，并把发送结果落盘为 LeadActivity。
+
+        诚实降级：SMTP 未配置时返回 NOT_CONFIGURED（不伪造发送成功），
+        同时仍记录一条 email 活动以便老板看到"该客户尚未真实触达"。
+        """
+        from src.integrations.email import EmailService
+
+        lead = await self.get_lead(lead_id, {owner_user_id})
+        if not lead:
+            raise ValueError("线索不存在")
+
+        service = email_service or EmailService()
+        result = await service.send_email(to=lead.email or "", subject=subject, body=body)
+
+        activity = LeadActivity(
+            lead_id=lead_id,
+            activity_type=ActivityType.EMAIL,
+            content=f"[{result['source_type']}] {subject}\n\n{body}",
+            result=(
+                f"sent, message_id={result.get('message_id')}"
+                if result["status"] == "sent"
+                else f"{result['status']}: {result.get('error')}"
+            ),
+            created_by=owner_user_id,
+        )
+        self.session.add(activity)
+        lead.last_activity_at = datetime.now(UTC)
+        if next_follow_up_at is not None:
+            lead.next_follow_up_at = next_follow_up_at
+        await self.session.commit()
+        await self.session.refresh(activity)
+
+        return {
+            "lead_id": lead_id,
+            "activity_id": activity.id,
+            "source_type": result["source_type"],
+            "status": result["status"],
+            "to": result.get("to"),
+            "message_id": result.get("message_id"),
+            "error": result.get("error"),
+        }
+
     # ==================== 统计 ====================
 
     async def stats(self, user_ids: Set[int]) -> Dict[str, Any]:
