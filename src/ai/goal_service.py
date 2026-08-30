@@ -71,6 +71,82 @@ class GoalService:
         logger.info(f"Created goal: id={goal.id}, title='{title}'")
         return goal
 
+    async def create_goal_from_text(
+        self,
+        text: str,
+        user: Optional[User] = None,
+        created_by: Optional[int] = None,
+        tenant_id: Optional[str] = None,
+    ) -> tuple:
+        """
+        P0-1 LLM 目标理解：老板一句自然语言 → 完整经营目标。
+
+        链路：CEOCommandProcessor.parse_with_llm() → KPI/预算/时间/风险
+        自动提取 → create_goal() 持久化。
+
+        老板手动提供的字段优先（显式入参）；LLM 只补齐缺失字段。
+        无可用 LLM Provider 时诚实降级为规则解析（字段留空，老板手填）。
+
+        Returns:
+            (GoalModel, Dict) — 目标 + 解析信息（parse_method / llm_error）
+        """
+        if not text or not text.strip():
+            raise ValueError("目标文本不能为空")
+
+        parsed: ParsedCommand = await self.parser.parse_with_llm(text)
+
+        def _parse_date(value: Optional[str]):
+            if not value:
+                return None
+            try:
+                return datetime.fromisoformat(value)
+            except ValueError:
+                return None
+
+        goal = await self.create_goal(
+            title=(parsed.goal or text)[:500],
+            description=text,
+            priority=parsed.priority.value,
+            kpi_name=parsed.kpi_name,
+            kpi_target=parsed.kpi_target,
+            kpi_unit=parsed.kpi_unit,
+            budget_total=parsed.budget_total,
+            time_start=_parse_date(parsed.time_start),
+            time_end=_parse_date(parsed.time_end),
+            user=user,
+            created_by=created_by,
+            tenant_id=tenant_id,
+        )
+
+        # 解析来源记录进 plan_data（诚实标记 llm / rule_based）
+        goal.plan_data = {
+            "parse_method": parsed.metadata.get("parse_method", "rule_based"),
+            "llm_error": parsed.metadata.get("llm_error"),
+            "risk_boundaries": parsed.risk_boundaries,
+            "constraints": parsed.constraints,
+            "original_text": text,
+        }
+        await self.session.commit()
+        await self.session.refresh(goal)
+
+        parse_info = {
+            "parse_method": parsed.metadata.get("parse_method", "rule_based"),
+            "llm_error": parsed.metadata.get("llm_error"),
+            "extracted": {
+                "kpi_name": parsed.kpi_name,
+                "kpi_target": parsed.kpi_target,
+                "kpi_unit": parsed.kpi_unit,
+                "budget_total": parsed.budget_total,
+                "time_start": parsed.time_start,
+                "time_end": parsed.time_end,
+                "risk_boundaries": parsed.risk_boundaries,
+            },
+        }
+        logger.info(
+            f"Created goal from text: id={goal.id}, method={parse_info['parse_method']}"
+        )
+        return goal, parse_info
+
     async def activate_goal(self, goal_id: int, user: User) -> GoalModel:
         """激活目标：解析 → 规划 → 路由 Agent → 生成 Workflow。"""
         goal = await self.session.get(GoalModel, goal_id)
@@ -149,14 +225,26 @@ class GoalService:
         wf_uuid = UUID(workflow_id)
 
         # 创建 WorkflowExecutor 并执行，注入 TaskExecutor 确保任务真实执行
+        from src.identity.audit import AuditService
         from src.identity.rbac import RBACService
         from src.tasks.executor import TaskExecutor
         from src.tasks.service import TaskService
         from src.workflow.service import WorkflowService
+        from src.workforce.employee import AIEmployeeService
+        from src.workforce.registry import AIEmployeeRegistry
 
         task_service = TaskService(self.session)
-        task_executor = TaskExecutor(task_service=task_service)
         rbac_service = RBACService(self.session)
+        # TaskExecutor 必须注入 employee_service，否则任务无法由 AI 员工真实执行
+        employee_service = AIEmployeeService(
+            registry=AIEmployeeRegistry(self.session),
+            rbac_service=rbac_service,
+            audit_service=AuditService,
+        )
+        task_executor = TaskExecutor(
+            task_service=task_service,
+            employee_service=employee_service,
+        )
         workflow_service = WorkflowService(self.session, rbac_service=rbac_service)
         executor = WorkflowExecutor(
             session=self.session,
@@ -180,20 +268,25 @@ class GoalService:
             goal.status = "completed"
             goal.completed_at = datetime.now(UTC)
             if goal.plan_data:
-                goal.plan_data["execution_result"] = {
+                # JSON 列原地修改不触发 SQLAlchemy 变更检测，必须整体重新赋值
+                updated_plan = dict(goal.plan_data)
+                updated_plan["execution_result"] = {
                     "execution_id": str(execution.execution_id),
                     "status": "completed",
                     "result": execution.result,
                 }
+                goal.plan_data = updated_plan
         elif execution.status == WorkflowExecutionStatus.FAILED:
             goal.status = "failed"
             if goal.plan_data:
-                goal.plan_data["execution_result"] = {
+                updated_plan = dict(goal.plan_data)
+                updated_plan["execution_result"] = {
                     "execution_id": str(execution.execution_id),
                     "status": "failed",
                     "error": execution.error,
                 }
-                goal.plan_data["failure_reason"] = execution.error
+                updated_plan["failure_reason"] = execution.error
+                goal.plan_data = updated_plan
         else:
             # 还在运行中，只更新进度
             goal.progress_pct = 50.0

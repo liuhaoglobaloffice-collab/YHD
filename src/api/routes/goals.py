@@ -159,6 +159,35 @@ async def create_goal(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.post("/from-text", status_code=201)
+async def create_goal_from_text(
+    body: Dict[str, Any],
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """P0-1 LLM 目标理解：老板一句自然语言 → 自动提取 KPI/预算/时间/风险并创建目标。
+
+    请求体: {"text": "帮我开发美国市场，30天获取100个潜在客户，预算2000美元"}
+    无可用 LLM Provider 时诚实降级为规则解析（parse_method=rule_based）。
+    """
+    service = GoalService(session)
+    text = (body.get("text") or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="text 不能为空")
+    try:
+        goal, parse_info = await service.create_goal_from_text(
+            text=text,
+            user=current_user,
+        )
+        result = service._to_dict(goal)
+        result["parse_info"] = parse_info
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"目标创建失败: {str(e)}")
+
+
 @router.get("")
 async def list_goals(
     status: Optional[str] = Query(None),

@@ -68,6 +68,10 @@ class ParsedCommand:
     Parsed CEO command with extracted goal and constraints.
 
     Result of natural language processing on CEO command.
+
+    P0-1: KPI / budget / time / risk fields are extracted by the LLM
+    parser when a real Provider is configured; the rule-based parser
+    leaves them None (boss must fill them manually).
     """
 
     goal: str
@@ -77,6 +81,15 @@ class ParsedCommand:
     estimated_complexity: str = "medium"  # low, medium, high
     required_agents: List[str] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
+
+    # P0-1 LLM 目标理解提取的经营要素（None = 未提取到）
+    kpi_name: Optional[str] = None
+    kpi_target: Optional[float] = None
+    kpi_unit: Optional[str] = None
+    budget_total: Optional[float] = None
+    time_start: Optional[str] = None  # ISO 日期字符串
+    time_end: Optional[str] = None  # ISO 日期字符串
+    risk_boundaries: List[str] = field(default_factory=list)
 
 
 @dataclass
