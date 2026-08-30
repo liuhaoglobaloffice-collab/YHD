@@ -40,7 +40,9 @@ class WorkflowService:
     ):
         self.session = session
         self.repo = WorkflowRepository(session)
-        self.rbac = rbac_service or get_dependency(RBACService)
+        # DI 容器无法构造 RBACService（缺 session）时静默返回 None，
+        # 导致 create_workflow 权限检查 AttributeError — 此处兜底直接构造。
+        self.rbac = rbac_service or get_dependency(RBACService) or RBACService(session)
         self.audit = audit_service or get_dependency(AuditService)
         logger.info("WorkflowService initialized")
 

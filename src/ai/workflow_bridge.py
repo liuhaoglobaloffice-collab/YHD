@@ -109,69 +109,57 @@ class WorkflowBridge:
         """
         Convert plan tasks to workflow step definitions.
 
-        Returns:
-            List of step dicts compatible with WorkflowService
+        输出格式与 WorkflowService._dict_to_step / WorkflowExecutor 兼容：
+        step_id / step_type / name / task_type / task_config（含 employee_id
+        员工分配与 input_data.prompt，供 TaskExecutor 真实执行）。
         """
-        # Create assignment lookup
         assignment_map = {str(a.task_id): a for a in assignments}
 
         steps = []
         for idx, task in enumerate(plan.tasks):
             task_id = task["task_id"]
             assignment = assignment_map.get(task_id)
+            agent_type = task.get("agent_type", "business")
 
-            # Determine step type based on agent assignment
-            step_type = self._map_agent_to_step_type(task.get("agent_type", "business"))
-
-            # Build step config
-            config = {
-                "agent_type": task.get("agent_type"),
-                "employee_id": (
-                    str(assignment.employee_id) if assignment and assignment.employee_id else None
-                ),
-                "employee_name": assignment.employee_name if assignment else None,
-                "constraints": task.get("constraints", []),
-                "estimated_duration_minutes": task.get("estimated_duration_minutes", 20),
-            }
-
-            # Get dependencies
-            dependencies = plan.dependencies.get(task_id, [])
+            task_type = self._map_agent_to_task_type(agent_type)
+            description = task.get("description", task["name"])
 
             step = {
+                "step_id": f"step-{idx + 1}-{task_id[:8]}",
+                "step_type": WorkflowStepType.TASK.value,
                 "name": task["name"],
-                "description": task.get("description", task["name"]),
-                "type": step_type.value,
-                "config": config,
-                "dependencies": dependencies,
-                "order": idx + 1,
-                "metadata": task.get("metadata", {}),
+                "description": description,
+                "task_type": task_type,
+                "task_config": {
+                    "description": description,
+                    "task_type": task_type,
+                    "priority": "medium",
+                    # WorkflowExecutor 从 task_config.employee_id 读取员工分配
+                    "employee_id": (
+                        str(assignment.employee_id)
+                        if assignment and assignment.employee_id
+                        else None
+                    ),
+                    "input_data": {
+                        "prompt": f"{task['name']}\n\n{description}",
+                    },
+                },
             }
 
             steps.append(step)
 
         return steps
 
-    def _map_agent_to_step_type(self, agent_type: str) -> WorkflowStepType:
-        """
-        Map agent type to workflow step type.
-
-        Args:
-            agent_type: Agent type (research, marketing, sales, etc.)
-
-        Returns:
-            WorkflowStepType for workflow
-        """
-        # For Phase 3.1, most steps are TASK type
-        # Future: More granular step types (API_CALL, DECISION, etc.)
+    def _map_agent_to_task_type(self, agent_type: str) -> str:
+        """将计划任务的 agent_type 映射为 TaskType 合法值。"""
         mapping = {
-            "research": WorkflowStepType.TASK,
-            "marketing": WorkflowStepType.TASK,
-            "sales": WorkflowStepType.TASK,
-            "business": WorkflowStepType.TASK,
-            "ceo_assistant": WorkflowStepType.TASK,
+            "research": TaskType.RESEARCH.value,
+            "marketing": TaskType.MARKETING.value,
+            "sales": TaskType.SALES.value,
+            "business": TaskType.GENERAL.value,
+            "ceo_assistant": TaskType.REPORTING.value,
         }
-
-        return mapping.get(agent_type, WorkflowStepType.TASK)
+        return mapping.get(agent_type, TaskType.GENERAL.value)
 
     async def execute_workflow(
         self,

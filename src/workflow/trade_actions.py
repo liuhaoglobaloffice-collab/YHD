@@ -49,31 +49,76 @@ class TradeActionHandler:
         return await handler_fn(config)
 
     async def _handle_acquisition(self, config: Dict[str, Any]) -> Dict[str, Any]:
-        """自动获客：通过获客引擎搜索目标客户。"""
-        keywords = config.get("keywords", "")
-        countries = config.get("target_countries", "")
-        lead_count = config.get("lead_count", 20)
+        """P0-3 自动获客：获客引擎搜索 → 线索批量入库 CRM（带 source_type 标记）。
 
-        # 调用获客引擎（如果存在）
-        try:
-            from src.crm.engines import LeadAcquisitionEngine
+        修复：原实现调用 LeadAcquisitionEngine(self.session) 和 engine.search()，
+        与引擎实际签名（无参构造 + run(sources, keywords, limit)）不匹配，
+        运行时必然 TypeError。现按 crm.py 获客路由的已验证模式接线。
+        """
+        from src.crm.engines import LeadAcquisitionEngine
 
-            engine = LeadAcquisitionEngine(self.session)
-            # 异步执行获客搜索
-            result = await engine.search(
-                keywords=keywords,
-                countries=countries.split(",") if countries else None,
-                max_leads=lead_count,
-                owner_user_id=self.owner_user_id,
+        keywords_raw = config.get("keywords", "")
+        if isinstance(keywords_raw, str):
+            keywords = [k.strip() for k in keywords_raw.split(",") if k.strip()] or None
+        elif isinstance(keywords_raw, list):
+            keywords = keywords_raw or None
+        else:
+            keywords = None
+        lead_count = int(config.get("lead_count", 20) or 20)
+
+        engine = LeadAcquisitionEngine()
+        result = await engine.run(
+            sources=["social", "google", "customs"],
+            keywords=keywords,
+            limit=lead_count,
+        )
+        leads = result.get("leads", [])
+
+        # 批量入库（复用 crm.py 获客路由的入库模式，source_type 随线索落盘）
+        saved = {"created": 0, "skipped": 0}
+        if leads:
+            items = [
+                {
+                    **{
+                        k: v
+                        for k, v in l.items()
+                        if k
+                        in (
+                            "name",
+                            "company",
+                            "country",
+                            "city",
+                            "industry",
+                            "email",
+                            "phone",
+                            "whatsapp",
+                            "wechat",
+                            "linkedin",
+                            "website",
+                            "product_interest",
+                            "score",
+                            "source_type",
+                        )
+                    },
+                    "source": l.get("source", "social"),
+                    "source_detail": l.get("source_detail"),
+                }
+                for l in leads
+            ]
+            saved = await LeadService(self.session).create_leads_batch(
+                items, self.owner_user_id
             )
-            return {
-                "status": "completed",
-                "leads_found": result.get("total", 0),
-                "new_leads": result.get("created", 0),
-            }
-        except ImportError:
-            logger.warning("trade_action_acquisition_engine_not_available")
-            return {"status": "completed", "leads_found": 0, "new_leads": 0, "note": "获客引擎未就绪"}
+
+        # 诚实标记数据源配置状态（REAL 需配置 GOOGLE_SEARCH_API_KEY 等）
+        real_sources = [l for l in leads if l.get("source_type") == "REAL"]
+        return {
+            "status": "completed",
+            "leads_found": len(leads),
+            "new_leads": saved.get("created", 0),
+            "skipped": saved.get("skipped", 0),
+            "real_leads": len(real_sources),
+            "data_source": "REAL" if real_sources else "MOCK",
+        }
 
     async def _handle_ai_scoring(self, config: Dict[str, Any]) -> Dict[str, Any]:
         """AI 客户评分：调用 AI 分析线索匹配度。"""
@@ -200,8 +245,154 @@ class TradeActionHandler:
             return {"status": "completed", "emails_generated": 0}
 
     async def _handle_ai_quotation(self, config: Dict[str, Any]) -> Dict[str, Any]:
-        """AI 报价生成。"""
-        return {"status": "completed", "quotation": "报价单已生成（模拟）", "amount": config.get("budget", 0)}
+        """P0-2 真实报价动作：LLM 生成报价明细 → QuoteService 持久化真实报价单。
+
+        链路：Lead（CRM）→ LLM 报价明细（无 Provider 时降级为单明细规则）→
+        QuoteService.create_quote（DB 落盘 + 回写 lead.quote_amount）。
+        """
+        from src.crm.models import Lead
+        from src.crm.quotation import QuoteService
+        from sqlalchemy import select
+
+        lead_id = config.get("lead_id")
+        product = (config.get("product") or "").strip()
+        budget = config.get("budget")
+
+        # 1. 加载线索（含 owner 校验）
+        lead = None
+        if lead_id is not None:
+            stmt = select(Lead).where(
+                Lead.id == lead_id, Lead.owner_user_id == self.owner_user_id
+            )
+            lead = (await self.session.execute(stmt)).scalar_one_or_none()
+            if not lead:
+                return {"status": "failed", "error": f"线索不存在或无权访问: {lead_id}"}
+
+        # 2. 生成报价明细（LLM 优先，规则降级并诚实标记）
+        items, method = await self._generate_quote_items(product, budget, lead)
+        if not items:
+            return {"status": "failed", "error": "无法生成报价明细（缺少产品信息）"}
+
+        # 3. 持久化真实报价单（复用 QuoteService，含金额计算与线索回写）
+        svc = QuoteService(self.session)
+        quote = await svc.create_quote(
+            data={
+                "lead_id": lead.id if lead else None,
+                "lead_name": lead.name if lead else (config.get("lead_name") or "未指定客户"),
+                "lead_company": lead.company if lead else None,
+                "lead_email": lead.email if lead else None,
+                "lead_phone": lead.phone if lead else None,
+                "subject": f"报价单 - {product or (lead.product_interest or '')}"[:500],
+                "currency": "USD",
+                "items": items,
+                "notes": f"由成交流程自动生成（generation_method={method}）",
+            },
+            owner_user_id=self.owner_user_id,
+            created_by=self.owner_user_id,
+            tenant_id=lead.tenant_id if lead else None,
+        )
+
+        return {
+            "status": "completed",
+            "quote_id": quote.id,
+            "quote_number": quote.quote_number,
+            "total_amount": quote.total_amount,
+            "items_count": len(items),
+            "generation_method": method,
+        }
+
+    async def _generate_quote_items(self, product, budget, lead) -> tuple:
+        """生成报价明细。LLM 可用时生成多明细；否则按预算生成单明细。
+
+        Returns:
+            (items, method) — method: "llm" | "rule_based"
+        """
+        # LLM 路径
+        try:
+            from src.ai.gateway import get_gateway
+            from uuid import UUID
+
+            gateway = get_gateway()
+            providers = gateway.list_providers()
+            if providers:
+                prompt = (
+                    "为外贸报价单生成产品明细。只返回 JSON 数组，不要其他文字，格式:\n"
+                    '[{"product_name": "产品名", "quantity": 数量, "unit": "件", "unit_price": 单价USD}]\n'
+                    f"客户需求产品: {product or '未指定'}\n"
+                    f"客户预算(USD): {budget if budget else '未指定'}\n"
+                    f"客户国家: {lead.country if lead else '未知'}\n"
+                    "生成 1-3 个明细项；有预算时总金额不得超过预算。"
+                )
+                response = await gateway.complete(
+                    provider=providers[0],
+                    model_id="gpt-4o-mini",
+                    messages=[{"role": "user", "content": prompt}],
+                    trace_id=UUID(int=0),
+                    temperature=0.2,
+                    max_tokens=500,
+                )
+                items = self._parse_quote_items(response.content)
+                if items:
+                    return items, "llm"
+        except Exception as e:  # noqa: BLE001 — LLM 失败降级为规则生成
+            logger.warning("quotation_llm_failed_fallback", error=str(e))
+
+        # 规则路径：按预算生成单明细（无预算则价格为 0，需人工补价）
+        try:
+            unit_price = float(budget) if budget else 0.0
+        except (TypeError, ValueError):
+            unit_price = 0.0
+        items = [
+            {
+                "product_name": (product or "产品")[:255],
+                "quantity": 1,
+                "unit": "件",
+                "unit_price": unit_price,
+            }
+        ]
+        return items, "rule_based"
+
+    def _parse_quote_items(self, text: str) -> list:
+        """从 LLM 输出解析报价明细 JSON 数组（容忍 markdown 围栏）。"""
+        import json
+        import re as _re
+
+        if not text:
+            return []
+        cleaned = text.strip()
+        fence = _re.search(r"```(?:json)?\s*(\[.*?\])\s*```", cleaned, _re.DOTALL)
+        if fence:
+            cleaned = fence.group(1)
+        else:
+            start, end = cleaned.find("["), cleaned.rfind("]")
+            if start == -1 or end <= start:
+                return []
+            cleaned = cleaned[start : end + 1]
+        try:
+            data = json.loads(cleaned)
+        except json.JSONDecodeError:
+            return []
+        items = []
+        if isinstance(data, list):
+            for it in data:
+                if not isinstance(it, dict):
+                    continue
+                name = str(it.get("product_name") or "").strip()
+                try:
+                    qty = max(1, int(it.get("quantity", 1)))
+                    price = max(0.0, float(it.get("unit_price", 0)))
+                except (TypeError, ValueError):
+                    continue
+                if name:
+                    items.append(
+                        {
+                            "product_name": name[:255],
+                            "quantity": qty,
+                            "unit": str(it.get("unit") or "件")[:50],
+                            "unit_price": price,
+                        }
+                    )
+        return items
 
     async def _handle_approval(self, config: Dict[str, Any]) -> Dict[str, Any]:
         """老板审批：创建审批任务。"""

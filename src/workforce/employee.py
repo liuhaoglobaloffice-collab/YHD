@@ -218,6 +218,7 @@ class AIEmployeeService:
         description: Optional[str] = None,
         agent_type: Optional[AgentType] = None,
         provider_config: Optional[Dict[str, Any]] = None,
+        status: Optional[AIEmployeeStatus] = None,
     ) -> AIEmployee:
         """
         Update employee.
@@ -229,6 +230,7 @@ class AIEmployeeService:
             description: New description (optional)
             agent_type: New agent type (optional)
             provider_config: New provider config (optional)
+            status: New status (optional; activates via POST /employees/{id}/activate)
 
         Returns:
             Updated employee
@@ -254,6 +256,10 @@ class AIEmployeeService:
             employee.agent_type = agent_type
         if provider_config is not None:
             employee.provider_config = provider_config
+        if status is not None:
+            employee.status = status
+            if status == AIEmployeeStatus.ACTIVE:
+                employee.activated_at = datetime.now(UTC)
 
         employee.updated_at = datetime.now(UTC)
 
