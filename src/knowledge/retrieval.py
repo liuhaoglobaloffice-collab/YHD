@@ -4,7 +4,6 @@ Knowledge Retrieval System
 Unified retrieval layer for knowledge search.
 """
 
-import asyncio
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional
@@ -13,7 +12,9 @@ from ..core.errors import PermissionDeniedError, ValidationError
 from ..identity.audit import AuditAction, AuditService
 from ..identity.models import User
 from ..identity.rbac import Permission, RBACService
+from .embedding import EmbeddingService
 from .processing import ChunkMetadata
+from .vector_store import InMemoryVectorStore
 
 
 class SearchMode(str, Enum):
@@ -72,6 +73,8 @@ class RetrievalService:
         self,
         rbac_service: RBACService,
         audit_service: AuditService,
+        embedding_service: Optional[EmbeddingService] = None,
+        vector_store: Optional[InMemoryVectorStore] = None,
     ):
         self.rbac = rbac_service
         self.audit = audit_service
@@ -81,6 +84,11 @@ class RetrievalService:
         self._inverted_index: Dict[str, List[str]] = {}
         self._document_owners: Dict[str, str] = {}
         self._document_visibility: Dict[str, str] = {}
+
+        # Embedding & vector store for semantic search
+        self._embedding_service = embedding_service or EmbeddingService(provider_name="mock")
+        self._vector_store = vector_store or InMemoryVectorStore()
+        self._embeddings_indexed: bool = False
 
     def index_chunk(self, chunk: ChunkMetadata) -> None:
         """
@@ -121,6 +129,33 @@ class RetrievalService:
         """
         self._document_owners[document_id] = owner_id
         self._document_visibility[document_id] = visibility
+
+    async def _ensure_embeddings(self) -> None:
+        """
+        Lazily generate embeddings for all indexed chunks using the real
+        EmbeddingService and store them in the vector store.
+
+        This runs once on first semantic/hybrid search; subsequent calls
+        are no-ops.
+        """
+        if self._embeddings_indexed:
+            return
+
+        if not self._chunks:
+            self._embeddings_indexed = True
+            return
+
+        for chunk in self._chunks.values():
+            vector = await self._embedding_service.embed_text(chunk.content)
+            self._vector_store.insert(
+                document_id=chunk.document_id,
+                chunk_id=chunk.chunk_id,
+                content=chunk.content,
+                embedding=vector,
+                metadata=chunk.metadata,
+            )
+
+        self._embeddings_indexed = True
 
     def _can_access_document(self, user: User, document_id: str) -> bool:
         """
@@ -203,9 +238,9 @@ class RetrievalService:
         if query.mode == SearchMode.KEYWORD:
             results = self._keyword_search(user, query)
         elif query.mode == SearchMode.SEMANTIC:
-            results = self._semantic_search(user, query)
+            results = await self._semantic_search(user, query)
         else:  # HYBRID
-            results = self._hybrid_search(user, query)
+            results = await self._hybrid_search(user, query)
 
         # Apply pagination
         paginated = results[query.offset : query.offset + query.limit]
@@ -251,6 +286,8 @@ class RetrievalService:
             # Apply filters
             if query.document_ids and chunk.document_id not in query.document_ids:
                 continue
+            if query.owner_id and self._document_owners.get(chunk.document_id) != query.owner_id:
+                continue
 
             # Permission filtering: check document ownership/visibility
             if not self._can_access_document(user, chunk.document_id):
@@ -270,7 +307,7 @@ class RetrievalService:
 
         return results
 
-    def _semantic_search(
+    async def _semantic_search(
         self,
         user: User,
         query: SearchQuery,
@@ -278,40 +315,39 @@ class RetrievalService:
         """
         Semantic search (vector-based)
 
-        Uses the project's existing EmbeddingService + InMemoryVectorStore.
+        Uses the project's existing EmbeddingService + InMemoryVectorStore
+        to generate real embeddings and perform vector similarity search.
         Falls back to keyword search if vector search is unavailable.
         """
         try:
-            from src.knowledge.embedding import EmbeddingService
-            from src.knowledge.vector_store import InMemoryVectorStore
+            # Ensure embeddings are generated (lazy, once)
+            await self._ensure_embeddings()
 
-            # Build vector store from indexed chunks
-            vector_store = InMemoryVectorStore()
-            for chunk in self._chunks.values():
-                # Skip chunks the user cannot access
+            # Build a per-query vector store filtered by access + filters
+            filtered_store = InMemoryVectorStore()
+            for record in self._vector_store.records:
+                chunk = self._chunks.get(record.chunk_id)
+                if not chunk:
+                    continue
+                # Permission filtering
                 if not self._can_access_document(user, chunk.document_id):
                     continue
                 # Apply explicit document filter
                 if query.document_ids and chunk.document_id not in query.document_ids:
                     continue
-                # Insert placeholder vector (will be replaced by real embedding)
-                import hashlib
-
-                seed = hashlib.md5(chunk.content.encode()).hexdigest()
-                # Use a deterministic pseudo-vector based on content hash
-                pseudo_vector = [int(seed[i : i + 2], 16) / 255.0 for i in range(0, 32, 2)]
-                vector_store.insert(
-                    document_id=chunk.document_id,
-                    chunk_id=chunk.chunk_id,
-                    content=chunk.content,
-                    embedding=pseudo_vector,
-                    metadata=chunk.metadata,
+                if query.owner_id and self._document_owners.get(chunk.document_id) != query.owner_id:
+                    continue
+                filtered_store.insert(
+                    document_id=record.document_id,
+                    chunk_id=record.chunk_id,
+                    content=record.content,
+                    embedding=record.embedding,
+                    metadata=record.metadata,
                 )
 
-            # Perform semantic search
-            embedder = EmbeddingService(provider_name="mock")
-            query_vector = asyncio.run(embedder.embed_text(query.query))
-            hits = vector_store.search(query_vector, limit=query.limit + query.offset)
+            # Embed the query using the same EmbeddingService
+            query_vector = await self._embedding_service.embed_text(query.query)
+            hits = filtered_store.search(query_vector, limit=query.limit + query.offset)
 
             # Convert to SearchResult
             query_words = self._tokenize(query.query)
@@ -334,7 +370,7 @@ class RetrievalService:
             # Fall back to keyword search on any error
             return self._keyword_search(user, query)
 
-    def _hybrid_search(
+    async def _hybrid_search(
         self,
         user: User,
         query: SearchQuery,
@@ -347,8 +383,8 @@ class RetrievalService:
         # Get keyword results
         keyword_results = self._keyword_search(user, query)
 
-        # Get semantic results (currently same as keyword)
-        semantic_results = self._semantic_search(user, query)
+        # Get semantic results (vector-based)
+        semantic_results = await self._semantic_search(user, query)
 
         # Merge results (simple approach: deduplicate and re-rank)
         result_map: Dict[str, SearchResult] = {}
@@ -486,5 +522,9 @@ class RetrievalService:
             del self._document_owners[document_id]
         if document_id in self._document_visibility:
             del self._document_visibility[document_id]
+
+        # Also remove from vector store
+        if removed > 0:
+            self._vector_store.delete(document_id=document_id)
 
         return removed

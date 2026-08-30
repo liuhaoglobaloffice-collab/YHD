@@ -550,10 +550,10 @@ async def create_entity(
     """
     try:
         entity = await brain_service.create_entity(
-            name=request.name,
-            entity_type=EntityType(request.entity_type),
-            metadata=request.metadata or {},
             user=current_user,
+            entity_type=EntityType(request.entity_type),
+            name=request.name,
+            attributes=request.metadata or {},
         )
 
         logger.info(
@@ -568,7 +568,7 @@ async def create_entity(
             entity_id=entity.id,
             name=entity.name,
             entity_type=entity.entity_type.value,
-            metadata=entity.metadata,
+            metadata=entity.attributes,
             created_at=entity.created_at.isoformat(),
         )
 
@@ -591,16 +591,13 @@ async def get_entity(
     Requires: KNOWLEDGE_READ permission
     """
     try:
-        entity = await brain_service.get_entity(entity_id, user=current_user)
-
-        if not entity:
-            raise HTTPException(status_code=404, detail="Entity not found")
+        entity = await brain_service.get_entity(user=current_user, entity_id=str(entity_id))
 
         return EntityResponse(
             entity_id=entity.id,
             name=entity.name,
             entity_type=entity.entity_type.value,
-            metadata=entity.metadata,
+            metadata=entity.attributes,
             created_at=entity.created_at.isoformat(),
         )
 
@@ -625,13 +622,17 @@ async def create_fact(
     Requires: KNOWLEDGE_WRITE permission
     """
     try:
+        from src.knowledge.company_brain import FactPriority
+
+        # Map 1-10 scale to FactPriority enum values: 10,20,40,60,80,100
+        _PRIORITY_MAP = {1: 10, 2: 10, 3: 20, 4: 20, 5: 40, 6: 40, 7: 60, 8: 80, 9: 80, 10: 100}
         fact = await brain_service.create_fact(
-            entity_id=request.entity_id,
+            user=current_user,
+            entity_id=str(request.entity_id),
             attribute=request.attribute,
             value=request.value,
-            priority=request.priority,
-            source=request.source,
-            user=current_user,
+            source=request.source or "api",
+            priority=FactPriority(_PRIORITY_MAP.get(request.priority, 20)),
         )
 
         logger.info(
@@ -671,7 +672,7 @@ async def get_entity_facts(
     Requires: KNOWLEDGE_READ permission
     """
     try:
-        facts = await brain_service.get_entity_facts(entity_id, user=current_user)
+        facts = await brain_service.get_entity_facts(user=current_user, entity_id=str(entity_id))
 
         return {
             "entity_id": str(entity_id),
@@ -701,14 +702,16 @@ async def store_memory(
     Requires: KNOWLEDGE_WRITE permission
     """
     try:
+        # Use first 50 chars of content as key, full content as value
+        key = request.content[:50]
         memory = await memory_service.store(
-            memory_type=MemoryType(request.memory_type),
-            content=request.content,
-            user_id=current_user.id,
-            session_id=request.session_id,
-            task_id=request.task_id,
-            metadata=request.metadata or {},
             user=current_user,
+            memory_type=MemoryType(request.memory_type),
+            key=key,
+            value=request.content,
+            session_id=str(request.session_id) if request.session_id else None,
+            task_id=str(request.task_id) if request.task_id else None,
+            metadata=request.metadata or {},
         )
 
         # Audit: Memory stored
@@ -732,7 +735,7 @@ async def store_memory(
         return MemoryResponse(
             memory_id=memory.id,
             memory_type=memory.memory_type.value,
-            content=memory.content,
+            content=memory.value,
             session_id=memory.session_id,
             task_id=memory.task_id,
             created_at=memory.created_at.isoformat(),
@@ -761,13 +764,13 @@ async def list_memories(
     """
     try:
         memories = await memory_service.list_memories(
-            user_id=current_user.id,
             user=current_user,
             memory_type=MemoryType(memory_type) if memory_type else None,
-            session_id=session_id,
-            task_id=task_id,
-            limit=limit,
+            session_id=str(session_id) if session_id else None,
+            task_id=str(task_id) if task_id else None,
         )
+        # Apply limit client-side
+        memories = memories[:limit]
 
         return {
             "memories": [m.to_dict() for m in memories],
@@ -795,14 +798,12 @@ async def delete_memory(
     Phase 2 Governance: Approval required for delete operations.
     """
     try:
-        success = await memory_service.delete(
-            memory_id=memory_id,
-            user_id=current_user.id,
+        await memory_service.delete(
             user=current_user,
+            memory_id=str(memory_id),
         )
 
-        if not success:
-            raise HTTPException(status_code=404, detail="Memory not found")
+        # MemoryService.delete() raises NotFoundError if not found
 
         # Audit: Memory deleted
         await AuditService.log(

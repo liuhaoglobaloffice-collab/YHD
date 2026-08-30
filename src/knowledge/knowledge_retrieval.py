@@ -19,6 +19,20 @@ from ..core.errors import PermissionDeniedError, ValidationError
 from ..identity.audit import AuditAction, AuditService
 from ..identity.models import User
 from ..identity.rbac import RBACService
+from .embedding import EmbeddingService
+
+
+def _cosine_similarity(a: List[float], b: List[float]) -> float:
+    """Compute cosine similarity between two vectors."""
+    if not a or not b:
+        return 0.0
+    import math
+    dot = sum(x * y for x, y in zip(a, b))
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(y * y for y in b))
+    if na == 0 or nb == 0:
+        return 0.0
+    return dot / (na * nb)
 
 
 class KnowledgeSource(str, Enum):
@@ -154,10 +168,12 @@ class KnowledgeRetrievalService:
         session,  # AsyncSession
         rbac_service: RBACService,
         audit_service: AuditService,
+        embedding_service: Optional[EmbeddingService] = None,
     ):
         self.session = session
         self.rbac = rbac_service
         self.audit = audit_service
+        self._embedding_service = embedding_service or EmbeddingService(provider_name="mock")
 
     async def search(
         self,
@@ -246,19 +262,49 @@ class KnowledgeRetrievalService:
         user: User,
         query: KnowledgeQuery,
     ) -> List[KnowledgeResult]:
-        """Search documents"""
+        """Search documents with strategy-aware search (keyword / semantic / hybrid)."""
         from ..database.repositories.knowledge import DocumentRepository
 
         repo = DocumentRepository(self.session)
 
-        # Search documents by title or content
+        # For keyword search: use database full-text search
+        if query.strategy == SearchStrategy.KEYWORD:
+            return await self._keyword_document_search(repo, query)
+
+        # For semantic search: embed query and rank all documents
+        if query.strategy == SearchStrategy.SEMANTIC:
+            return await self._semantic_document_search(repo, query)
+
+        # HYBRID: merge keyword + semantic results
+        keyword_results = await self._keyword_document_search(repo, query)
+        semantic_results = await self._semantic_document_search(repo, query)
+
+        # Merge and re-rank
+        result_map: Dict[str, KnowledgeResult] = {}
+        for r in keyword_results:
+            result_map[r.id] = r
+        for r in semantic_results:
+            if r.id in result_map:
+                result_map[r.id].score = (result_map[r.id].score + r.score) / 2.0
+            else:
+                result_map[r.id] = r
+
+        results = list(result_map.values())
+        results.sort(key=lambda x: x.score, reverse=True)
+        return results
+
+    async def _keyword_document_search(
+        self,
+        repo,
+        query: KnowledgeQuery,
+    ) -> List[KnowledgeResult]:
+        """Keyword-based document search (database full-text)."""
         models = await repo.search_full_text(query.query, limit=100)
 
         results = []
         query_lower = query.query.lower()
 
         for model in models:
-            # Keyword matching in title and content
             title = model.title or model.filename or ""
             content = model.content or ""
             title_match = query_lower in title.lower()
@@ -283,6 +329,76 @@ class KnowledgeRetrievalService:
                         created_by=str(model.created_by),
                     )
                 )
+
+        return results
+
+    async def _semantic_document_search(
+        self,
+        repo,
+        query: KnowledgeQuery,
+    ) -> List[KnowledgeResult]:
+        """Semantic document search using EmbeddingService."""
+        # Use a broader search for semantic ranking: split query into words
+        # and search for each to capture more candidates
+        words = query.query.strip().split()
+        candidate_set: Dict[str, Any] = {}
+
+        # Collect candidates from broader keyword search
+        for word in words[:3]:  # Use up to 3 words for broad recall
+            for m in await repo.search_full_text(word, limit=100):
+                candidate_set[m.id] = m
+
+        if not candidate_set:
+            # No candidates found via keyword; try fetching recent documents
+            from sqlalchemy import select
+            result = await repo.session.execute(
+                select(repo.model_class).order_by(repo.model_class.created_at.desc()).limit(100)
+            )
+            for m in result.scalars().all():
+                candidate_set[m.id] = m
+
+        candidates = list(candidate_set.values())
+        if not candidates:
+            return []
+
+        # Embed the query
+        query_vector = await self._embedding_service.embed_text(query.query)
+
+        # Score each candidate by embedding similarity
+        import asyncio
+
+        async def _score_doc(model):
+            text = (model.title or model.filename or "") + " " + (model.content or "")
+            doc_vector = await self._embedding_service.embed_text(text[:2000])
+            score = _cosine_similarity(query_vector, doc_vector)
+            return (model, score)
+
+        scored = await asyncio.gather(*[_score_doc(m) for m in candidates])
+
+        # Sort by score descending, keep top results
+        scored.sort(key=lambda x: x[1], reverse=True)
+        top = scored[: query.limit + query.offset]
+
+        results = []
+        for model, score in top:
+            if score < 0.01:
+                continue
+            results.append(
+                KnowledgeResult(
+                    source=KnowledgeSource.DOCUMENT,
+                    id=str(model.id),
+                    title=model.title or model.filename or "",
+                    content=(model.content or "")[:500],
+                    score=round(score, 4),
+                    metadata={
+                        "file_type": model.file_type,
+                        "tags": model.tags,
+                        "summary": model.summary,
+                    },
+                    created_at=model.created_at,
+                    created_by=str(model.created_by),
+                )
+            )
 
         return results
 

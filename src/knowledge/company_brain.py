@@ -356,6 +356,127 @@ class CompanyBrain:
 
         return entities
 
+    async def update_entity(
+        self,
+        user: User,
+        entity_id: str,
+        name: Optional[str] = None,
+        attributes: Optional[Dict[str, Any]] = None,
+    ) -> Entity:
+        """
+        Update an entity
+
+        Args:
+            user: User updating the entity
+            entity_id: Entity ID
+            name: New name (optional)
+            attributes: New attributes (optional)
+
+        Returns:
+            Entity: Updated entity
+
+        Raises:
+            NotFoundError: If entity not found
+            PermissionDeniedError: If user lacks permission
+        """
+        # Permission check
+        if not self.rbac.has_permission(user, Permission.KNOWLEDGE_WRITE):
+            await self.audit.log_permission_denied(
+                user_id=user.id,
+                action="update_entity",
+                resource_type="entity",
+                resource_id=entity_id,
+            )
+            raise PermissionDeniedError("User lacks KNOWLEDGE_WRITE permission")
+
+        # Verify entity exists
+        existing = await self.repository.get_by_id(entity_id)
+        if not existing:
+            raise NotFoundError(f"Entity not found: {entity_id}")
+
+        # Build update values
+        values: Dict[str, Any] = {}
+        if name is not None:
+            if len(name.strip()) == 0:
+                raise ValidationError("Entity name cannot be empty")
+            values["name"] = name
+        if attributes is not None:
+            values["attributes"] = attributes
+
+        if not values:
+            return self._model_to_entity(existing)
+
+        # Update in database
+        model = await self.repository.update(entity_id, values)
+        if not model:
+            raise NotFoundError(f"Entity not found: {entity_id}")
+        await self.session.commit()
+        await self.session.refresh(model)
+        entity = self._model_to_entity(model)
+
+        # Audit log
+        await self.audit.log(
+            session=self.session,
+            action=AuditAction.UPDATE,
+            status="success",
+            user_id=user.id,
+            resource_type="entity",
+            resource_id=entity_id,
+            details={"updated_fields": list(values.keys())},
+        )
+
+        return entity
+
+    async def delete_entity(
+        self,
+        user: User,
+        entity_id: str,
+    ) -> bool:
+        """
+        Delete an entity
+
+        Args:
+            user: User deleting the entity
+            entity_id: Entity ID
+
+        Returns:
+            bool: True if deleted
+
+        Raises:
+            NotFoundError: If entity not found
+            PermissionDeniedError: If user lacks permission
+        """
+        # Permission check
+        if not self.rbac.has_permission(user, Permission.KNOWLEDGE_WRITE):
+            await self.audit.log_permission_denied(
+                user_id=user.id,
+                action="delete_entity",
+                resource_type="entity",
+                resource_id=entity_id,
+            )
+            raise PermissionDeniedError("User lacks KNOWLEDGE_WRITE permission")
+
+        # Verify entity exists
+        existing = await self.repository.get_by_id(entity_id)
+        if not existing:
+            raise NotFoundError(f"Entity not found: {entity_id}")
+
+        # Delete from database
+        deleted = await self.repository.delete(entity_id)
+        await self.session.commit()
+
+        if deleted:
+            await self.audit.log(
+                session=self.session,
+                action=AuditAction.DELETE,
+                status="success",
+                user_id=user.id,
+                resource_type="entity",
+                resource_id=entity_id,
+            )
+
+        return deleted
+
     async def create_fact(
         self,
         user: User,
@@ -601,10 +722,134 @@ class CompanyBrain:
 
         fact = self._model_to_fact(fact_model)
         return fact
-        # Get entity
-        from uuid import UUID
 
-        model = await self.repository.get_by_id(UUID(entity_id))
+    async def update_fact(
+        self,
+        user: User,
+        fact_id: str,
+        value: Any = None,
+        confidence: Optional[FactConfidence] = None,
+        priority: Optional[FactPriority] = None,
+        is_active: Optional[bool] = None,
+    ) -> Fact:
+        """
+        Update a fact
+
+        Args:
+            user: User updating the fact
+            fact_id: Fact ID
+            value: New value (optional)
+            confidence: New confidence (optional)
+            priority: New priority (optional)
+            is_active: New active status (optional)
+
+        Returns:
+            Fact: Updated fact
+
+        Raises:
+            NotFoundError: If fact not found
+            PermissionDeniedError: If user lacks permission
+        """
+        # Permission check
+        if not self.rbac.has_permission(user, Permission.KNOWLEDGE_WRITE):
+            await self.audit.log_permission_denied(
+                session=self.session,
+                user_id=user.id,
+                action="update_fact",
+                resource_type="fact",
+                reason="User lacks KNOWLEDGE_WRITE permission",
+                resource_id=fact_id,
+            )
+            raise PermissionDeniedError("User lacks KNOWLEDGE_WRITE permission")
+
+        # Verify fact exists
+        existing = await self.fact_repository.get_by_id(fact_id)
+        if not existing:
+            raise NotFoundError(f"Fact not found: {fact_id}")
+
+        # Build update values
+        values: Dict[str, Any] = {}
+        if value is not None:
+            values["value"] = value
+        if confidence is not None:
+            values["confidence"] = confidence.value
+        if priority is not None:
+            values["priority"] = priority.value
+        if is_active is not None:
+            values["is_active"] = is_active
+
+        if not values:
+            return self._model_to_fact(existing)
+
+        # Update in database
+        model = await self.fact_repository.update(fact_id, values)
         if not model:
-            return None
-        return self._model_to_entity(model)
+            raise NotFoundError(f"Fact not found: {fact_id}")
+        await self.session.commit()
+        await self.session.refresh(model)
+        fact = self._model_to_fact(model)
+
+        # Audit log
+        await self.audit.log(
+            session=self.session,
+            action=AuditAction.UPDATE,
+            status="success",
+            user_id=user.id,
+            resource_type="fact",
+            resource_id=fact_id,
+            details={"updated_fields": list(values.keys())},
+        )
+
+        return fact
+
+    async def delete_fact(
+        self,
+        user: User,
+        fact_id: str,
+    ) -> bool:
+        """
+        Delete a fact
+
+        Args:
+            user: User deleting the fact
+            fact_id: Fact ID
+
+        Returns:
+            bool: True if deleted
+
+        Raises:
+            NotFoundError: If fact not found
+            PermissionDeniedError: If user lacks permission
+        """
+        # Permission check
+        if not self.rbac.has_permission(user, Permission.KNOWLEDGE_WRITE):
+            await self.audit.log_permission_denied(
+                session=self.session,
+                user_id=user.id,
+                action="delete_fact",
+                resource_type="fact",
+                reason="User lacks KNOWLEDGE_WRITE permission",
+                resource_id=fact_id,
+            )
+            raise PermissionDeniedError("User lacks KNOWLEDGE_WRITE permission")
+
+        # Verify fact exists
+        existing = await self.fact_repository.get_by_id(fact_id)
+        if not existing:
+            raise NotFoundError(f"Fact not found: {fact_id}")
+
+        # Delete from database
+        deleted = await self.fact_repository.delete(fact_id)
+        await self.session.commit()
+
+        if deleted:
+            await self.audit.log(
+                session=self.session,
+                action=AuditAction.DELETE,
+                status="success",
+                user_id=user.id,
+                resource_type="fact",
+                resource_id=fact_id,
+            )
+
+        return deleted

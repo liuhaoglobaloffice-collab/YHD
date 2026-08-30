@@ -266,6 +266,7 @@ def test_search_documents_returns_empty_for_no_match():
             query = KnowledgeQuery(
                 query="nonexistent_topic_xyz",
                 sources=[KnowledgeSource.DOCUMENT],
+                strategy=SearchStrategy.KEYWORD,
                 limit=10,
             )
             results = await service._search_documents(user, query)
