@@ -22,6 +22,9 @@ export interface Employee {
   status: string;
   created_at: string;
   updated_at: string;
+  trust_score: number | null;
+  capability_score: number | null;
+  risk_score: number | null;
 }
 
 export interface ExecuteTaskRequest {

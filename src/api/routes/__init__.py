@@ -42,6 +42,7 @@ from src.api.routes import (
     products,  # P3c - Product Catalog
     goals,  # P1 - CEO Goal Center
     tools,  # AI Tools execution & approval
+    memory,  # P1-G6.2 - Enterprise memory CRUD
 )
 
 # Main API router
@@ -85,5 +86,6 @@ api_router.include_router(products.router)  # P3c - Product Catalog
 api_router.include_router(quotes.router)  # P3f - Quotation Management
 api_router.include_router(goals.router)  # P1 - CEO Goal Center
 api_router.include_router(tools.router)  # AI Tools execution & approval
+api_router.include_router(memory.router)  # P1-G6.2 - Enterprise memory CRUD
 
 __all__ = ["api_router"]

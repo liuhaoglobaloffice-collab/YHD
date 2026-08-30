@@ -118,6 +118,58 @@ class Settings(BaseSettings):
     smtp_use_ssl: bool = Field(
         default=False, description="Use SMTP_SSL (port 465) instead of STARTTLS (port 587)"
     )
+    smtp_proxy: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional proxy tunnel for SMTP, e.g. socks5://127.0.0.1:10808 or "
+            "http://host.docker.internal:10808. Empty = direct connection. "
+            "smtplib ignores HTTP_PROXY env vars, so blocked networks need this."
+        ),
+    )
+
+    # Business Scheduler (P0: 老板长期不在线 — 自主经营调度)
+    scheduler_enabled: bool = Field(
+        default=False,
+        description="Enable background business scheduler (auto-execute active goals)",
+    )
+    scheduler_interval_seconds: int = Field(
+        default=300, description="Scheduler cycle interval in seconds (minimum 30)"
+    )
+    scheduler_auto_activate: bool = Field(
+        default=False,
+        description="Auto-activate draft goals each cycle (full autonomy; off by default)",
+    )
+    scheduler_max_goals_per_cycle: int = Field(
+        default=5, description="Max goals activated/executed per scheduler cycle"
+    )
+
+    # Workflow execution (P0-7: long-running blocking risk mitigation)
+    workflow_worker_mode: str = Field(
+        default="inline",
+        description=(
+            "Workflow execution mode. 'inline' runs synchronously inside the request "
+            "(WARNING: long workflows block HTTP threads, NOT recommended for production). "
+            "'background' returns execution ID immediately and runs via asyncio.create_task "
+            "(recommended for workflows >30s total runtime). Future: 'worker' via "
+            "Celery/RQ/Redis Queue."
+        ),
+    )
+    workflow_total_timeout_seconds: int = Field(
+        default=1800,
+        description="Hard wall-clock timeout per workflow execution (default 30 min). Steps are bounded individually by STEP_TIMEOUT_SECONDS in executor.py.",
+    )
+    workflow_max_steps: int = Field(
+        default=500,
+        description="Maximum steps (including sub-steps) allowed per workflow execution to prevent unbounded loops.",
+    )
+
+    @field_validator("workflow_worker_mode")
+    @classmethod
+    def _validate_workflow_mode(cls, v: str) -> str:
+        allowed = {"inline", "background"}
+        if v not in allowed:
+            raise ValueError(f"workflow_worker_mode must be one of {allowed}")
+        return v
 
     @field_validator("secret_key", "jwt_secret_key")
     @classmethod

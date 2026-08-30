@@ -1,4 +1,4 @@
-"""
+﻿"""
 CEO API Routes
 
 Executive dashboard endpoints.
@@ -316,4 +316,141 @@ async def get_supplier_risk_distribution(
         medium=distribution.get(RiskLevel.MEDIUM.value, 0),
         high=distribution.get(RiskLevel.HIGH.value, 0),
         total=total,
+    )
+
+
+# ==================== CEO Summary Report ====================
+
+
+class CEOSummaryReportResponse(BaseModel):
+    """CEO 经营摘要报告：按需生成，各部分独立降级。"""
+
+    status: str = Field(..., description="生成状态：generated/partially_degraded")
+    period_days: int = Field(..., ge=1, le=720, description="统计窗口天数")
+    generated_at: str = Field(..., description="生成时间 ISO8601")
+    report: Dict = Field(..., description="四个分区：kpis/alerts/goals/cost")
+
+
+@router.get(
+    "/summary-report",
+    response_model=CEOSummaryReportResponse,
+    summary="Generate CEO executive summary report (按需)",
+)
+async def get_ceo_summary_report(
+    user: User = Depends(get_current_user),
+    period_days: int = Query(7, ge=1, le=720, description="统计窗口天数"),
+    session: AsyncSession = Depends(get_db),
+):
+    """获取 CEO 级经营摘要报告：聚合 KPI / 告警 / 目标 / 成本。
+
+    权限：仅 admin（SYSTEM_ADMIN 或 role==ADMIN 或 is_superuser）可访问。
+    为便于前端 ReportPage/SubPortal 嵌入，结构稳定；各部分失败会在 message 中注明"不可用"。
+    """
+    from datetime import UTC, datetime as _dt
+
+    # --- 权限校验 ---
+    is_admin = False
+    try:
+        from src.identity.models import RoleEnum
+        if getattr(user, "role", None) == RoleEnum.ADMIN or getattr(user, "is_superuser", False):
+            is_admin = True
+        if not is_admin:
+            from src.identity.rbac import Permission, has_permission, RBACService as IdRBAC
+            rbac_svc = IdRBAC(session=session)
+            ok = await has_permission(user, Permission.SYSTEM_ADMIN, session, rbac_svc)
+            if ok:
+                is_admin = True
+    except Exception:
+        is_admin = False
+    if not is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: CEO summary report requires SYSTEM_ADMIN permission.",
+        )
+
+    now = _dt.now(UTC)
+    report: Dict = {
+        "kpis": {"message": "暂无", "items": []},
+        "alerts": {"message": "暂无异常", "items": []},
+        "goals": {"message": "暂无目标", "count": 0},
+        "cost": {"message": "暂无成本数据", "total_usd": 0.0},
+    }
+    partially_degraded = False
+
+    # --- 1) KPI ---
+    try:
+        from sqlalchemy import select, func
+        from src.business.supplier.models import Supplier
+        from src.database.models import AIEmployeeModel, TaskModel
+        counts: Dict[str, int] = {}
+        pairs = [
+            ("suppliers", select(func.count(Supplier.id))),
+            ("ai_employees", select(func.count(AIEmployeeModel.id))),
+            ("running_tasks", select(func.count(TaskModel.id)).where(TaskModel.status == "running")),
+            ("completed_tasks", select(func.count(TaskModel.id)).where(TaskModel.status == "completed")),
+            ("failed_tasks", select(func.count(TaskModel.id)).where(TaskModel.status == "failed")),
+        ]
+        for k, stmt in pairs:
+            try:
+                r = await session.execute(stmt)
+                counts[k] = int(r.scalar() or 0)
+            except Exception:
+                partially_degraded = True
+                counts[k] = 0
+        report["kpis"] = {
+            "message": "核心 KPI 聚合",
+            "period_days": period_days,
+            **counts,
+            "items": [{"key": k, "value": v} for k, v in counts.items()],
+        }
+    except Exception as e:
+        partially_degraded = True
+        report["kpis"] = {"message": f"KPI 不可用: {type(e).__name__}", "items": []}
+
+    # --- 2) Alerts ---
+    try:
+        from src.modules.ceo_dashboard_module import CEODashboardModule
+        mod = CEODashboardModule()
+        alerts = await mod.scan_business_anomalies(session)
+        report["alerts"] = {
+            "message": f"{len(alerts)} 条待处理告警" if alerts else "暂无异常",
+            "items": alerts,
+        }
+    except Exception as e:
+        partially_degraded = True
+        report["alerts"] = {"message": f"告警不可用: {type(e).__name__}", "items": []}
+
+    # --- 3) Goals ---
+    try:
+        from sqlalchemy import select, func
+        from src.database.models import GoalModel
+        r = await session.execute(select(func.count(GoalModel.id)))
+        count = int(r.scalar() or 0)
+        report["goals"] = {"count": count, "message": (f"{count} 个目标" if count else "暂无目标")}
+    except Exception as e:
+        partially_degraded = True
+        report["goals"] = {"count": 0, "message": f"目标不可用: {type(e).__name__}"}
+
+    # --- 4) AI cost ---
+    try:
+        from sqlalchemy import select, func
+        from src.database.models import AiCostRecordModel
+        r1 = await session.execute(select(func.coalesce(func.sum(AiCostRecordModel.cost_usd), 0.0)))
+        total = float(r1.scalar() or 0.0)
+        r2 = await session.execute(select(func.count(AiCostRecordModel.id)))
+        calls = int(r2.scalar() or 0)
+        report["cost"] = {
+            "total_usd": total,
+            "calls": calls,
+            "message": (f"累计 {calls} 次调用" if calls else "暂无成本数据"),
+        }
+    except Exception as e:
+        partially_degraded = True
+        report["cost"] = {"total_usd": 0.0, "calls": 0, "message": f"成本不可用: {type(e).__name__}"}
+
+    return CEOSummaryReportResponse(
+        status=("partially_degraded" if partially_degraded else "generated"),
+        period_days=int(period_days),
+        generated_at=now.isoformat(),
+        report=report,
     )

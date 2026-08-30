@@ -104,22 +104,22 @@ async def _probe_openai(api_key: str, models: List[str]) -> Dict[str, List[Metri
 
 
 async def _generate_synthetic_sample(status: str, models: List[str]) -> Dict[str, List[MetricPoint]]:
-    """Generate synthetic metric samples for given models using previous heuristic."""
-    import random
+    """
+    Y1.0：无法真实探测时**不再生成随机指标**。
 
-    now = datetime.now(UTC)
-    base_latency = 400 if status == "healthy" else 1200 if status == "degraded" else 0
-    base_success = 0.995 if status == "healthy" else 0.85 if status == "degraded" else 0.0
-    result: Dict[str, List[MetricPoint]] = {}
-    for m in models:
-        if base_latency == 0:
-            latency = 0
-        else:
-            jitter = random.randint(-int(base_latency * 0.2), int(base_latency * 0.2))
-            latency = max(10, base_latency + jitter)
-        success = max(0.0, min(1.0, base_success + random.uniform(-0.02, 0.02)))
-        result[m] = [MetricPoint(timestamp=now, latency_ms=int(latency), success_rate=round(success, 3))]
-    return result
+    历史行为：用 random 抖动伪造 latency / success_rate，导致 Metrics 页面展示
+    编造的健康度（fake metrics）。
+
+    现在：返回空样本 → 前端显示「暂无真实数据」。
+    宁可显示为空，也不显示假数据。真实指标只来自对 Provider 的真实探测。
+    """
+    logger.info(
+        "metrics_sample_unavailable",
+        status=status,
+        models=models,
+        message="Provider cannot be probed; returning no samples instead of synthetic data.",
+    )
+    return {}
 
 
 async def _collect_loop() -> None:

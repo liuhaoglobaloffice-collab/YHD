@@ -38,6 +38,7 @@ from ...core.errors import (
 )
 from ...database.models import AiCostRecordModel, BusinessTaskModel
 from ...identity.audit import AuditAction, AuditService
+from ...ai.agent_router import AgentRouter
 from ...identity.models import User
 from ...workforce.employee import AIEmployeeService
 from ...workforce.models import (
@@ -65,6 +66,8 @@ class CreateEmployeeRequest(BaseModel):
     position: Position
     description: str = Field(..., min_length=1, max_length=2000)
     agent_type: Optional[AgentType] = None
+    # 允许创建时即指定 Provider/模型覆盖（如 ollama 本地模型），执行时优先生效
+    provider_config: Optional[Dict[str, Any]] = None
 
 
 class UpdateEmployeeRequest(BaseModel):
@@ -73,6 +76,8 @@ class UpdateEmployeeRequest(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = Field(None, min_length=1, max_length=2000)
     status: Optional[AIEmployeeStatus] = None
+    # 允许更新 Provider/模型覆盖（如 ollama 本地模型），执行时优先生效
+    provider_config: Optional[Dict[str, Any]] = None
 
 
 class EmployeeResponse(BaseModel):
@@ -87,9 +92,23 @@ class EmployeeResponse(BaseModel):
     status: str
     created_at: str
     updated_at: str
+    trust_score: Optional[float] = None
+    capability_score: Optional[float] = None
+    risk_score: Optional[float] = None
 
     @classmethod
-    def from_employee(cls, employee: AIEmployee):
+    async def from_employee(cls, employee: AIEmployee, session = None):
+        trust = capability = risk = None
+        if session is not None:
+            try:
+                from ...ai.agent_router import AgentRouter
+                router = AgentRouter(session)
+                eid = str(employee.id)
+                trust = await router.get_agent_trust_score(eid)
+                capability = await router.get_agent_capability_score(eid)
+                risk = await router.get_agent_risk_score(eid)
+            except Exception as e:
+                logger.warning(f"Failed to load trust scores for employee {employee.id}: {e}")
         return cls(
             id=str(employee.id),
             name=employee.name,
@@ -100,6 +119,9 @@ class EmployeeResponse(BaseModel):
             status=employee.status.value,
             created_at=employee.created_at.isoformat(),
             updated_at=employee.updated_at.isoformat(),
+            trust_score=trust,
+            capability_score=capability,
+            risk_score=risk,
         )
 
 
@@ -172,6 +194,7 @@ async def create_employee(
             position=request.position,
             description=request.description,
             agent_type=request.agent_type,
+            provider_config=request.provider_config,
             actor_id=current_user.id,
         )
 
@@ -192,7 +215,7 @@ async def create_employee(
             },
         )
 
-        return EmployeeResponse.from_employee(employee)
+        return await EmployeeResponse.from_employee(employee, session)
 
     except PermissionDeniedError as e:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
@@ -206,6 +229,7 @@ async def list_employees(
     position: Optional[Position] = None,
     status_filter: Optional[AIEmployeeStatus] = None,
     employee_service: AIEmployeeService = Depends(get_workforce_service),
+    session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     _: None = Depends(require_permission("agent", "read")),
 ):
@@ -227,7 +251,7 @@ async def list_employees(
         if status_filter:
             employees = [e for e in employees if e.status == status_filter]
 
-        return [EmployeeResponse.from_employee(e) for e in employees]
+        return [await EmployeeResponse.from_employee(e, session) for e in employees]
 
     except PermissionDeniedError as e:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
@@ -237,6 +261,7 @@ async def list_employees(
 async def get_employee(
     employee_id: UUID,
     employee_service: AIEmployeeService = Depends(get_workforce_service),
+    session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     _: None = Depends(require_permission("agent", "read")),
 ):
@@ -256,7 +281,7 @@ async def get_employee(
                 status_code=status.HTTP_404_NOT_FOUND, detail=f"Employee {employee_id} not found"
             )
 
-        return EmployeeResponse.from_employee(employee)
+        return await EmployeeResponse.from_employee(employee, session)
 
     except PermissionDeniedError as e:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
@@ -287,6 +312,7 @@ async def update_employee(
             name=request.name,
             description=request.description,
             status=request.status,
+            provider_config=request.provider_config,
             actor_id=current_user.id,
         )
 
@@ -308,10 +334,11 @@ async def update_employee(
             details={
                 "name": request.name,
                 "status": request.status.value if request.status else None,
+                "provider_config_updated": request.provider_config is not None,
             },
         )
 
-        return EmployeeResponse.from_employee(employee)
+        return await EmployeeResponse.from_employee(employee, session)
 
     except PermissionDeniedError as e:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
@@ -362,7 +389,7 @@ async def activate_employee(
             details={"action": "activate"},
         )
 
-        return EmployeeResponse.from_employee(employee)
+        return await EmployeeResponse.from_employee(employee, session)
 
     except PermissionDeniedError as e:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
@@ -370,6 +397,174 @@ async def activate_employee(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except ValidationError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+# ==================================================================
+# P1-G2.2: 老板手动干预 AI 员工（暂停 / 恢复 / 信任 override）
+# ==================================================================
+
+
+@router.post("/employees/{employee_id}/suspend", response_model=EmployeeResponse)
+async def suspend_employee(
+    employee_id: UUID,
+    employee_service: AIEmployeeService = Depends(get_workforce_service),
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(require_permission("agent", "update")),
+):
+    """
+    Suspend an AI employee (P1-G2.2 老板干预)。
+
+    Requires: WORKFORCE_UPDATE permission
+    """
+    logger.info(f"Suspend AI employee {employee_id} by user {current_user.id}")
+
+    try:
+        employee = await employee_service.update_employee(
+            employee_id=employee_id,
+            status=AIEmployeeStatus.SUSPENDED,
+            actor_id=current_user.id,
+        )
+        if not employee:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=f"Employee {employee_id} not found"
+            )
+
+        await AuditService.log(
+            session=session,
+            action=AuditAction.EMPLOYEE_SUSPENDED,
+            resource_type="ai_employee",
+            resource_id=str(employee_id),
+            status="success",
+            user_id=current_user.id,
+            details={"action": "suspend"},
+        )
+        return await EmployeeResponse.from_employee(employee, session)
+
+    except PermissionDeniedError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+    except ResourceNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except ValidationError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.post("/employees/{employee_id}/resume", response_model=EmployeeResponse)
+async def resume_employee(
+    employee_id: UUID,
+    employee_service: AIEmployeeService = Depends(get_workforce_service),
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(require_permission("agent", "update")),
+):
+    """
+    Resume a suspended AI employee (P1-G2.2 老板干预)。
+
+    Requires: WORKFORCE_UPDATE permission
+    """
+    logger.info(f"Resume AI employee {employee_id} by user {current_user.id}")
+
+    try:
+        employee = await employee_service.update_employee(
+            employee_id=employee_id,
+            status=AIEmployeeStatus.ACTIVE,
+            actor_id=current_user.id,
+        )
+        if not employee:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=f"Employee {employee_id} not found"
+            )
+
+        await AuditService.log(
+            session=session,
+            action=AuditAction.EMPLOYEE_ACTIVATED,
+            resource_type="ai_employee",
+            resource_id=str(employee_id),
+            status="success",
+            user_id=current_user.id,
+            details={"action": "resume"},
+        )
+        return await EmployeeResponse.from_employee(employee, session)
+
+    except PermissionDeniedError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+    except ResourceNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except ValidationError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.post("/employees/{employee_id}/trust-override")
+async def trust_override_endpoint(
+    employee_id: UUID,
+    body: Dict[str, Any],
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(require_permission("agent", "update")),
+):
+    """
+    手动设置 AI 员工信任评分 override（P1-G2.2）。
+
+    Body: {"score": 0.0-1.0, "reason": "..."}
+    持久化到 ai_employees.meta.trust_override（override_source=MANUAL，可追溯）。
+    score 越界返回 400（fail-closed）。
+    """
+    logger.info(f"Trust override for employee {employee_id} by user {current_user.id}")
+
+    score = body.get("score")
+    reason = body.get("reason", "")
+    if not isinstance(score, (int, float)):
+        raise HTTPException(status_code=400, detail="score 必须为数字")
+
+    router = AgentRouter(session)
+    try:
+        override = await router.set_trust_override(
+            employee_id=str(employee_id),
+            score=float(score),
+            reason=reason,
+            actor_id=current_user.id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    await AuditService.log(
+        session=session,
+        action=AuditAction.UPDATE,
+        resource_type="ai_employee",
+        resource_id=str(employee_id),
+        status="success",
+        user_id=current_user.id,
+        details={"action": "trust_override", "score": score, "reason": reason},
+    )
+    return {"employee_id": str(employee_id), "override": override}
+
+
+@router.delete("/employees/{employee_id}/trust-override")
+async def trust_override_clear_endpoint(
+    employee_id: UUID,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(require_permission("agent", "update")),
+):
+    """清除手动信任 override，恢复动态信任计算（P1-G2.2）。"""
+    logger.info(f"Clear trust override for employee {employee_id} by user {current_user.id}")
+
+    router = AgentRouter(session)
+    try:
+        cleared = await router.clear_trust_override(str(employee_id))
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    await AuditService.log(
+        session=session,
+        action=AuditAction.UPDATE,
+        resource_type="ai_employee",
+        resource_id=str(employee_id),
+        status="success",
+        user_id=current_user.id,
+        details={"action": "trust_override_cleared", "cleared": cleared},
+    )
+    return {"employee_id": str(employee_id), "cleared": cleared}
 
 
 @router.get("/employees/{employee_id}/performance", response_model=PerformanceResponse)

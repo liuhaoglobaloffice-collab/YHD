@@ -45,10 +45,18 @@ class SelfHostProvider(LLMProvider):
     # Internal helpers
     # ------------------------------------------------------------------
 
+    # 本机/容器内地址：绝不路由到外部 HTTP 代理（否则 httpx 按
+    # HTTP_PROXY/ALL_PROXY 环境变量把 localhost 请求发给代理，导致连接失败）
+    _LOCAL_HOST_MARKERS = ("localhost", "127.0.0.1", "[::1]", "host.docker.internal")
+
     def _get_client(self) -> ollama.AsyncClient:
         """Lazy-load the Ollama async client."""
         if self._client is None:
-            self._client = ollama.AsyncClient(host=self._host)
+            kwargs: dict[str, Any] = {}
+            host_lower = (self._host or "").lower()
+            if any(marker in host_lower for marker in self._LOCAL_HOST_MARKERS):
+                kwargs["trust_env"] = False
+            self._client = ollama.AsyncClient(host=self._host, **kwargs)
         return self._client
 
     async def health_check(self, timeout: float | None = None) -> dict:

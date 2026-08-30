@@ -128,6 +128,7 @@ class Permission(str, Enum):
     # S2 - Multi-platform Integration (多平台接入)
     PLATFORM_CREATE = "platform:create"
     PLATFORM_READ = "platform:read"
+    PLATFORM_UPDATE = "platform:update"
     PLATFORM_DELETE = "platform:delete"
     PLATFORM_MESSAGE_SEND = "platform:message_send"
 
@@ -413,6 +414,7 @@ ROLE_PERMISSIONS = {
         # S2 - Multi-platform Integration
         Permission.PLATFORM_CREATE,
         Permission.PLATFORM_READ,
+        Permission.PLATFORM_UPDATE,
         Permission.PLATFORM_DELETE,
         Permission.PLATFORM_MESSAGE_SEND,
         # S3 - Acquisition & CRM
@@ -421,6 +423,12 @@ ROLE_PERMISSIONS = {
         Permission.LEAD_UPDATE,
         Permission.LEAD_DELETE,
         Permission.CUSTOMS_READ,
+        # Quotation Management
+        Permission.QUOTE_CREATE,
+        Permission.QUOTE_READ,
+        Permission.QUOTE_UPDATE,
+        Permission.QUOTE_DELETE,
+        Permission.QUOTE_SEND,
         # S4 - Website & SEO
         Permission.SITE_CREATE,
         Permission.SITE_READ,
@@ -486,6 +494,7 @@ ROLE_PERMISSIONS = {
         # S2 - Multi-platform Integration (operational)
         Permission.PLATFORM_CREATE,
         Permission.PLATFORM_READ,
+        Permission.PLATFORM_UPDATE,
         Permission.PLATFORM_DELETE,
         Permission.PLATFORM_MESSAGE_SEND,
         # S3 - Acquisition & CRM (operational)
@@ -494,6 +503,11 @@ ROLE_PERMISSIONS = {
         Permission.LEAD_UPDATE,
         Permission.LEAD_DELETE,
         Permission.CUSTOMS_READ,
+        # Quotation Management (operational)
+        Permission.QUOTE_CREATE,
+        Permission.QUOTE_READ,
+        Permission.QUOTE_UPDATE,
+        Permission.QUOTE_SEND,
         # S4 - Website & SEO (operational)
         Permission.SITE_CREATE,
         Permission.SITE_READ,
@@ -532,6 +546,8 @@ ROLE_PERMISSIONS = {
         # S3 - Acquisition & CRM (read-only)
         Permission.LEAD_READ,
         Permission.CUSTOMS_READ,
+        # Quotation Management (read-only)
+        Permission.QUOTE_READ,
         # S4 - Website & SEO (read-only)
         Permission.SITE_READ,
         Permission.SEO_READ,
@@ -562,8 +578,10 @@ def has_permission(user: User, permission: Permission) -> bool:
     if user.is_superuser:
         return True
 
-    # 主账号（OWNER）拥有所有操作权限
-    if user.account_type == AccountType.OWNER:
+    # 主账号（OWNER）拥有所有操作权限——但显式授予的受限角色（viewer）优先于账号类型，
+    # 否则主账号被降权为 viewer 后仍可越权写（安全 fail-open 缺口，实测复现于
+    # tests/api/test_memory_crud.py::test_viewer_read_ok_write_forbidden）。
+    if user.account_type == AccountType.OWNER and user.role != RoleEnum.VIEWER:
         return True
 
     # 检查用户自定义权限配置（permissions_config 覆盖业务角色默认权限）
@@ -723,6 +741,14 @@ class RBACService:
         if user.is_superuser:
             return True
 
+        # 主账号（OWNER）拥有全部操作权限——但显式降权为 viewer 的主账号除外
+        # （与 has_permission() 同一规则）。此判定必须前置于权限码枚举解析：
+        # 若某端点把权限码拼写错误（枚举中不存在），Permission(...) 会抛 ValueError，
+        # 导致 has_permission() 完全不被调用、OWNER 被误锁 403（实测复现于
+        # GET /business/metrics，路由误写 business:metrics_read 而枚举为 business_metrics:read）。
+        if user.account_type == AccountType.OWNER and user.role != RoleEnum.VIEWER:
+            return True
+
         # Build permission code
         perm_code = f"{resource}:{action}"
         if scope:
@@ -734,7 +760,11 @@ class RBACService:
             if has_permission(user, perm_enum):
                 return True
         except ValueError:
-            pass
+            logger.warning(
+                "permission_code_not_registered",
+                permission=perm_code,
+                user_id=user.id,
+            )
 
         # Check database-based permissions
         # For Stage 2, we rely on enum-based permissions
@@ -829,8 +859,9 @@ class RBACService:
         if user.is_superuser:
             return [p.value for p in Permission]
 
-        # 主账号拥有所有权限
-        if user.account_type == AccountType.OWNER:
+        # 主账号拥有所有权限——与 has_permission 保持一致：
+        # 显式授予的受限角色（viewer）优先于账号类型，避免降权后权限列表仍显示全量
+        if user.account_type == AccountType.OWNER and user.role != RoleEnum.VIEWER:
             return [p.value for p in Permission]
 
         # 从业务角色获取基础权限

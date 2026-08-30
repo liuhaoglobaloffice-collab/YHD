@@ -98,7 +98,7 @@ async def create_quote(
     request: QuoteCreate,
     session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    _: None = Depends(require_permission("crm", "write")),
+    _: None = Depends(require_permission("quote", "create")),
 ):
     """创建报价单。"""
     svc = QuoteService(session)
@@ -119,7 +119,7 @@ async def list_quotes(
     page_size: int = Query(20, ge=1, le=100),
     session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    _: None = Depends(require_permission("crm", "read")),
+    _: None = Depends(require_permission("quote", "read")),
 ):
     """列出报价单。"""
     svc = QuoteService(session)
@@ -137,7 +137,7 @@ async def get_quote(
     quote_id: int,
     session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    _: None = Depends(require_permission("crm", "read")),
+    _: None = Depends(require_permission("quote", "read")),
 ):
     """获取报价单详情。"""
     svc = QuoteService(session)
@@ -153,7 +153,7 @@ async def update_quote_status(
     request: QuoteStatusUpdate,
     session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    _: None = Depends(require_permission("crm", "write")),
+    _: None = Depends(require_permission("quote", "update")),
 ):
     """更新报价单状态。"""
     svc = QuoteService(session)
@@ -170,7 +170,7 @@ async def send_quote(
     request: QuoteSendRequest,
     session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    _: None = Depends(require_permission("crm", "write")),
+    _: None = Depends(require_permission("quote", "send")),
 ):
     """发送报价单给客户。"""
     svc = QuoteService(session)

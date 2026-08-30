@@ -440,7 +440,7 @@ async def sync_platform_contacts_to_crm(
     account_id: int,
     session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    _: None = Depends(require_permission("platform", "write")),
+    _: None = Depends(require_permission("platform", "update")),
 ):
     """将平台联系人同步为 CRM 线索。"""
     service = PlatformService(session)
@@ -458,7 +458,7 @@ async def message_to_lead_activity(
     message_id: int,
     session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    _: None = Depends(require_permission("platform", "write")),
+    _: None = Depends(require_permission("platform", "update")),
 ):
     """将平台消息转为 CRM 线索活动。"""
     service = PlatformService(session)

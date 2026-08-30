@@ -4,7 +4,7 @@ Goal Service — 老板目标中心
 持久化管理目标，连接 Parser → Planner → Workflow 完整链路。
 """
 
-import logging
+import structlog
 from datetime import UTC, datetime
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
@@ -20,7 +20,7 @@ from src.ai.workflow_bridge import WorkflowBridge
 from src.database.models import GoalModel, TaskModel
 from src.identity.models import User
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class GoalService:
@@ -291,6 +291,14 @@ class GoalService:
             # 还在运行中，只更新进度
             goal.progress_pct = 50.0
 
+        # 记账（必须放在状态判定之后，避免被 completed 的 100% 覆盖）：
+        # 进度按任务真实完成情况计算，预算按该目标链路的真实 AI 调用花费汇总，
+        # KPI 只统计可核实的真实业务结果，绝不伪造数字。
+        try:
+            await self._settle_goal_after_execution(goal_id, str(workflow_id))
+        except Exception as settle_err:
+            logger.error(f"goal_settlement_failed: goal_id={goal_id}, error={settle_err}", exc_info=True)
+
         await self.session.commit()
         await self.session.refresh(goal)
 
@@ -300,6 +308,122 @@ class GoalService:
             f"goal_status={goal.status}"
         )
         return goal
+
+    async def _settle_goal_after_execution(self, goal_id: int, workflow_id: str) -> None:
+        """
+        目标执行结算：把"跑过"变成"记下来"。
+
+        - progress_pct：按该目标下任务的真实完成比例计算（completed / 全部）
+        - budget_spent：汇总该目标链路中**真实发生**的 AI 调用成本（ai_cost_records）
+        - kpi_current：只统计可核实的真实业务结果；无法核实的 KPI 保持原值并记录待接入原因，
+          绝不返回编造数字
+
+        幂等：可重复调用，数值为全量重算而非累加。
+        """
+        goal = await self.session.get(GoalModel, goal_id)
+        if not goal:
+            return
+
+        # 1. 任务完成情况
+        task_rows = (
+            await self.session.execute(
+                select(TaskModel.status).where(TaskModel.workflow_id == workflow_id)
+            )
+        ).scalars().all()
+        total_tasks = len(task_rows)
+        completed_tasks = sum(1 for s in task_rows if s == "completed")
+        failed_tasks = sum(1 for s in task_rows if s == "failed")
+
+        if total_tasks:
+            goal.progress_pct = round(completed_tasks / total_tasks * 100.0, 1)
+
+        # 2. 真实 AI 调用成本（按 task_id 归集本目标链路的记录）
+        task_ids = {
+            str(r[0])
+            for r in (
+                await self.session.execute(
+                    select(TaskModel.id).where(TaskModel.workflow_id == workflow_id)
+                )
+            ).all()
+        }
+        spent = 0.0
+        tokens = 0
+        calls = 0
+        if task_ids:
+            try:
+                from src.database.models import AiCostRecordModel
+
+                since = goal.time_start or goal.created_at
+                cost_rows = (
+                    await self.session.execute(
+                        select(AiCostRecordModel).where(
+                            AiCostRecordModel.created_at >= since
+                        )
+                    )
+                ).scalars().all()
+                for rec in cost_rows:
+                    meta = rec.meta or {}
+                    if str(meta.get("task_id")) in task_ids:
+                        spent += float(rec.cost_usd or 0.0)
+                        tokens += int(rec.total_tokens or 0)
+                        calls += 1
+            except Exception as cost_err:
+                logger.warning(f"goal_cost_aggregation_failed: goal_id={goal_id}, error={cost_err}")
+
+        goal.budget_spent = round(spent, 6)
+
+        # 3. KPI：仅采集可核实的真实结果
+        kpi_note = None
+        kpi_name = (goal.kpi_name or "").lower()
+        kpi_value = None
+        if any(k in kpi_name for k in ("线索", "潜在客户", "客户数", "lead", "customer")):
+            try:
+                from src.crm.models import Lead
+
+                since = goal.time_start or goal.created_at
+                kpi_value = float(
+                    (
+                        await self.session.execute(
+                            select(func.count()).select_from(Lead).where(
+                                Lead.created_at >= since
+                            )
+                        )
+                    ).scalar_one()
+                )
+            except Exception:
+                kpi_note = "KPI 采集器暂不可用（线索表读取失败）"
+        else:
+            kpi_note = "该 KPI 暂无自动采集器，需接入真实业务数据源后自动回写"
+
+        if kpi_value is not None:
+            goal.kpi_current = kpi_value
+        elif kpi_note and goal.kpi_current == 0:
+            kpi_note = kpi_note
+
+        # 4. 结算快照写入 plan_data，供前端与汇报消费
+        updated_plan = dict(goal.plan_data or {})
+        updated_plan["settlement"] = {
+            "tasks_total": total_tasks,
+            "tasks_completed": completed_tasks,
+            "tasks_failed": failed_tasks,
+            "ai_calls": calls,
+            "tokens_used": tokens,
+            "cost_usd": round(spent, 6),
+            "cost_note": (
+                "本地 Ollama 无 API 费用，成本计为 0；Token 消耗为真实计量"
+                if spent == 0 and tokens
+                else None
+            ),
+            "kpi_note": kpi_note,
+            "settled_at": datetime.now(UTC).isoformat(),
+        }
+        goal.plan_data = updated_plan
+
+        logger.info(
+            f"goal_settled: goal_id={goal_id}, progress_pct={goal.progress_pct}, "
+            f"tasks={completed_tasks}/{total_tasks}, tokens={tokens}, "
+            f"cost_usd={round(spent, 6)}, kpi_current={goal.kpi_current}"
+        )
 
     async def update_progress(
         self, goal_id: int, progress_pct: float, kpi_current: Optional[float] = None

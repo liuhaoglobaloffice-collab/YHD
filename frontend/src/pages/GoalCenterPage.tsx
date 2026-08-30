@@ -111,6 +111,23 @@ export function GoalCenterPage() {
   const [formKpiUnit, setFormKpiUnit] = useState('');
   const [formBudget, setFormBudget] = useState('');
   const [creating, setCreating] = useState(false);
+
+  // P1-G1.1: 老板一句话创建目标（自然语言 → LLM/规则解析 → KPI/预算/时间）
+  const [nlText, setNlText] = useState('');
+  const [nlCreating, setNlCreating] = useState(false);
+  const [parseInfo, setParseInfo] = useState<{
+    parse_method: string;
+    llm_error: string | null;
+    extracted: {
+      kpi_name: string | null;
+      kpi_target: number | null;
+      kpi_unit: string | null;
+      budget_total: number | null;
+      time_start: string | null;
+      time_end: string | null;
+      risk_boundaries: string[] | null;
+    };
+  } | null>(null);
   const [executingRecovery, setExecutingRecovery] = useState<number | null>(null);
   const [recoveryResult, setRecoveryResult] = useState<{recordId: number; success: boolean; message: string} | null>(null);
 
@@ -142,6 +159,33 @@ export function GoalCenterPage() {
     loadGoals();
     loadFailures();
   }, [loadGoals, loadFailures]);
+
+  const handleCreateFromText = async () => {
+    if (!nlText.trim()) return;
+    setNlCreating(true);
+    setError(null);
+    setParseInfo(null);
+    try {
+      const resp = await fetch(`${API_BASE}/api/v1/goals/from-text`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ text: nlText.trim() }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.detail || `创建失败 (HTTP ${resp.status})`);
+      }
+      const data = await resp.json();
+      setParseInfo(data.parse_info || null);
+      setNlText('');
+      await loadGoals();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setNlCreating(false);
+    }
+  };
 
   const handleCreate = async () => {
     if (!formTitle.trim()) return;
@@ -310,6 +354,55 @@ export function GoalCenterPage() {
           <button onClick={() => setError(null)} style={{ marginLeft: 12, background: 'none', border: 'none', color: '#ff8a80', cursor: 'pointer' }}>✕</button>
         </div>
       )}
+
+      {/* P1-G1.1: 老板一句话创建目标 */}
+      <div style={{ background: '#1a1a2e', border: '1px solid #2a4a6a', borderRadius: 8, padding: 16, marginBottom: 16 }}>
+        <h3 style={{ color: '#4cc9f0', fontSize: 13, margin: '0 0 6px 0' }}>一句话创建目标</h3>
+        <p style={{ color: '#888', fontSize: 11, margin: '0 0 10px 0' }}>
+          告诉鎏灏你的最终目标（如：30天开发美国市场，获取100个潜在客户，预算2000美元），系统自动提取 KPI、预算、时间与风险边界
+        </p>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <textarea
+            value={nlText}
+            onChange={e => setNlText(e.target.value)}
+            rows={2}
+            placeholder="例：帮我开发美国市场，30天内获取100个潜在客户，预算2000美元"
+            style={{ flex: 1, padding: '8px 10px', background: '#0d0d1a', border: '1px solid #333', color: '#e0e0e0', borderRadius: 4, fontSize: 12, resize: 'vertical' }}
+          />
+          <button
+            onClick={handleCreateFromText}
+            disabled={nlCreating || !nlText.trim()}
+            style={{
+              padding: '8px 18px', background: '#00695c', border: 'none', color: '#fff',
+              borderRadius: 4, cursor: nlCreating || !nlText.trim() ? 'not-allowed' : 'pointer',
+              fontSize: 12, opacity: nlCreating || !nlText.trim() ? 0.6 : 1, alignSelf: 'flex-start',
+            }}
+          >
+            {nlCreating ? '解析中...' : 'AI 解析并创建'}
+          </button>
+        </div>
+        {parseInfo && (
+          <div style={{ marginTop: 10, padding: '8px 10px', background: '#0d0d1a', border: '1px solid #2a4a2a', borderRadius: 4, fontSize: 11 }}>
+            <div style={{ marginBottom: 6 }}>
+              <span style={{ color: '#66bb6a', fontWeight: 600 }}>
+                解析方式: {parseInfo.parse_method === 'llm' ? 'LLM 理解' : '规则解析（LLM 未配置）'}
+              </span>
+              {parseInfo.llm_error && (
+                <span style={{ color: '#facc15', marginLeft: 8 }}>({parseInfo.llm_error})</span>
+              )}
+            </div>
+            <div style={{ color: '#aaa', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '2px 12px' }}>
+              {parseInfo.extracted.kpi_name && <span>KPI: {parseInfo.extracted.kpi_name} = {parseInfo.extracted.kpi_target} {parseInfo.extracted.kpi_unit || ''}</span>}
+              {parseInfo.extracted.budget_total != null && <span>预算: {parseInfo.extracted.budget_total} USD</span>}
+              {parseInfo.extracted.time_start && <span>开始: {String(parseInfo.extracted.time_start).slice(0, 10)}</span>}
+              {parseInfo.extracted.time_end && <span>截止: {String(parseInfo.extracted.time_end).slice(0, 10)}</span>}
+              {parseInfo.extracted.risk_boundaries && parseInfo.extracted.risk_boundaries.length > 0 && (
+                <span>风险边界: {parseInfo.extracted.risk_boundaries.slice(0, 3).join('；')}</span>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
 
       {tab === 'goals' && (
         <>

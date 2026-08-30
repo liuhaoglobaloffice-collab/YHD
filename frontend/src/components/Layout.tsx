@@ -1,6 +1,7 @@
 import React from 'react';
 import { Header } from './Header';
 import { Sidebar } from './Sidebar';
+import { GlobalAIStatusBar } from './GlobalAIStatusBar';
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
@@ -8,6 +9,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <Sidebar />
       <div className="app-main">
         <Header />
+        <GlobalAIStatusBar />
         <main className="app-content">{children}</main>
       </div>
     </div>

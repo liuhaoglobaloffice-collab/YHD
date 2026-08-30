@@ -1,4 +1,4 @@
-﻿import os
+import os
 import importlib
 import sqlite3
 import asyncio
@@ -45,8 +45,15 @@ def test_metrics_persist_end_to_end(tmp_path):
     import src.api.providers_metrics as pm
     asyncio.get_event_loop().run_until_complete(pm._collect_once())
 
-    # Attempt explicit persist call to ensure the persistence helper works
+    # Y1.0 诚实行为：未配置真实 Provider 凭据时采集为空（不生成假指标）。
+    # 本测试的目的是验证持久化路径（样本 -> DB），因此注入受控样本。
     collected = pm.get_latest_metrics()
+    if not collected:
+        from collections import deque as _deque
+        from datetime import UTC as _UTC, datetime as _dt
+        point = pm.MetricPoint(timestamp=_dt.now(_UTC), latency_ms=120, success_rate=1.0)
+        pm._metrics_store.setdefault('ollama', {}).setdefault('qwen2.5:3b', _deque([point], maxlen=pm.MAX_SAMPLES))
+        collected = pm.get_latest_metrics()
     assert isinstance(collected, list)
     assert len(collected) > 0
 

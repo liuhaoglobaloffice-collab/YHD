@@ -270,7 +270,9 @@ class DocumentService:
         )
         if not policy_result.is_allowed():
             await self.audit.log(
+                self.session,
                 action=AuditAction.ACCESS_DENIED,
+                status="denied",
                 user_id=user.id,
                 resource_type="document",
                 details={"reason": policy_result.reason},
@@ -321,7 +323,9 @@ class DocumentService:
 
         # Audit log
         await self.audit.log(
+            self.session,
             action=AuditAction.CREATE,
+            status="success",
             user_id=user.id,
             resource_type="document",
             resource_id=doc_id,
@@ -400,7 +404,9 @@ class DocumentService:
 
         # Audit log
         await self.audit.log(
+            self.session,
             action=AuditAction.UPDATE,
+            status="success",
             user_id=user.id,
             resource_type="document",
             resource_id=parent.id,
@@ -459,7 +465,9 @@ class DocumentService:
 
         # Audit log
         await self.audit.log(
+            self.session,
             action=AuditAction.READ,
+            status="success",
             user_id=user.id,
             resource_type="document",
             resource_id=document_id,
@@ -595,7 +603,9 @@ class DocumentService:
 
         # Audit log
         await self.audit.log(
+            self.session,
             action=AuditAction.DELETE,
+            status="success",
             user_id=user.id,
             resource_type="document",
             resource_id=document_id,

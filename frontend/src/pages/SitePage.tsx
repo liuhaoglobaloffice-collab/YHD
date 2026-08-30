@@ -4,11 +4,15 @@ import {
   createSite,
   deletePage,
   deleteSite,
+  fetchPageSchema,
   fetchPages,
+  fetchSEOFiles,
   fetchSites,
   fetchSiteStats,
   publishPage,
   updatePage,
+  type PageSchemaResult,
+  type SEOFilesResult,
   type Site,
   type SitePage,
   type SiteStats,
@@ -31,6 +35,8 @@ export function SitePage() {
   const [pages, setPages] = useState<SitePage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [seoFiles, setSeoFiles] = useState<SEOFilesResult | null>(null);
+  const [schemaView, setSchemaView] = useState<PageSchemaResult | null>(null);
 
   // 创建站点
   const [showCreate, setShowCreate] = useState(false);
@@ -78,9 +84,14 @@ export function SitePage() {
 
   const loadSiteData = async (siteId: number) => {
     try {
-      const [s, p] = await Promise.all([fetchSiteStats(siteId), fetchPages(siteId)]);
+      const [s, p, f] = await Promise.all([
+        fetchSiteStats(siteId),
+        fetchPages(siteId),
+        fetchSEOFiles(siteId).catch(() => null),
+      ]);
       setStats(s);
       setPages(p.items);
+      setSeoFiles(f);
     } catch (e) {
       console.error(e);
       setError('加载站点数据失败');
@@ -173,6 +184,14 @@ export function SitePage() {
     }
   };
 
+  const handleViewSchema = async (page: SitePage) => {
+    if (!selected) return;
+    try {
+      setSchemaView(await fetchPageSchema(selected.id, page.id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '获取结构化数据失败');
+    }
+  };
   const handleDeleteSite = async (site: Site) => {
     if (!confirm(`确认删除站点 ${site.domain} ？其下所有页面将被删除。`)) return;
     try {
@@ -297,6 +316,7 @@ export function SitePage() {
                         {!readonly && (
                           <>
                             <button className="btn btn-sm" onClick={() => openPageForm(p)}>编辑</button>
+                            <button className="btn btn-sm" onClick={() => handleViewSchema(p)}>JSON-LD</button>
                             {p.status !== 'published' && (
                               <button className="btn btn-sm btn-submit" onClick={() => handlePublish(p)}>发布</button>
                             )}
@@ -310,6 +330,26 @@ export function SitePage() {
               </div>
             )}
           </div>
+          {/* SEO 文件（sitemap / robots，规则生成） */}
+          {seoFiles && (
+            <div className="executions-panel">
+              <div className="executions-header">
+                <strong>SEO 文件</strong>
+                <span className={`execution-status st-${seoFiles.source_type === 'RULE_BASED' ? 'completed' : 'queued'}`}>
+                  {seoFiles.source_type}
+                </span>
+              </div>
+              <div className="card-meta">已发布 {seoFiles.published_pages} 个页面 · {seoFiles.sitemap_url}</div>
+              <div className="form-group">
+                <label>sitemap.xml</label>
+                <textarea rows={6} className="modal-textarea" readOnly value={seoFiles.sitemap_xml} />
+              </div>
+              <div className="form-group">
+                <label>robots.txt</label>
+                <textarea rows={4} className="modal-textarea" readOnly value={seoFiles.robots_txt} />
+              </div>
+            </div>
+          )}
         </>
       )}
 
@@ -400,6 +440,23 @@ export function SitePage() {
               <button className="btn btn-submit" onClick={handleSavePage} disabled={!pageForm.title.trim()}>
                 {t('save')}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 页面 JSON-LD 结构化数据 */}
+      {schemaView && (
+        <div className="modal-overlay" onClick={() => setSchemaView(null)}>
+          <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
+            <h2>页面结构化数据 · JSON-LD</h2>
+            <p className="card-meta">数据来源：{schemaView.source_type}（规则生成，基于真实页面数据）</p>
+            <div className="form-group">
+              <label>schema.org JSON-LD</label>
+              <textarea rows={10} className="modal-textarea" readOnly value={schemaView.json_ld} />
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-cancel" onClick={() => setSchemaView(null)}>关闭</button>
             </div>
           </div>
         </div>

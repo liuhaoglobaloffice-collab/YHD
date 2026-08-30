@@ -4007,3 +4007,82 @@ body::before {
 .sub-mgmt-form textarea {
   resize: vertical;
 }
+
+/* ===== GlobalAIStatusBar（Y1.0「AI 正在工作」全局状态条）===== */
+.ai-live-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 16px;
+  margin: 0;
+  background: rgba(20, 24, 40, 0.03);
+  border-bottom: 1px solid rgba(120, 130, 170, 0.18);
+  font-size: 13px;
+  user-select: none;
+}
+.ai-live-bar-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.ai-live-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+@keyframes ai-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.ai-live-detail {
+  color: rgba(60, 70, 110, 0.75);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 46ch;
+}
+.ai-live-expand-hint {
+  margin-left: auto;
+  color: rgba(60, 70, 110, 0.5);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+.ai-live-bar-expanded {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+  padding: 10px 4px 4px;
+  border-top: 1px dashed rgba(120, 130, 170, 0.25);
+}
+.ai-live-col-title {
+  font-weight: 600;
+  font-size: 12px;
+  color: rgba(40, 50, 90, 0.85);
+  margin-bottom: 6px;
+}
+.ai-live-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 2px 0;
+}
+.ai-live-name {
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.ai-live-sub {
+  color: rgba(60, 70, 110, 0.6);
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.ai-live-bar-error {
+  color: #b3403f;
+}

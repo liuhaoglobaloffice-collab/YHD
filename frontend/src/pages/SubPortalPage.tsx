@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useI18n } from '../i18n';
 import { getUser } from '../services/auth';
 import { fetchMyBudget, type SubBudget } from '../services/accounts';
+import { fetchCEOSummaryReport, type CEOSummaryReport } from '../services/ceo';
 
 interface Overview {
   version?: string;
@@ -28,6 +29,7 @@ export function SubPortalPage() {
   const user = getUser();
   const [overview, setOverview] = useState<Overview | null>(null);
   const [budget, setBudget] = useState<SubBudget | null>(null);
+  const [ceoSummary, setCeoSummary] = useState<CEOSummaryReport | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -40,6 +42,9 @@ export function SubPortalPage() {
       .catch((e) => setError(`overview: ${String(e)}`));
     fetchMyBudget()
       .then(setBudget)
+      .catch(() => undefined);
+    fetchCEOSummaryReport(7)
+      .then(setCeoSummary)
       .catch(() => undefined);
   }, []);
 
@@ -65,6 +70,45 @@ export function SubPortalPage() {
 
       {error && <p className="error-text">{error}</p>}
 
+      {ceoSummary && (
+        <div className="card sub-ceo-summary">
+          <div className="sub-budget-head">
+            <span className="cost-label">CEO 经营摘要（近 {ceoSummary.period_days} 天）</span>
+            <span className={`sub-budget-badge ${ceoSummary.status === 'partially_degraded' ? 'over' : ''}`}>
+              {ceoSummary.status === 'generated' ? '已生成' : '部分降级'}
+            </span>
+          </div>
+          <div className="sub-stats-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: 8 }}>
+            <div className="sub-stat-card">
+              <div className="sub-stat-value">{(ceoSummary.report.kpis as any)?.ai_employees ?? 0}</div>
+              <div className="sub-stat-label">在线 AI 员工</div>
+            </div>
+            <div className="sub-stat-card">
+              <div className="sub-stat-value">{(ceoSummary.report.kpis as any)?.running_tasks ?? 0}</div>
+              <div className="sub-stat-label">执行中任务</div>
+            </div>
+            <div className="sub-stat-card">
+              <div className="sub-stat-value">{(ceoSummary.report.kpis as any)?.suppliers ?? 0}</div>
+              <div className="sub-stat-label">供应商</div>
+            </div>
+            <div className="sub-stat-card">
+              <div className="sub-stat-value">{(ceoSummary.report.goals as any)?.count ?? 0}</div>
+              <div className="sub-stat-label">经营目标</div>
+            </div>
+          </div>
+          <div className="cost-sub" style={{ lineHeight: 1.7 }}>
+            • KPI: {ceoSummary.report.kpis.message ?? '暂无'}<br />
+            • 告警: {ceoSummary.report.alerts.message ?? '暂无'}
+            {ceoSummary.report.alerts.items && ceoSummary.report.alerts.items.length > 0 ? `（${ceoSummary.report.alerts.items.length} 条）` : null}
+            <br />
+            • 成本: {ceoSummary.report.cost.message ?? '暂无'}
+            {typeof (ceoSummary.report.cost as any)?.total_usd === 'number'
+              ? ` · $${(ceoSummary.report.cost as any).total_usd.toFixed(4)}`
+              : null}
+          </div>
+        </div>
+      )}
+
       {/* 只读模块概览 */}
       {overview?.modules && (
         <div className="sub-stats-grid">
@@ -79,7 +123,6 @@ export function SubPortalPage() {
         </div>
       )}
 
-      {/* 本月 AI 预算使用 */}
       {budget && (
         <div className="card sub-budget-card">
           <div className="sub-budget-head">
@@ -103,7 +146,6 @@ export function SubPortalPage() {
         </div>
       )}
 
-      {/* 可访问模块入口 */}
       <div className="sub-shortcuts">
         {shortcuts.map((s) => (
           <Link key={s.path} to={s.path} className="sub-shortcut-card">

@@ -11,6 +11,9 @@ export interface AIWorkStatusProps {
   suggestion?: string;
   position?: string;
   model?: string;
+  trust_score?: number | null;
+  capability_score?: number | null;
+  risk_score?: number | null;
   /** 紧凑模式，用于侧边栏/小卡片 */
   compact?: boolean;
 }
@@ -24,10 +27,40 @@ const STATUS_CONFIG: Record<AIStatus, { label: string; color: string; bg: string
   offline:   { label: '离线',     color: '#666',    bg: 'rgba(102,102,102,0.08)', pulse: false },
 };
 
-export function AIWorkStatus({ name, status, currentTask, todayCompleted, recentActivity, suggestion, position, model, compact }: AIWorkStatusProps) {
+export function AIWorkStatus({ name, status, currentTask, todayCompleted, recentActivity, suggestion, position, model, trust_score, capability_score, risk_score, compact }: AIWorkStatusProps) {
   const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.offline;
 
   const pulseStyle = cfg.pulse ? { animation: 'ai-pulse 2s ease-in-out infinite' } : {};
+
+  const scoreColor = (label: string, v: number | null | undefined): string => {
+    if (v == null || Number.isNaN(v)) return '#888';
+    if (label === 'risk') return v >= 0.5 ? '#ff6b6b' : v >= 0.25 ? '#facc15' : '#4ade80';
+    // trust / capability: 越高越好
+    return v >= 0.7 ? '#4ade80' : v >= 0.4 ? '#facc15' : '#ff6b6b';
+  };
+  const scorePct = (v: number | null | undefined): number => {
+    if (v == null || Number.isNaN(v)) return 0;
+    return Math.max(0, Math.min(100, Math.round(Number(v) * 100)));
+  };
+  const ScoreBadge = ({ label, value }: { label: string; value: number | null | undefined }) => {
+    const color = scoreColor(label, value);
+    const pct = scorePct(value);
+    const text = value == null ? '—' : `${pct}%`;
+    return (
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 3 }}>
+          <span style={{ color: 'rgba(255,255,255,0.55)' }}>
+            {label === 'trust' ? '信任' : label === 'cap' ? '能力' : '风险'}
+          </span>
+          <span style={{ color, fontWeight: 600 }}>{text}</span>
+        </div>
+        <div style={{ height: 4, background: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden' }}>
+          <div style={{ width: `${pct}%`, height: '100%', background: color, transition: 'width .4s' }} />
+        </div>
+      </div>
+    );
+  };
+  const hasScores = trust_score != null || capability_score != null || risk_score != null;
 
   if (compact) {
     return (
@@ -77,6 +110,14 @@ export function AIWorkStatus({ name, status, currentTask, todayCompleted, recent
           </div>
         )}
       </div>
+
+      {hasScores && (
+        <div style={{ display: 'flex', gap: 10, padding: '8px 4px 2px', borderTop: '1px dashed rgba(255,255,255,0.08)', marginTop: 6 }}>
+          <ScoreBadge label="trust" value={trust_score} />
+          <ScoreBadge label="cap" value={capability_score} />
+          <ScoreBadge label="risk" value={risk_score} />
+        </div>
+      )}
 
       {suggestion && (
         <div className="ai-status-suggestion" style={{ borderLeft: `2px solid ${cfg.color}` }}>

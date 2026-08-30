@@ -1,0 +1,50 @@
+# LiuHao AI OS - Docker build context exclusions
+# 关键：阻止含真实凭据的 .env 进入镜像层
+
+# Secrets（.env.example 保留作为模板）
+.env
+.env.*
+!.env.example
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Python
+__pycache__
+**/__pycache__
+*.py[cod]
+*.pyo
+*.pyd
+.venv
+venv/
+env/
+.pytest_cache
+.mypy_cache
+.coverage
+htmlcov/
+coverage/
+
+# Node / frontend（前端镜像由 frontend/Dockerfile 自行构建）
+node_modules
+**/node_modules
+frontend/dist
+
+# Database / logs / temp
+*.db
+*.db-journal
+*.sqlite3
+logs/
+*.log
+tmp/
+temp/
+*.tmp
+*.swp
+*.zip
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -43,6 +43,13 @@ STEP_TIMEOUT_SECONDS = 300  # 5 分钟
 # 工作流上下文序列化安全限制（字符数）
 MAX_CONTEXT_CHARS = 10000
 
+# P0-7: 长时 workflow 阻塞风险保护
+# 执行模式：由 Settings.workflow_worker_mode 控制（inline/background）
+# 硬警告：inline 模式会占用 API 请求线程，不建议用于 >30s 的工作流
+WORKER_MODE_INLINE = "inline"
+WORKER_MODE_BACKGROUND = "background"
+_INLINE_MODE_WARNING_ISSUED = False  # 启动时最多警告一次，避免刷屏
+
 
 class WorkflowExecutor:
     """
@@ -90,7 +97,48 @@ class WorkflowExecutor:
         # 重试追踪
         self._retry_counts: Dict[str, int] = {}
 
-        logger.info("workflow_executor_initialized")
+        # P0-7: 读取 settings，按模式选择阻塞/异步执行策略
+        try:
+            from src.core.config import get_settings
+            self._settings = get_settings()
+        except Exception:  # pragma: no cover - defensive fallback
+            from src.core.config import Settings
+            self._settings = Settings()
+
+        self._worker_mode = (self._settings.workflow_worker_mode or WORKER_MODE_INLINE)
+        self._total_timeout_s = int(
+            getattr(self._settings, "workflow_total_timeout_seconds", 1800) or 1800
+        )
+        self._max_steps = int(
+            getattr(self._settings, "workflow_max_steps", 500) or 500
+        )
+        self._step_counter = 0
+
+        # P0-7: 文档级警告（inline 模式仅提示一次）
+        global _INLINE_MODE_WARNING_ISSUED
+        if (
+            self._worker_mode == WORKER_MODE_INLINE
+            and not _INLINE_MODE_WARNING_ISSUED
+        ):
+            _INLINE_MODE_WARNING_ISSUED = True
+            logger.warning(
+                "workflow_mode_inline_warning",
+                message=(
+                    "WorkflowExecutor running in 'inline' mode. Long-running workflows "
+                    "(>30s total) WILL BLOCK HTTP handler threads and risk gateway "
+                    "timeouts. For production set WORKFLOW_WORKER_MODE=background "
+                    "(or future worker queue mode via Celery/RQ). See Settings.workflow_*."
+                ),
+                total_timeout_seconds=self._total_timeout_s,
+                max_steps=self._max_steps,
+            )
+
+        logger.info(
+            "workflow_executor_initialized",
+            worker_mode=self._worker_mode,
+            total_timeout_seconds=self._total_timeout_s,
+            max_steps=self._max_steps,
+        )
 
     async def _persist_execution(self, execution: WorkflowExecution) -> None:
         """Persist WorkflowExecution state to database."""
@@ -198,18 +246,41 @@ class WorkflowExecutor:
                 )
             )
 
+        # P0-7: worker_mode=background → 立即返回，后台 create_task 执行
+        if self._worker_mode == WORKER_MODE_BACKGROUND:
+            execution.status = WorkflowExecutionStatus.RUNNING
+            execution.started_at = datetime.now(UTC)
+            execution.metadata["worker_mode"] = WORKER_MODE_BACKGROUND
+            await self._persist_execution(execution)
+            loop = asyncio.get_running_loop()
+            # 注意：loop 引用避免 early GC；使用当前 session 的副本/独立生命周期由 caller 保证
+            task = loop.create_task(
+                self._run_workflow_to_completion(workflow, execution, user)
+            )
+            # 不做 task await；把 handle 存元数据用于调试（不等待）
+            execution.metadata["_bg_task_scheduled"] = True
+            logger.info(
+                "workflow_scheduled_background",
+                workflow_id=str(workflow_id),
+                execution_id=str(execution.execution_id),
+            )
+            return execution
+
+        # inline 模式：同步阻塞 + 总超时保护（fail-closed）
         # Execute workflow steps
         try:
             execution.status = WorkflowExecutionStatus.RUNNING
             execution.started_at = datetime.now(UTC)
+            execution.metadata["worker_mode"] = WORKER_MODE_INLINE
 
             # Persist RUNNING status
             await self._persist_execution(execution)
 
-            results = []
-            for step in workflow.steps:
-                step_result = await self._execute_step(step, execution, user)
-                results.append(step_result)
+            # P0-7: 整体 workflow 墙钟超时，防止"卡死式"阻塞整个请求
+            results = await asyncio.wait_for(
+                self._run_all_steps_with_limits(workflow, execution, user),
+                timeout=self._total_timeout_s,
+            )
 
             execution.status = WorkflowExecutionStatus.COMPLETED
             execution.completed_at = datetime.now(UTC)
@@ -231,6 +302,8 @@ class WorkflowExecutor:
                     "duration_seconds": (
                         execution.completed_at - execution.started_at
                     ).total_seconds(),
+                    "worker_mode": self._worker_mode,
+                    "total_steps_executed": self._step_counter,
                 },
             )
 
@@ -243,10 +316,30 @@ class WorkflowExecutor:
                             "workflow_id": str(workflow_id),
                             "execution_id": str(execution.execution_id),
                             "user_id": user.id,
+                            "worker_mode": self._worker_mode,
                         },
                     )
                 )
 
+        except asyncio.TimeoutError as e:
+            # P0-7: workflow 级总超时（区别于单步超时）
+            timeout_msg = (
+                f"Workflow total execution exceeded wall-clock timeout of "
+                f"{self._total_timeout_s}s. Use WORKFLOW_WORKER_MODE=background "
+                f"for long workflows."
+            )
+            logger.error(
+                "workflow_total_timeout",
+                workflow_id=str(workflow_id),
+                execution_id=str(execution.execution_id),
+                total_timeout_seconds=self._total_timeout_s,
+            )
+            error_msg = timeout_msg
+            execution.status = WorkflowExecutionStatus.FAILED
+            execution.completed_at = datetime.now(UTC)
+            execution.error = error_msg
+            execution.metadata["timeout_reached"] = True
+            execution.metadata["total_timeout_seconds"] = self._total_timeout_s
         except Exception as e:
             error_msg = str(e)
             execution.status = WorkflowExecutionStatus.FAILED
@@ -377,6 +470,114 @@ class WorkflowExecutor:
                 )
 
         return execution
+
+    # ==================================================================
+    # P0-7 新增：后台 task 包装器 / 总步数限制执行循环 / 总超时内部方法
+    # ==================================================================
+
+    async def _run_workflow_to_completion(self, workflow, execution: WorkflowExecution, user) -> None:
+        """后台（background 模式）任务协程。
+
+        保证与 inline 模式一样完整走失败恢复、状态持久化、审计日志。
+        异常被吞掉并以 FAILED + 审计记录方式退出，不会因为 create_task 的 "exception was never retrieved"
+        在解释器退出时打 warning。
+        """
+        try:
+            results = await asyncio.wait_for(
+                self._run_all_steps_with_limits(workflow, execution, user),
+                timeout=self._total_timeout_s,
+            )
+            execution.status = WorkflowExecutionStatus.COMPLETED
+            execution.completed_at = datetime.now(UTC)
+            execution.result = {"results": results}
+            await self._persist_execution(execution)
+            try:
+                await self.audit.log(
+                    session=self.session,
+                    action=AuditAction.WORKFLOW_EXECUTE,
+                    user_id=user.id,
+                    resource_type="workflow",
+                    resource_id=str(workflow.workflow_id),
+                    status="completed",
+                    details={
+                        "execution_id": str(execution.execution_id),
+                        "worker_mode": WORKER_MODE_BACKGROUND,
+                        "duration_seconds": (
+                            (execution.completed_at or execution.started_at)
+                            - execution.started_at
+                        ).total_seconds() if execution.started_at else 0,
+                    },
+                )
+            except Exception:  # pragma: no cover - 审计失败不覆盖主结果
+                pass
+            if self.event_bus:
+                self.event_bus.publish(Event(name="workflow.execution.completed", data={
+                    "workflow_id": str(workflow.workflow_id),
+                    "execution_id": str(execution.execution_id),
+                    "user_id": user.id,
+                    "worker_mode": WORKER_MODE_BACKGROUND,
+                }))
+        except asyncio.TimeoutError:
+            execution.status = WorkflowExecutionStatus.FAILED
+            execution.completed_at = datetime.now(UTC)
+            execution.error = (
+                f"Workflow total execution exceeded wall-clock timeout of "
+                f"{self._total_timeout_s}s."
+            )
+            execution.metadata["timeout_reached"] = True
+            await self._safe_persist_and_log_failure(execution, workflow, user)
+        except Exception as e:
+            execution.status = WorkflowExecutionStatus.FAILED
+            execution.completed_at = datetime.now(UTC)
+            execution.error = str(e)
+            await self._safe_persist_and_log_failure(execution, workflow, user)
+
+    async def _safe_persist_and_log_failure(self, execution, workflow, user) -> None:
+        try:
+            await self._persist_execution(execution)
+        except Exception:  # pragma: no cover - defensive
+            pass
+        try:
+            await self.audit.log(
+                session=self.session,
+                action=AuditAction.WORKFLOW_EXECUTE,
+                user_id=user.id,
+                resource_type="workflow",
+                resource_id=str(getattr(workflow, "workflow_id", "unknown")),
+                status="failed",
+                details={
+                    "execution_id": str(execution.execution_id),
+                    "worker_mode": WORKER_MODE_BACKGROUND,
+                    "error": execution.error,
+                },
+            )
+        except Exception:  # pragma: no cover - defensive
+            pass
+        if self.event_bus:
+            self.event_bus.publish(Event(name="workflow.execution.failed", data={
+                "workflow_id": str(getattr(workflow, "workflow_id", "unknown")),
+                "execution_id": str(execution.execution_id),
+                "user_id": user.id,
+                "error": execution.error,
+                "worker_mode": WORKER_MODE_BACKGROUND,
+            }))
+
+    async def _run_all_steps_with_limits(self, workflow, execution: WorkflowExecution, user):
+        """P0-7：按 steps 顺序执行，并校验总步数上限（fail-closed）。"""
+        self._step_counter = 0
+        results = []
+        for step in workflow.steps:
+            # 粗略计数：每个 step 及其内部子步骤（sequential/parallel/conditional/loop）
+            # 由 _execute_step 内自增，这里外层按"step 个数"加 1。
+            self._step_counter += 1
+            if self._step_counter > self._max_steps:
+                raise RuntimeError(
+                    f"Workflow exceeded maximum allowed steps ({self._max_steps}). "
+                    f"Possible runaway loop detected; workflow aborted."
+                )
+            step_result = await self._execute_step(step, execution, user)
+            results.append(step_result)
+        return results
 
     async def pause_execution(self, execution_id: UUID, user: User) -> None:
         if not await self.rbac.check_permission_by_id(user.id, Permission.WORKFLOW_EXECUTE):
@@ -526,11 +727,21 @@ class WorkflowExecutor:
     ) -> Any:
         step_type = WorkflowStepType(step.step_type)
 
+        # P0-7: 进入步骤前也计数（组合步骤会进一步累加内部子步骤分支）
+        self._step_counter += 1
+        if self._step_counter > self._max_steps:
+            raise RuntimeError(
+                f"Workflow exceeded max steps ({self._max_steps}) inside composite step. "
+                f"Step limit enforced (fail-closed)."
+            )
+
         logger.info(
             "executing_step",
             step_id=step.step_id,
             step_type=step.step_type,
             execution_id=str(execution.execution_id),
+            step_counter=self._step_counter,
+            max_steps=self._max_steps,
         )
 
         # 带超时的步骤执行

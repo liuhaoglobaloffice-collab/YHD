@@ -56,12 +56,35 @@ class SiteService:
         await self.session.refresh(site)
         return site
 
-    async def list_sites(self, user_ids: Set[int]) -> List[SiteConfig]:
-        stmt = select(SiteConfig).where(SiteConfig.owner_user_id.in_(list(user_ids))).order_by(SiteConfig.created_at.desc())
+    async def list_sites(
+        self,
+        user_ids: Optional[Set[int]] = None,
+        tenant_id: Optional[str] = None,
+    ) -> List[SiteConfig]:
+        """列出独立站。
+
+        P1-G5.2 修复：user_ids=None 表示不过滤归属（OWNER 全租户可见），
+        另可按 tenant_id 过滤；旧实现把 OWNER 的空可见集合当作"无归属用户"。
+        """
+        stmt = select(SiteConfig)
+        if user_ids is not None:
+            stmt = stmt.where(SiteConfig.owner_user_id.in_(list(user_ids)))
+        if tenant_id:
+            stmt = stmt.where(SiteConfig.tenant_id == tenant_id)
+        stmt = stmt.order_by(SiteConfig.created_at.desc())
         return list((await self.session.execute(stmt)).scalars().all())
 
-    async def get_site(self, site_id: int, user_ids: Set[int]) -> Optional[SiteConfig]:
-        stmt = select(SiteConfig).where(SiteConfig.id == site_id, SiteConfig.owner_user_id.in_(list(user_ids)))
+    async def get_site(
+        self,
+        site_id: int,
+        user_ids: Optional[Set[int]] = None,
+        tenant_id: Optional[str] = None,
+    ) -> Optional[SiteConfig]:
+        stmt = select(SiteConfig).where(SiteConfig.id == site_id)
+        if user_ids is not None:
+            stmt = stmt.where(SiteConfig.owner_user_id.in_(list(user_ids)))
+        if tenant_id:
+            stmt = stmt.where(SiteConfig.tenant_id == tenant_id)
         return (await self.session.execute(stmt)).scalar_one_or_none()
 
     async def update_site(self, site: SiteConfig, data: Dict[str, Any]) -> SiteConfig:
@@ -239,7 +262,8 @@ class SiteService:
             suggested_slug=data.get("suggested_slug"),
             suggested_tags=data.get("tags"),
             search_intent=data.get("search_intent"),
-            method=data.get("method", "mock"),
+            # P1-G5.2: 优先持久化 source_type（LLM/RULE_BASED/NOT_CONFIGURED），旧数据为 ai/mock
+            method=data.get("source_type") or data.get("method", "mock"),
             created_by=created_by,
         )
         self.session.add(item)

@@ -124,7 +124,9 @@ class DocumentChunkModel(Base):
 
     __tablename__ = "document_chunks"
 
-    id = Column(String(36), primary_key=True)
+    # Chunk ids are "{document_id}_c{index}" (39+ chars), so the PK must
+    # be wider than a bare 36-char UUID string.
+    id = Column(String(255), primary_key=True)
     document_id = Column(String(36), ForeignKey("documents.id"), nullable=False)
     chunk_text = Column(Text, nullable=False)
     chunk_index = Column(Integer, nullable=False, default=0)
@@ -149,7 +151,8 @@ class EmbeddingStorageModel(Base):
 
     id = Column(String(36), primary_key=True)
     document_id = Column(String(36), ForeignKey("documents.id"), nullable=True)
-    chunk_id = Column(String(36), nullable=False)
+    # Matches DocumentChunkModel.id: "{document_id}_c{index}" is 39+ chars.
+    chunk_id = Column(String(255), nullable=False)
     vector = Column(JSON, nullable=False)
     dimension = Column(Integer, nullable=False, default=3)
     provider = Column(String(80), nullable=False, default="mock")

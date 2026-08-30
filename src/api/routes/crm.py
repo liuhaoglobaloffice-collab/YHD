@@ -563,6 +563,10 @@ async def customs_search(
     provider = CustomsDataProvider()
     records = await provider.search(request.product, request.country, request.limit)
 
+    # 来源必须诚实标注：未配置海关 API 时返回的是内置示例数据。
+    # 过去一律写成 "customs-api"，等于把示例数据伪装成真实接口数据（来源欺诈）。
+    customs_source = "customs-api" if getattr(provider, "api_base", None) else "customs-sample-not-configured"
+
     saved = 0
     if request.save:
         for r in records:
@@ -578,7 +582,7 @@ async def customs_search(
                 unit=r.get("unit"),
                 value=r.get("value"),
                 trade_date=datetime.fromisoformat(r["trade_date"]) if r.get("trade_date") else None,
-                source="customs-api",
+                source=customs_source,
                 owner_user_id=current_user.id,
                 tenant_id=current_user.tenant_id,
             )

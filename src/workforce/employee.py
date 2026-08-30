@@ -33,6 +33,11 @@ from .models import (
 )
 from .registry import AIEmployeeRegistry
 
+# 延迟导入以避免循环依赖：performance 依赖 registry，registry 反向引用 models
+def _get_performance_tracker(registry):
+    from .performance import PerformanceTracker
+    return PerformanceTracker(registry)
+
 logger = logging.getLogger(__name__)
 
 
@@ -622,6 +627,40 @@ class AIEmployeeService:
             logger.warning("knowledge_retrieval_failed", exc_info=True)
             # 知识检索失败不影响主流程
 
+        # ── Collective Intelligence：基于信任分数检索共享经验注入上下文 ──
+        try:
+            from ..knowledge.memory import MemoryService
+            from ..ai.agent_router import AgentRouter
+            mem_service = MemoryService(
+                session=self.registry.session,
+                rbac_service=self.rbac,
+                audit_service=self.audit,
+            )
+            router = AgentRouter(self.registry.session)
+            trust_score = await router.get_agent_trust_score(str(employee.id))
+            experiences = await mem_service.recall_agent_experience(
+                task_type=employee.agent_type.value,
+                limit=5,
+                requester_trust_score=trust_score,
+            )
+            if experiences:
+                exp_lines = []
+                for exp in experiences:
+                    value = getattr(exp, "value", None)
+                    if value:
+                        exp_lines.append(f"- {value}")
+                if exp_lines:
+                    messages.append({
+                        "role": "system",
+                        "content": (
+                            "以下是其他 AI 员工在同类任务中积累的共享经验，"
+                            "请参考这些经验执行当前任务：\n\n" + "\n".join(exp_lines)
+                        ),
+                    })
+        except Exception:
+            logger.warning("agent_experience_recall_failed", exc_info=True)
+            # 经验召回失败不影响主流程
+
         messages.append({"role": "user", "content": prompt})
 
         # Execute
@@ -672,6 +711,7 @@ class AIEmployeeService:
             if mem_user_id:
                 resp = execution.provider_response
                 usage = resp.usage if resp else None
+                ctx = context_data or {}
                 await CostTracker(self.registry.session).record(
                     user_id=mem_user_id,
                     provider=resp.provider.value if resp else "unknown",
@@ -682,9 +722,61 @@ class AIEmployeeService:
                     status="success" if execution.status.value == "completed" else "failed",
                     employee_id=str(employee_id),
                     agent_type=employee.agent_type.value,
+                    # 带上任务/工作流上下文，使目标可以按链路聚合真实花费
+                    meta={
+                        "task_id": ctx.get("task_id"),
+                        "workflow_id": ctx.get("workflow_id"),
+                        "execution_id": str(execution.execution_id),
+                    },
                 )
         except Exception:
             logger.warning("ai_cost_record_failed", exc_info=True)
+
+        # AI 绩效追踪：记录成功/失败、耗时、成本（信任评分与自我学习的数据底座）
+        try:
+            resp_for_perf = execution.provider_response
+            await _get_performance_tracker(self.registry).record_performance(
+                employee_id=employee_id,
+                task_id=None,
+                workflow_id=None,
+                success=execution.status.value == "completed",
+                execution_time_seconds=(
+                    float(resp_for_perf.response_time_ms) / 1000.0
+                    if resp_for_perf and resp_for_perf.response_time_ms
+                    else 0.0
+                ),
+                cost_usd=0.0,
+                error_message=execution.error if execution.status.value != "completed" else None,
+                metadata={
+                    "provider": resp_for_perf.provider.value if resp_for_perf else "unknown",
+                    "model": resp_for_perf.model_id if resp_for_perf else "",
+                    "agent_type": employee.agent_type.value,
+                    "execution_id": str(execution.execution_id),
+                    "task_id": (context_data or {}).get("task_id"),
+                    "workflow_id": (context_data or {}).get("workflow_id"),
+                },
+            )
+        except Exception:
+            logger.warning("ai_performance_record_failed", exc_info=True)
+
+        # ── Collective Intelligence：成功执行后存储经验到共享知识库 ──
+        if execution.status.value == "completed":
+            try:
+                from ..knowledge.memory import MemoryService
+                mem_service = MemoryService(
+                    session=self.registry.session,
+                    rbac_service=self.rbac,
+                    audit_service=self.audit,
+                )
+                result_summary = (execution.output or "")[:2000] if execution.output else ""
+                if result_summary:
+                    await mem_service.store_agent_experience(
+                        employee_id=str(employee.id),
+                        task_type=employee.agent_type.value,
+                        result_summary=result_summary,
+                    )
+            except Exception:
+                logger.warning("agent_experience_store_failed", exc_info=True)
 
         # 失败恢复链：任务执行失败时自动记录
         if execution.status.value != "completed":
@@ -702,9 +794,11 @@ class AIEmployeeService:
                 # 如果策略是重试，记录期望但不自动重试（避免无限循环）
                 logger.info(
                     "employee_task_failure_recorded",
-                    employee_id=str(employee_id),
-                    execution_id=str(execution.execution_id),
-                    strategy=strategy.value,
+                    extra={
+                        "employee_id": str(employee_id),
+                        "execution_id": str(execution.execution_id),
+                        "strategy": strategy.value,
+                    },
                 )
             except Exception as recovery_e:
                 logger.warning("employee_recovery_failed", exc_info=True)

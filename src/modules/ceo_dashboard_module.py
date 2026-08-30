@@ -9,10 +9,12 @@ CEO Dashboard 模块
 - 审批流程
 """
 
+from sqlalchemy import func, select
+
 from src.core.modules import BaseModule, ModuleInfo, ModuleStatus, EventBus, Event, EventType
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
-from datetime import datetime, UTC
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 import logging
 
@@ -597,7 +599,176 @@ class CEODashboardModule(BaseModule):
             })
         
         return alerts
-    
+
+    async def scan_business_anomalies(self, session) -> List[Dict[str, Any]]:
+        """扫描业务级异常并生成主动经营告警。
+
+        检测项（均基于真实业务数据，单项查询失败时诚实降级为跳过该项）：
+        - lead_decline: 线索数量周环比下降超过 50%
+        - customer_churn: 状态为流失（LOST）的线索数量
+        - supplier_risk_change: 风险评估为高/极高风险的供应商数量
+        """
+        alerts = []
+        now = datetime.now(UTC)
+        self._last_scan_failures = 0
+
+        # 1. 线索周环比下降检测
+        try:
+            from src.crm.models import Lead
+
+            week_ago = now - timedelta(days=7)
+            two_weeks_ago = now - timedelta(days=14)
+
+            this_week_res = await session.execute(
+                select(func.count(Lead.id)).where(Lead.created_at >= week_ago)
+            )
+            this_week = int(this_week_res.scalar_one() or 0)
+
+            last_week_res = await session.execute(
+                select(func.count(Lead.id)).where(
+                    Lead.created_at >= two_weeks_ago,
+                    Lead.created_at < week_ago,
+                )
+            )
+            last_week = int(last_week_res.scalar_one() or 0)
+
+            if last_week > 0:
+                decline_rate = (last_week - this_week) / last_week
+                if decline_rate > 0.5:
+                    alerts.append({
+                        "id": "alert_lead_decline",
+                        "type": "lead_decline",
+                        "level": "warning",
+                        "title": "线索数量下降",
+                        "message": (
+                            f"本周线索 {this_week} 条，较上周 {last_week} 条"
+                            f"下降 {decline_rate * 100:.0f}%"
+                        ),
+                        "timestamp": now.isoformat(),
+                    })
+        except Exception as e:
+            self._last_scan_failures += 1
+            logger.warning(f"Lead decline scan failed: {e}")
+
+        # 2. 客户流失检测
+        try:
+            from src.crm.models import Lead, LeadStatus
+
+            churn_res = await session.execute(
+                select(func.count(Lead.id)).where(Lead.status == LeadStatus.LOST)
+            )
+            churn_count = int(churn_res.scalar_one() or 0)
+            if churn_count > 0:
+                alerts.append({
+                    "id": "alert_customer_churn",
+                    "type": "customer_churn",
+                    "level": "warning",
+                    "title": "客户流失",
+                    "message": f"{churn_count} 个客户状态为流失",
+                    "timestamp": now.isoformat(),
+                })
+        except Exception as e:
+            self._last_scan_failures += 1
+            logger.warning(f"Customer churn scan failed: {e}")
+
+        # 3. 供应商高风险检测
+        try:
+            from src.business.supplier.models import RiskLevel, SupplierRiskAssessment
+
+            risk_res = await session.execute(
+                select(
+                    func.count(func.distinct(SupplierRiskAssessment.supplier_id))
+                ).where(
+                    SupplierRiskAssessment.risk_level.in_(
+                        [RiskLevel.HIGH, RiskLevel.CRITICAL]
+                    )
+                )
+            )
+            high_risk_count = int(risk_res.scalar_one() or 0)
+            if high_risk_count > 0:
+                alerts.append({
+                    "id": "alert_supplier_risk",
+                    "type": "supplier_risk_change",
+                    "level": "warning",
+                    "title": "供应商风险升高",
+                    "message": f"{high_risk_count} 个供应商风险等级为高",
+                    "timestamp": now.isoformat(),
+                })
+        except Exception as e:
+            self._last_scan_failures += 1
+            logger.warning(f"Supplier risk scan failed: {e}")
+
+        return alerts
+
+    async def generate_summary_report(self, session) -> Dict[str, Any]:
+        """生成经营摘要报告（按需触发，非离线调度）。
+
+        老板长期不在线场景的最小基础：聚合以下数据，
+        各部分独立降级，查询失败时如实标注"不可用"，不伪装成功：
+        - Dashboard 核心 KPI
+        - 主动经营告警（scan_business_anomalies 输出）
+        - Goal 执行状态和进度
+        - AI 成本统计
+        """
+        now = datetime.now(UTC)
+        report: Dict[str, Any] = {
+            "timestamp": now.isoformat(),
+            "status": "generated",
+            "kpis": {"items": []},
+            "alerts": {"items": [], "message": "暂无异常"},
+            "goals": {"count": 0, "message": "暂无目标"},
+            "cost": {"total_usd": 0.0, "message": "暂无成本数据"},
+        }
+
+        # 0. Dashboard 核心 KPI（模块内部数据，无会话依赖）
+        try:
+            report["kpis"] = {"items": self._get_kpis_dict()}
+        except Exception as e:
+            logger.warning(f"KPI collection in report failed: {e}")
+
+        # 1. 主动经营告警
+        try:
+            alerts = await self.scan_business_anomalies(session)
+            if alerts:
+                report["alerts"] = {"items": alerts, "message": f"{len(alerts)} 条告警"}
+            elif getattr(self, "_last_scan_failures", 0) > 0:
+                # 扫描查询失败 → 如实标注，不伪装成"暂无异常"
+                report["alerts"] = {"items": [], "message": "告警扫描不可用"}
+        except Exception as e:
+            logger.warning(f"Alert scan in report failed: {e}")
+            report["alerts"] = {"items": [], "message": "告警扫描不可用"}
+
+        # 2. Goal 执行状态和进度
+        try:
+            from src.database.models import GoalModel
+
+            goal_res = await session.execute(select(func.count(GoalModel.id)))
+            goal_count = int(goal_res.scalar_one() or 0)
+            if goal_count > 0:
+                report["goals"] = {"count": goal_count, "message": f"{goal_count} 个目标"}
+        except Exception as e:
+            logger.warning(f"Goal query in report failed: {e}")
+            report["goals"] = {"count": 0, "message": "目标数据不可用"}
+
+        # 3. AI 成本统计
+        try:
+            from src.database.models import AiCostRecordModel
+
+            cost_res = await session.execute(
+                select(func.coalesce(func.sum(AiCostRecordModel.cost_usd), 0.0))
+            )
+            total_cost = float(cost_res.scalar_one() or 0.0)
+            if total_cost > 0:
+                report["cost"] = {
+                    "total_usd": round(total_cost, 2),
+                    "message": f"${total_cost:.2f}",
+                }
+        except Exception as e:
+            logger.warning(f"Cost query in report failed: {e}")
+            report["cost"] = {"total_usd": 0.0, "message": "成本数据不可用"}
+
+        return report
+
     def refresh_data(self) -> Dict[str, Any]:
         """刷新仪表板数据"""
         try:

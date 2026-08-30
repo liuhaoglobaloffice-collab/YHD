@@ -163,44 +163,118 @@ async def init_database():
     engine = get_engine()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        # SQLite 轻量迁移：create_all 不更新已有表，手动补齐新增列
-        if engine.dialect.name == "sqlite":
-            migrations = {
-                "users": {
-                    "approval_status": "VARCHAR(20)",
-                    "ai_budget_monthly": "FLOAT",
-                },
-                "leads": {
-                    "quote_amount": "FLOAT",
-                    "won_amount": "FLOAT",
-                    "expected_close_at": "DATETIME",
-                    "lost_reason": "VARCHAR(500)",
-                },
-                "business_tasks": {
-                    "owner_user_id": "INTEGER",
-                    "created_by": "INTEGER",
-                },
-                "embedding_storage": {
-                    "embedding_model": "VARCHAR(255)",
-                },
-                "documents": {
-                    "content_hash": "VARCHAR(64)",
-                },
-            }
-            for table, columns in migrations.items():
-                cols = [
-                    r[1]
-                    for r in (
-                        await conn.execute(text(f"PRAGMA table_info({table})"))
-                    ).fetchall()
-                ]
-                for col, coltype in columns.items():
-                    if col not in cols:
-                        await conn.execute(
-                            text(f"ALTER TABLE {table} ADD COLUMN {col} {coltype}")
-                        )
-                        logger.info("migration_add_column", table=table, column=col)
+        # 轻量加列迁移：create_all 只建缺失的表，从不修改已有表。
+        # 旧镜像建库的部署会缺列（如 tasks.retry_count），这里按 ORM
+        # 元数据自省，对所有方言（SQLite / PostgreSQL）幂等补齐缺失列。
+        # 只增不删，绝不触碰已有数据。
+        await conn.run_sync(_sync_additive_columns)
+
+        # Failure-recovery on boot: a process restart / container rebuild
+        # kills any in-flight workflow executions and tasks mid-run. Without
+        # this, rows stay "running" forever and the dashboard reports phantom
+        # activity. Mark them as failed so goals can be detected as
+        # failed/recovered instead of hanging.
+        await conn.execute(
+            text(
+                "UPDATE workflow_executions "
+                "SET status = 'FAILED', error = "
+                "COALESCE(error, '') || ' [recovered] interrupted by system restart', "
+                "completed_at = CURRENT_TIMESTAMP "
+                "WHERE LOWER(status) = 'running' AND completed_at IS NULL"
+            )
+        )
+        await conn.execute(
+            text(
+                "UPDATE tasks "
+                "SET status = 'failed', error = "
+                "COALESCE(error, '') || ' [recovered] interrupted by system restart', "
+                "completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP "
+                "WHERE LOWER(status) IN ('running', 'in_progress') "
+                "AND completed_at IS NULL"
+            )
+        )
+        # Reconcile goals: an active goal whose workflow execution was
+        # interrupted by the restart cannot progress anymore — mark it
+        # failed so the failure-recovery chain / owner can re-run it
+        # instead of showing a forever-"active" phantom.
+        await conn.execute(
+            text(
+                "UPDATE goals "
+                "SET status = 'failed', updated_at = CURRENT_TIMESTAMP "
+                "WHERE status = 'active' AND workflow_id IS NOT NULL "
+                "AND workflow_id IN ("
+                "  SELECT workflow_id FROM workflow_executions "
+                "  WHERE status = 'FAILED' AND error LIKE '%[recovered]%'"
+                ")"
+            )
+        )
     logger.info("database_tables_created")
+
+
+def _sync_additive_columns(sync_conn) -> None:
+    """Add missing ORM columns to existing tables (additive, idempotent).
+
+    - New tables are already created by ``create_all``.
+    - For every existing table, compare DB columns against
+      ``Base.metadata``; issue ``ALTER TABLE ADD COLUMN`` for misses.
+    - Columns are added as nullable when the model has no server-side
+      default (existing rows backfill as NULL; the ORM always supplies
+      values on insert, so NOT NULL semantics hold for new writes).
+      Models with ``server_default`` keep NOT NULL + DEFAULT.
+    """
+    from sqlalchemy import inspect as sa_inspect
+
+    inspector = sa_inspect(sync_conn)
+    dialect_name = sync_conn.dialect.name
+    existing_tables = set(inspector.get_table_names())
+    for table_name, table in Base.metadata.tables.items():
+        if table_name not in existing_tables:
+            continue
+        existing_cols = {c["name"]: c for c in inspector.get_columns(table_name)}
+        for column in table.columns:
+            if column.name not in existing_cols:
+                # Missing column → ADD COLUMN (nullable; ORM supplies values)
+                col_type = column.type.compile(dialect=sync_conn.dialect)
+                parts = [f"ALTER TABLE {table_name} ADD COLUMN {column.name} {col_type}"]
+                if column.server_default is not None:
+                    arg = column.server_default.arg
+                    default_text = getattr(arg, "text", str(arg))
+                    parts.append(f"DEFAULT {default_text}")
+                    if not column.nullable:
+                        parts.append("NOT NULL")
+                ddl = " ".join(parts)
+                sync_conn.execute(text(ddl))
+                logger.info("migration_add_column", table=table_name, column=column.name)
+            elif dialect_name == "postgresql":
+                # Widen VARCHAR columns when the ORM declares a larger
+                # length (PG enforces VARCHAR(n); older schemas used
+                # String(36) for ids that now carry suffixes, e.g.
+                # "{uuid}_c0"). SQLite ignores length, so skip there.
+                from sqlalchemy import String as SAString
+
+                db_col = existing_cols[column.name]
+                db_type = db_col.get("type")
+                db_len = getattr(db_type, "length", None)
+                orm_len = getattr(column.type, "length", None)
+                if (
+                    isinstance(column.type, SAString)
+                    and orm_len
+                    and db_len
+                    and orm_len > db_len
+                ):
+                    sync_conn.execute(
+                        text(
+                            f"ALTER TABLE {table_name} "
+                            f"ALTER COLUMN {column.name} TYPE VARCHAR({orm_len})"
+                        )
+                    )
+                    logger.info(
+                        "migration_widen_column",
+                        table=table_name,
+                        column=column.name,
+                        old_length=db_len,
+                        new_length=orm_len,
+                    )
 
 
 async def close_database():

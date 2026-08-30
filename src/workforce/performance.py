@@ -84,10 +84,53 @@ class PerformanceTracker:
             metadata=metadata or {},
         )
 
-        # Store record
+        # Store record (in-memory read cache)
         if employee_id not in self._records:
             self._records[employee_id] = []
         self._records[employee_id].append(record)
+
+        # 落库（best-effort）：绩效是信任评分与自我学习的数据底座，
+        # 只放内存会导致重启清零、信任分永远退化为默认值。
+        session = getattr(self.registry, "session", None)
+        if session is not None:
+            try:
+                from src.database.models import EmployeePerformanceModel
+
+                history = self._records.get(employee_id, [])
+                completed = sum(1 for r in history if r.success)
+                failed = sum(1 for r in history if not r.success)
+                total = completed + failed
+                now = datetime.now(UTC)
+
+                row = EmployeePerformanceModel(
+                    id=str(record.id),
+                    employee_id=str(employee_id),
+                    tasks_completed=completed,
+                    tasks_failed=failed,
+                    avg_execution_time_seconds=(
+                        sum(r.execution_time_seconds for r in history) / total if total else 0.0
+                    ),
+                    success_rate=(completed / total) if total else 0.0,
+                    user_rating=float(user_rating) if user_rating else None,
+                    period_start=now,
+                    period_end=now,
+                    meta={
+                        "task_id": str(task_id) if task_id else None,
+                        "workflow_id": str(workflow_id) if workflow_id else None,
+                        "cost_usd": cost_usd,
+                        "execution_time_seconds": execution_time_seconds,
+                        "success": success,
+                        "quality_score": quality_score,
+                        "error_message": error_message,
+                        "metadata": metadata or {},
+                        "recorded_at": now.isoformat(),
+                    },
+                    created_at=now,
+                )
+                session.add(row)
+                await session.commit()
+            except Exception:
+                logger.warning("performance_persist_failed", exc_info=True)
 
         # Update employee aggregate stats
         employee.total_execution_time_seconds += execution_time_seconds

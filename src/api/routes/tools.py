@@ -96,7 +96,7 @@ async def execute_tool(
     request: ToolExecuteRequest,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
-    _: None = Depends(require_permission("tool", "execute")),
+    _: None = Depends(require_permission("agent", "execute")),
 ):
     """
     Execute a tool with full security enforcement.
@@ -125,7 +125,7 @@ async def execute_approved_tool(
     request: ToolExecuteApprovedRequest,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
-    _: None = Depends(require_permission("tool", "execute")),
+    _: None = Depends(require_permission("agent", "execute")),
 ):
     """
     Execute a tool after it has been approved.

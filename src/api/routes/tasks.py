@@ -96,18 +96,23 @@ class TaskResponse(BaseModel):
 
     @classmethod
     def from_task(cls, task):
-        """Convert Task to response."""
+        """Convert Task (domain dataclass) to response.
+
+        域对象 Task 的字段是 id/assigned_to/creator_id，
+        且没有 updated_at（用 completed_at 回退）。
+        """
+        updated = task.completed_at or task.created_at
         return cls(
-            task_id=str(task.task_id),
+            task_id=str(task.id),
             title=task.title,
             description=task.description,
             task_type=task.task_type.value,
             status=task.status.value,
             priority=task.priority.value,
-            assigned_agents=task.assigned_agents,
-            created_by=str(task.created_by),
-            created_at=task.created_at.isoformat(),
-            updated_at=task.updated_at.isoformat(),
+            assigned_agents=[str(a) for a in (task.assigned_to or [])],
+            created_by=str(task.creator_id) if task.creator_id is not None else "",
+            created_at=task.created_at.isoformat() if task.created_at else "",
+            updated_at=updated.isoformat() if updated else "",
             started_at=task.started_at.isoformat() if task.started_at else None,
             completed_at=task.completed_at.isoformat() if task.completed_at else None,
             dependencies=[
@@ -115,10 +120,10 @@ class TaskResponse(BaseModel):
                     "task_id": str(dep.task_id),
                     "type": dep.dependency_type,
                 }
-                for dep in task.dependencies
+                for dep in (task.dependencies or [])
             ],
             result=task.result.to_dict() if task.result else None,
-            metadata=task.metadata,
+            metadata=task.metadata or {},
         )
 
 
@@ -152,7 +157,7 @@ async def create_task(
             session=session,
             action=AuditAction.TASK_CREATED,
             resource_type="task",
-            resource_id=str(task.task_id),
+            resource_id=str(task.id),
             status="success",
             user_id=current_user.id,
             details={
@@ -334,7 +339,7 @@ async def complete_task(
     task_service: TaskService = Depends(get_task_service),
     session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    _: None = Depends(require_permission("task", "complete")),
+    _: None = Depends(require_permission("task", "update")),
 ):
     """
     Complete task.

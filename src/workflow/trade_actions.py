@@ -5,7 +5,7 @@
 映射到实际的服务调用（CRM、AI 员工、平台消息）。
 """
 
-import logging
+import structlog
 from typing import Any, Dict, Optional
 from uuid import UUID
 
@@ -15,7 +15,7 @@ from src.crm.service import LeadService
 from src.integrations.service import PlatformService
 from src.workforce.employee import AIEmployeeService
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class TradeActionHandler:

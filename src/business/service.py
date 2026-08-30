@@ -451,6 +451,70 @@ class BusinessService:
             owner_user_id=owner_user_id,
         )
 
+    async def get_metrics(
+        self,
+        user_id: UUID,
+        domain: Optional[BusinessDomain] = None,
+    ) -> Dict[str, Any]:
+        """
+        Get business metrics — real database-backed aggregation.
+
+        Args:
+            user_id: User requesting metrics (ownership scoping)
+            domain: Optional domain filter; when None, aggregate ALL domains
+                    and include a per-domain breakdown.
+
+        Returns:
+            Dict with totals (and per-domain breakdown when domain is None).
+        """
+        if domain is not None:
+            return (await self.get_domain_metrics(user_id=user_id, domain=domain)).to_dict()
+
+        # Aggregate across every domain from the DB-backed registry
+        tasks = await self.task_registry.list(owner_user_id=user_id)
+
+        def _summarize(domain_tasks: List[BusinessTask]) -> Dict[str, Any]:
+            total = len(domain_tasks)
+            completed = len([t for t in domain_tasks if t.status == BusinessTaskStatus.COMPLETED])
+            failed = len([t for t in domain_tasks if t.status == BusinessTaskStatus.FAILED])
+            in_progress = len([t for t in domain_tasks if t.status == BusinessTaskStatus.IN_PROGRESS])
+            with_time = [
+                t for t in domain_tasks
+                if t.status == BusinessTaskStatus.COMPLETED and t.completed_at
+            ]
+            avg_time = 0.0
+            if with_time:
+                avg_time = sum(
+                    (t.completed_at - t.created_at).total_seconds() for t in with_time
+                ) / len(with_time)
+            success_rate = (completed / (completed + failed)) if (completed + failed) else 0.0
+            return {
+                "total_tasks": total,
+                "completed_tasks": completed,
+                "failed_tasks": failed,
+                "in_progress_tasks": in_progress,
+                "avg_completion_time_seconds": avg_time,
+                "success_rate": success_rate,
+            }
+
+        overall = _summarize(tasks)
+        by_domain: Dict[str, Dict[str, Any]] = {}
+        for dom in BusinessDomain:
+            dom_summary = _summarize([t for t in tasks if t.domain == dom])
+            dom_summary["domain"] = dom.value
+            by_domain[dom.value] = dom_summary
+
+        return {
+            "domain": "all",
+            "total_tasks": overall["total_tasks"],
+            "completed_tasks": overall["completed_tasks"],
+            "failed_tasks": overall["failed_tasks"],
+            "in_progress_tasks": overall["in_progress_tasks"],
+            "avg_completion_time_seconds": overall["avg_completion_time_seconds"],
+            "success_rate": overall["success_rate"],
+            "by_domain": by_domain,
+        }
+
     async def get_domain_metrics(
         self,
         user_id: UUID,

@@ -70,7 +70,7 @@ async def create_task(
     business_service: BusinessService = Depends(get_business_service),
     session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    _: None = Depends(require_permission("business", "task_create")),
+    _: None = Depends(require_permission("business_task", "create")),
 ):
     """
     Create a business task.
@@ -182,7 +182,7 @@ async def update_task(
     business_service: BusinessService = Depends(get_business_service),
     session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    _: None = Depends(require_permission("business", "task_update")),
+    _: None = Depends(require_permission("business_task", "update")),
 ):
     """
     Update a business task.
@@ -221,7 +221,7 @@ async def get_metrics(
     domain: Optional[BusinessDomain] = None,
     business_service: BusinessService = Depends(get_business_service),
     current_user: User = Depends(get_current_user),
-    _: None = Depends(require_permission("business", "metrics_read")),
+    _: None = Depends(require_permission("business_metrics", "read")),
 ):
     """
     Get business metrics.
@@ -232,4 +232,4 @@ async def get_metrics(
         user_id=current_user.id,
         domain=domain,
     )
-    return metrics.to_dict()
+    return metrics

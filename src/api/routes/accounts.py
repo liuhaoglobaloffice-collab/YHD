@@ -96,8 +96,14 @@ class BudgetUpdate(BaseModel):
 
 
 def _is_owner(user: User) -> bool:
-    """主账号 = account_type owner 或 is_superuser."""
-    return user.account_type == AccountType.OWNER or user.is_superuser
+    """主账号 = account_type owner 或 is_superuser。
+
+    与 identity.rbac.has_permission 的降权策略保持一致：
+    被显式降权为 viewer 的主账号不视为全权主账号，禁止子账号管理等管理动作。
+    """
+    if user.is_superuser:
+        return True
+    return user.account_type == AccountType.OWNER and user.role != RoleEnum.VIEWER
 
 
 async def _get_own_sub(session: AsyncSession, owner: User, sub_id: int) -> User:

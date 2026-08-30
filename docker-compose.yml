@@ -1,8 +1,15 @@
-# LiuHao AI OS - 生产部署（Y1.0 Beta）
+﻿# LiuHao AI OS - 生产部署（Y1.0 Beta）
 # 使用: docker compose up -d --build
 # 访问: 前端 http://localhost:80 ，后端 API 经 nginx 代理 /api
 #
 # 开发模式（热重载，本地直跑）见原 dev 注释；生产用镜像构建。
+
+
+# ============== 生产密钥安全（P0-1 加固） ==============
+# - SECRET_KEY / JWT_SECRET_KEY / POSTGRES_PASSWORD 均采用 "required env-subst"（${VAR:?msg}）
+# - 若启动时 .env 未提供以上变量，docker compose config / up 会直接报错拒绝启动
+# - 部署前请在服务器侧创建 .env 文件（不纳入 Git），并确保三个密钥长度合规
+# - 容器健康检查会调用 /api/v1/health/ready，若仍命中占位值会返回 status=degraded
 
 services:
   backend:
@@ -11,9 +18,9 @@ services:
     ports:
       - "8000:8000"
     environment:
-      SECRET_KEY: ${SECRET_KEY:-change-me-please-use-a-long-random-value}
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-please-use-a-long-random-value}
-      DATABASE_URL: postgresql+asyncpg://liuhao_user:${POSTGRES_PASSWORD:-liuhao_pass}@database:5432/liuhao_ai_os
+      SECRET_KEY: ${SECRET_KEY:?请在服务器 .env 中设置 SECRET_KEY 为至少 32 位随机字符串}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?请在服务器 .env 中设置 JWT_SECRET_KEY 为至少 32 位随机字符串}
+      DATABASE_URL: postgresql+asyncpg://liuhao_user:${POSTGRES_PASSWORD:?请在服务器 .env 中设置 POSTGRES_PASSWORD 强密码}@database:5432/liuhao_ai_os
       APP_ENV: production
       APP_HOST: 0.0.0.0
       APP_PORT: 8000
@@ -21,6 +28,33 @@ services:
       LLM_PROVIDER: ${LLM_PROVIDER:-mock}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OLLAMA_ENABLED: ${OLLAMA_ENABLED:-false}
+      # Ollama 跑在宿主机：容器内 localhost 不可达，必须走 host.docker.internal
+      OLLAMA_HOST: ${OLLAMA_HOST_DOCKER:-http://host.docker.internal:11434}
+      OLLAMA_DEFAULT_MODEL: ${OLLAMA_DEFAULT_MODEL:-qwen2.5:3b}
+      # Embedding（默认走 Ollama 本地 nomic-embed-text，真实向量语义检索）
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-mock}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
+      # SMTP 邮件发送（真实凭据从服务器 .env 注入，绝不写入本文件）
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_USE_SSL: ${SMTP_USE_SSL:-false}
+      # SMTP 代理隧道（可选）：smtplib 不读 HTTP_PROXY 环境变量，
+      # SMTP 端口被墙时需显式配置，如 socks5://host.docker.internal:10808
+      SMTP_PROXY: ${SMTP_PROXY:-}
+      # 代理出网（本机团队版：v2rayN Mixed 端口经 host.docker.internal；
+      # 值从 .env 注入，代理地址不写入本文件；对 httpx/HTTPS API 生效）
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      ALL_PROXY: ${ALL_PROXY:-}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,host.docker.internal,database,postgres,backend,frontend}
+      # 业务调度器（P0 老板不在线自主经营；默认关闭，开启后自动执行 active goals）
+      SCHEDULER_ENABLED: ${SCHEDULER_ENABLED:-false}
+      SCHEDULER_INTERVAL_SECONDS: ${SCHEDULER_INTERVAL_SECONDS:-300}
+      SCHEDULER_AUTO_ACTIVATE: ${SCHEDULER_AUTO_ACTIVATE:-false}
+      SCHEDULER_MAX_GOALS_PER_CYCLE: ${SCHEDULER_MAX_GOALS_PER_CYCLE:-5}
     depends_on:
       database:
         condition: service_healthy
@@ -46,7 +80,7 @@ services:
     environment:
       POSTGRES_DB: liuhao_ai_os
       POSTGRES_USER: liuhao_user
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-liuhao_pass}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在服务器 .env 中设置 POSTGRES_PASSWORD 强密码}
     volumes:
       - liuhao_pgdata:/var/lib/postgresql/data
     ports:

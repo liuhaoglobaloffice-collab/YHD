@@ -57,6 +57,17 @@ class SmartFakeGateway:
     def list_providers(self):
         return ["openai"]
 
+    # 兼容真实启动流程：dotenv 修复后 app 启动会注册 Provider/Model，
+    # 替身需接受这些注册调用（no-op），否则启动阶段 AttributeError。
+    def register_provider(self, provider):
+        return None
+
+    def register_model(self, model):
+        return None
+
+    def list_models(self, provider=None, enabled_only=True):
+        return []
+
     async def complete(self, messages=None, **kwargs):
         content = ""
         last = messages[-1]["content"] if messages else ""

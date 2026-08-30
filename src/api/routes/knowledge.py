@@ -174,7 +174,8 @@ class KnowledgeSearchRequest(BaseModel):
     """Knowledge search request"""
 
     query: str = Field(..., min_length=1, max_length=500)
-    sources: List[str] = Field(default_factory=lambda: ["documents", "memory"])
+    # 与 KnowledgeSource 枚举值对齐（document/memory/entity/fact/all）
+    sources: List[str] = Field(default_factory=lambda: ["document", "memory"])
     strategy: str = "hybrid"
     entity_type: Optional[str] = None
     memory_type: Optional[str] = None

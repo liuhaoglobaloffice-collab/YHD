@@ -90,6 +90,7 @@ const menuSections: MenuSection[] = [
       {
         labelKey: 'knowledgeCenter',
         children: [
+          { path: '/knowledge', i18nKey: 'knowledgeBase' },
           { path: '/onboarding', i18nKey: 'onboarding' },
         ],
       },

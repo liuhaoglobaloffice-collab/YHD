@@ -1,11 +1,11 @@
-"""
+﻿"""
 外贸报价单管理
 
 提供报价单的创建、审核、发送、状态流转功能。
 报价单关联 CRM 线索，支持通过平台消息发送。
 """
 
-import logging
+import structlog
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set
@@ -16,7 +16,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from src.database.base import Base
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 # ==================== 数据模型 ====================

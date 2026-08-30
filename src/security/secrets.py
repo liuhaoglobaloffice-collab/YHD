@@ -1,4 +1,4 @@
-"""
+﻿"""
 Layer 1: Security & Governance
 Secrets Management - API Keys NEVER in code/Git/logs
 """
@@ -143,6 +143,75 @@ class SecretsManager:
         self._secrets_cache.clear()
 
 
+
+# 同源的默认值名单（与 core/config.py reject_default_secrets 保持一致，并扩展 docker-compose 占位值）
+_KNOWN_DEFAULT_SECRETS = {
+    # core/config.py 默认
+    "01234567890123456789012345678901",
+    "abcdefghijklmnopqrstuvwxyz1234567890ABCDEF",
+    # docker-compose.yml 占位值
+    "change-me-please-use-a-long-random-value",
+}
+
+_KNOWN_WEAK_POSTGRES_PASSWORDS = {
+    "liuhao_pass",
+    "change-me",
+    "postgres",
+    "password",
+    "root",
+    "admin",
+    "123456",
+    "",
+}
+
+
+def check_production_secrets(settings) -> Dict[str, object]:
+    """纯函数：生产密钥自检。
+
+    生产环境使用默认/占位密钥 → ok=False；开发环境仅写入 warnings。
+    """
+    env = getattr(settings, "app_env", "development")
+    is_prod = (str(env).lower() == "production")
+
+    failed_checks: list[str] = []
+    warnings: list[str] = []
+
+    secret_key = str(getattr(settings, "secret_key", "") or "")
+    jwt_secret_key = str(getattr(settings, "jwt_secret_key", "") or "")
+    postgres_password = str(getattr(settings, "postgres_password", "") or "")
+
+    if len(secret_key) < 32:
+        msg = "secret_key: length < 32 (必须 >= 32 字符)"
+        (failed_checks if is_prod else warnings).append(msg)
+    if len(jwt_secret_key) < 32:
+        msg = "jwt_secret_key: length < 32 (必须 >= 32 字符)"
+        (failed_checks if is_prod else warnings).append(msg)
+
+    if secret_key in _KNOWN_DEFAULT_SECRETS:
+        msg = (
+            "secret_key: 使用了已知默认或 docker-compose 占位值，"
+            "请通过环境变量 SECRET_KEY 设置至少 32 位随机字符串"
+        )
+        (failed_checks if is_prod else warnings).append(msg)
+    if jwt_secret_key in _KNOWN_DEFAULT_SECRETS:
+        msg = (
+            "jwt_secret_key: 使用了已知默认或 docker-compose 占位值，"
+            "请通过环境变量 JWT_SECRET_KEY 设置至少 32 位随机字符串"
+        )
+        (failed_checks if is_prod else warnings).append(msg)
+
+    if postgres_password in _KNOWN_WEAK_POSTGRES_PASSWORDS:
+        warnings.append(
+            "postgres_password: 使用了弱密码/占位值，生产环境请通过环境变量 POSTGRES_PASSWORD 设置强密码"
+        )
+
+    ok = (not is_prod) or (not failed_checks)
+    return {
+        "ok": bool(ok),
+        "env": str(env),
+        "failed_checks": failed_checks,
+        "warnings": warnings,
+    }
 # Global secrets manager instance
 _secrets_manager: Optional[SecretsManager] = None
 
@@ -166,3 +235,4 @@ def reset_secrets_manager() -> None:
     if _secrets_manager is not None:
         _secrets_manager.clear_cache()
     _secrets_manager = None
+

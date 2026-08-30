@@ -1,110 +1,137 @@
-# LiuHao AI OS Y1.0
+# 鎏灏 LiuHao AI OS Y1.0
 
-项目简介
-- 项目名：LiuHao AI OS
-- 版本：Y1.0
-- 当前定位：面向外贸业务的企业级 AI 操作系统原型，优先构建“供应商（Supplier）”业务闭环，整合 AI 风险评估、任务驱动与审计链路。
-- 当前完成阶段：Step 2 已完成（Supplier 风险评估 → 评估持久化 → 从评估创建 Task → Audit 日志链路）。当前进入 Step 3 文档收口与交付准备。
+面向外贸企业的 **AI 操作系统**：老板设定目标（Goal），系统自动规划（Planner）、编排工作流
+（Workflow）、调度 AI 员工（AI Employee）调用真实大模型与工具执行任务，全过程落库、留痕、
+可审计、可度量。
 
-## Productization installation and startup
+- 版本：Y1.0（可运行 → 可操作 → 可验证 → 可部署 → 可真实使用）
+- 技术栈：FastAPI + SQLAlchemy(async) + PostgreSQL/SQLite + React + TypeScript + Tailwind + Docker
+- 知识地图：见 [CODE_WIKI.md](./CODE_WIKI.md)
 
-This repository now exposes an additive productization starter with a root `requirements.txt`, an environment template `.env.example`, an API launcher `scripts/start_api.sh`, a frontend `package.json` and Vite/Tailwind configuration, and a `docker-compose.yml` that contains backend, frontend, and database services.
+---
 
-## Environment requirements
+## 一、最快启动（Docker，推荐）
 
-- Python 3.10 or 3.11
-- Node.js / npm for the frontend package
-- Posgres or SQLite testing configuration support
+前置：Docker + Docker Compose。
 
-## Install
+```bash
+# 1. 准备环境变量（密钥绝不入库；.env 已被 .gitignore 排除）
+cp .env.example .env
+#   编辑 .env，至少设置：
+#   SECRET_KEY=<≥32 位随机字符串>
+#   JWT_SECRET_KEY=<≥32 位随机字符串>
+#   POSTGRES_PASSWORD=<强密码>
+#   可选：OLLAMA_ENABLED=true + OLLAMA_HOST（本地大模型）、OPENAI_API_KEY 等
+
+# 2. 一键起全栈（backend + frontend + postgres）
+docker compose up -d --build
+
+# 3. 等待健康检查通过
+docker compose ps   # backend / database 应为 healthy
+curl http://localhost:8000/api/v1/health/ready
+```
+
+访问：
+
+| 入口 | 地址 |
+|---|---|
+| 前端产品界面 | http://localhost |
+| 后端 API | http://localhost:8000/api/v1 |
+| 交互式 API 文档 | http://localhost:8000/docs |
+| Prometheus 指标 | http://localhost:8000/metrics |
+
+## 二、第一次真实使用
+
+1. 浏览器打开 http://localhost ，首次进入为**注册老板账号（OWNER）**页：填写用户名 / 邮箱 /
+   密码，注册后该账号自动成为企业主账号，拥有全部权限。
+2. 登录后进入 **Dashboard**：查看 AI 员工在岗数、进行中/已完成/异常任务、目标进度、
+   系统健康度与实时活动流（全部来自真实数据库状态）。
+3. 到 **Models / Provider** 页配置 AI 提供商：
+   - 本地：安装 [Ollama](https://ollama.com) 并 `ollama pull qwen2.5:3b`（对话）与
+     `ollama pull nomic-embed-text`（向量），在 `.env` 设 `OLLAMA_ENABLED=true`、
+     `EMBEDDING_PROVIDER=ollama`；
+   - 或云端：设置 `LLM_PROVIDER=openai` + `OPENAI_API_KEY`。
+4. 到 **AI 员工**页查看/添加员工；到 **知识库**页上传文档（自动 解析→分块→向量化→入库），
+   并可在语义检索框验证 RAG。
+5. 到 **目标中心**创建目标（如“开发美国市场获取潜在客户”），系统经 Planner 生成 Workflow，
+   Executor 调度 AI 员工执行；结果、Memory、Audit、Metrics 全部自动落库，目标最终进入
+   `completed` 或 `failed/recovered`。
+
+## 三、部署后冒烟验证
+
+```bash
+python scripts/verify_api_smoke.py \
+  --username <老板账号> --password <密码> [--base http://localhost:8000]
+```
+
+覆盖前端全部核心页面依赖的 28 个 API（Auth/Dashboard/员工/目标/工作流/任务/知识库语义检索/
+审计/审批/Provider/CRM/子账号/业务指标/健康/成本/角色/权限/报价/平台账户 + Prometheus）。
+退出码 0 即全通。
+
+## 四、开发模式（本地热重载）
 
 ```bash
 python -m venv .venv
-.\.venv\Scripts\activate
+.\.venv\Scripts\activate        # Windows
 pip install -r requirements.txt
+cp .env.example .env            # 填写密钥（dev 默认 SQLite ./dev.db）
+
+bash scripts/start_api.sh       # 后端 http://localhost:8000
+
 cd frontend
 npm install
-cd ..
+npm run dev                     # 前端 http://localhost:3000
 ```
 
-## Environment configuration
+> `SECRET_KEY` 与 `JWT_SECRET_KEY` 必须各自 ≥32 字符，否则配置校验直接失败；
+> `scripts/start_api.sh` 在未设置时提供合规的开发默认值。
 
-Copy `.env.example` to `.env` and then fill in the required secrets.
-
-```bash
-copy .env.example .env
-```
-
-## Backend start
+## 五、测试
 
 ```bash
-bash scripts/start_api.sh
-```
-
-The script starts:
-
-```bash
-uvicorn src.api.app:app --reload --host 0.0.0.0 --port 8000
-```
-
-## Frontend start
-
-```bash
-bash scripts/start_frontend.sh
-```
-
-The script uses the npm package manifest in `frontend/package.json` and launches Vite on `http://localhost:3000`.
-
-## Database initialization
-
-The repository expects `DATABASE_URL` to point to a sqlite file or postgres database. The default dev example in `.env.example` is `sqlite+aiosqlite:///./dev.db`.
-
-## Testing
-
-```bash
+# 后端全量回归（SQLite 临时库，无需外部服务）
 pytest -q
+
+# 前端构建 + 前端单测
+cd frontend && npm run build
 ```
 
-## Docker
+## 六、Y1.0 核心能力（真实代码对应）
 
-```bash
-docker-compose up --build
+- **真实持久化**：API → Service → Repository → Database 全链路；核心实体（Users / Companies /
+  AI Employees / Goals / Workflows / Executions / Knowledge / Documents / Chunks / Embeddings /
+  Memories / KPI / Budget / Audit / Metrics）均落 PostgreSQL（生产）或 SQLite（开发/测试），
+  启动时自动做增量列迁移与孤儿执行恢复。
+- **安全收口**：JWT 认证 + RBAC（OWNER/ADMIN/USER/VIEWER + 外贸业务角色）+ 数据可见性隔离
+  （主/子账号、DataScope）+ 审批 + 审计日志 + 密钥环境注入；OWNER 被降权为 viewer 后权限一致收
+  紧；所有路由权限码经静态审计测试守护（`tests/security/test_rbac_unified.py`）。
+- **AI Provider**：Provider Registry 统一接入 Ollama（本地）/ OpenAI 兼容端点，含降级重映射；
+  Chat / Generate / Embedding 真实调用；Mock 仅存在于单元测试。
+- **Knowledge / RAG**：文档上传 → 解析 → 分块 → Embedding（nomic-embed-text 真实向量）→
+  存储 → 语义检索（向量 + 全文，自动排除归档/删除文档）→ 注入上下文；Memory 写入/读取/检索
+  按用户隔离。
+- **Goal / Workflow 闭环**：Goal → Planner → Workflow → Executor → AI Employee → Provider →
+  LLM/Tool → Execution → Result → Memory → Audit → Metrics → Goal Completion；失败链路含
+  Detection → Recovery → Retry/Alternative。
+- **前端产品化**：Dashboard（实时活动 + 系统健康 + 告警）、AI 员工、目标中心、工作流、任务、
+  知识库（上传/语义检索/记忆）、CRM、多平台、报价、独立站/SEO、安全（子账号/角色/权限/审批）、
+  模型/Provider、指标等页面全部接真实 API，空态/加载/错误态完备。
+- **可观测**：`/metrics`（Prometheus 文本指标）、AI 成本汇总、审计日志、系统健康端点。
+
+## 七、目录速览
+
 ```
-
-The compose file includes backend, frontend, and database services.
-
-当前已完成能力（真实对应代码）
-- Supplier Risk Assessment（关键函数与行为）
-  - assess_risk: 在 src/business/supplier/risk_agent.py 中实现。流程为：收集供应商数据 → 构建 Prompt → 调用 AI（当前为 mock）→ 解析并规范化输出。
-  - assessment 保存: _save_assessment 在 SupplierRiskAgent 中将评估结果持久化为 SupplierRiskAssessment ORM 实例，并调用 save_assessment_knowledge（当前为 Phase 1 的 JSON 存储）。
-  - Task 创建: TaskService.create_task_from_assessment（src/tasks/service.py）可基于评估结果创建 Task，且在 Task.metadata 中写入 assessment_reference。
-  - Audit 日志: TaskService 在创建 Task 时调用 AuditService.log，记录 action 和 assessment_reference（审计记录可用于追溯）。
-- risk_level 规范（统一输出）
-  - 已统一为大写字符串：LOW, MEDIUM, HIGH, CRITICAL（agent 层将 risk_level 标准化为 UPPERCASE，以保证跨模块契约稳定性）。
-
-测试验证（关键测试文件）
-- tests/integration/test_supplier_risk_output_contract.py
-- tests/integration/test_supplier_risk_task_pipeline.py
-
-验证命令：
-- pytest -q
-（要求在运行前设置 SECRET_KEY 和 JWT_SECRET_KEY 环境变量以避免设置加载错误）
-
-已知限制与行为（必须知悉）
-1. AI 异常返回处理
-   - AI Provider 集成当前为 MOCK（src/business/supplier/risk_agent.py 中 _call_ai_analysis 返回模拟 JSON）。
-   - 当 AI 返回空、非 JSON 或缺少字段时，Agent 有兜底逻辑：返回默认评估（_get_default_assessment），并记录 error 日志。文档中后续会记录这些失败模式与处理方式。
-2. assessment_id 要求
-   - create_task_from_assessment 要求 assessment payload 中必须包含 assessment_id（否则抛出 ValueError）。这是 Task 创建契约，调用方必须保证评估已持久化并具有 assessment_id。
-3. system actor 行为（actor=None 的含义）
-   - 若在 create_task_from_assessment 中传入 actor=None，则 Task.creator_id 会被设置为占位 zero-UUID 字符串（"00000000-0000-0000-0000-000000000000"）以满足数据库约束；但 Audit 记录的 user_id 会为 None，表示系统自动创建。该行为已在代码中实现并应在审计查询中注意区分 system-created 与真实用户创建的记录。
-
-附：代码相关注意事项（开发者读）
-- risk_level 大写／小写差异：ORM models 中 RiskLevel.value 为小写（"low" 等），但 agent 与 routes 在返回 API 时使用大写字符串（"LOW" 等）。请在对接二次开发时注意字段大小写映射，或在接口层统一转换。
-- routes 中 risk distribution 的实现使用了 RiskLevel.VERY_LOW 的取值位置，当前 models 未定义 VERY_LOW；该处已在代码层面做了部分容错（agent.get_risk_distribution 确保返回 UPPERCASE keys），但建议在后续迭代中统一枚举或修复 routes 中的直接引用。
-
-如何继续
-- 当前 Step 2 的实现已通过集成测试（本地验证）。下一步（经你批准）会是把 README 的内容加入仓库（已在本次操作中完成），并随后创建 DELIVERY_GATES.md 与 STAGING_CHECKLIST.md（需你另行批准）。
-
-联系方式
-- 如需我继续进行 Step 3-B.2（创建 DELIVERY_GATES.md），请回复批准。
+src/
+  api/            FastAPI 路由、应用装配、依赖注入
+  identity/       认证、RBAC/ABAC、主子账号、审计
+  business/       业务域服务（供应商、任务、报价、业务指标）
+  workforce/      AI 员工注册、生命周期、绩效
+  ai/             Provider、Agent、Planner、Recovery、Trust
+  knowledge/      文档、分块、检索、记忆
+  workflow/       工作流定义与执行器
+  scheduler/      老板离线自主经营调度器（可选开启）
+frontend/src/     React 页面、组件、API services
+scripts/          启动、种子、校验、部署后冒烟脚本
+tests/            pytest 全量回归（单元/集成/API/安全/SRE）
+docker-compose.yml  backend + frontend + postgres 生产编排
+```

@@ -5,6 +5,7 @@ Routes tasks to appropriate AI agents/employees.
 """
 
 import logging
+from datetime import UTC, datetime
 from typing import Dict, List
 from uuid import UUID
 
@@ -170,17 +171,43 @@ class AgentRouter:
 
         通过 tasks.assigned_to 关联 FailureRecordModel，
         统计未恢复失败比例。无记录时返回 0.1（低风险默认）。
+
+        注意：assigned_to 是 JSON 列表列。不能对 JSON 列使用 LIKE
+        （SQLite 把 JSON 存成 TEXT 可以工作，但 PostgreSQL 上
+        ``json LIKE text`` 会直接报错并中止整个事务，污染后续所有
+        查询）。因此这里用 ORM 取出后在 Python 侧过滤，跨数据库安全。
         """
-        from sqlalchemy import text
+        from sqlalchemy import select
+        from ..database.models import FailureRecordModel, TaskModel
 
         try:
-            sql = text("SELECT COUNT(*) as total, COUNT(CASE WHEN fr.is_successful = 0 OR fr.is_successful IS NULL THEN 1 END) as unrecovered FROM failure_records fr WHERE fr.task_id IN (SELECT id FROM tasks WHERE assigned_to LIKE :emp_pattern)")
-            result = await self.session.execute(sql, {"emp_pattern": f"%{employee_id}%"})
-            row = result.first()
-            if row and row.total > 0:
-                unrecovered_ratio = row.unrecovered / row.total
-                return min(unrecovered_ratio, 1.0)
-            return 0.1
+            task_rows = (
+                await self.session.execute(
+                    select(TaskModel.id, TaskModel.assigned_to)
+                )
+            ).all()
+            task_ids = [
+                str(tid)
+                for tid, assigned in task_rows
+                if assigned
+                and isinstance(assigned, list)
+                and employee_id in {str(a) for a in assigned}
+            ]
+            if not task_ids:
+                return 0.1
+
+            rows = (
+                await self.session.execute(
+                    select(FailureRecordModel.is_successful).where(
+                        FailureRecordModel.task_id.in_(task_ids)
+                    )
+                )
+            ).all()
+            total = len(rows)
+            if total == 0:
+                return 0.1
+            unrecovered = sum(1 for (is_successful,) in rows if not is_successful)
+            return min(unrecovered / total, 1.0)
         except Exception as e:
             logger.warning(f"Failed to get risk score for {employee_id}: {e}")
             return 0.5
@@ -192,7 +219,18 @@ class AgentRouter:
         - 能力: get_agent_capability_score (success_rate)
         - 风险: 1 - get_agent_risk_score (低风险 = 高信任)
         - 权限范围: 基于 RBAC 权限数量归一化（默认 0.5）
+
+        P1-G2.2: 若存在手动 override（ai_employees.meta.trust_override），
+        优先返回手动值（老板干预优先于动态计算）。
         """
+        # 手动 override 优先（查询失败时诚实降级到动态计算，不阻塞路由）
+        try:
+            override = await self._load_trust_override(employee_id)
+            if override is not None:
+                return float(override["score"])
+        except Exception as e:
+            logger.warning(f"Failed to load trust override for {employee_id}: {e}")
+
         capability = await self.get_agent_capability_score(employee_id)
         risk = await self.get_agent_risk_score(employee_id)
 
@@ -201,3 +239,73 @@ class AgentRouter:
 
         trust = (capability * 0.4) + ((1.0 - risk) * 0.3) + (permission_score * 0.3)
         return round(min(max(trust, 0.0), 1.0), 4)
+
+    # ==================================================================
+    # P1-G2.2: 手动信任 override（老板干预）— 持久化到 ai_employees.meta
+    # ==================================================================
+
+    async def _load_trust_override(self, employee_id: str):
+        """读取 ai_employees.meta 中的 trust_override；不存在返回 None。"""
+        from ..database.models import AIEmployeeModel
+
+        emp = await self.session.get(AIEmployeeModel, employee_id)
+        if emp is None:
+            return None
+        return (emp.meta or {}).get("trust_override")
+
+    async def set_trust_override(
+        self,
+        employee_id: str,
+        score: float,
+        reason: str,
+        actor_id: int,
+    ) -> dict:
+        """手动设置信任评分 override（持久化到 ai_employees.meta）。
+
+        - score 必须在 [0,1] 区间，否则 ValueError（fail-closed）
+        - override 数据含 override_source=MANUAL / actor_id / reason / set_at，
+          满足"可追溯、不伪装动态计算"的诚实要求
+        """
+        if not (0.0 <= score <= 1.0):
+            raise ValueError(f"trust override score must be in [0,1], got {score}")
+
+        from ..database.models import AIEmployeeModel
+
+        emp = await self.session.get(AIEmployeeModel, employee_id)
+        if emp is None:
+            raise ValueError(f"AI employee {employee_id} not found")
+
+        meta = dict(emp.meta or {})
+        meta["trust_override"] = {
+            "score": float(score),
+            "reason": reason,
+            "override_source": "MANUAL",
+            "actor_id": actor_id,
+            "set_at": datetime.now(UTC).isoformat(),
+        }
+        emp.meta = meta
+        await self.session.commit()
+        logger.info(
+            f"Trust override set: employee={employee_id}, score={score}, actor={actor_id}"
+        )
+        return meta["trust_override"]
+
+    async def clear_trust_override(self, employee_id: str) -> bool:
+        """清除手动 override，恢复动态信任计算。
+
+        返回 True 表示清除成功；员工不存在时抛 ValueError。
+        """
+        from ..database.models import AIEmployeeModel
+
+        emp = await self.session.get(AIEmployeeModel, employee_id)
+        if emp is None:
+            raise ValueError(f"AI employee {employee_id} not found")
+
+        meta = dict(emp.meta or {})
+        if "trust_override" not in meta:
+            return False
+        del meta["trust_override"]
+        emp.meta = meta
+        await self.session.commit()
+        logger.info(f"Trust override cleared: employee={employee_id}")
+        return True

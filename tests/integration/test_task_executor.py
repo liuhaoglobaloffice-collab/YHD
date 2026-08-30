@@ -647,11 +647,19 @@ def test_task_executor_no_workflow_context_unchanged():
             # Execute without context
             result = await executor.execute_task(task.id, user)
 
-            # Verify employee_service was called without context_data
+            # Verify employee_service was called without workflow context
+            # （Y1.0：executor 会注入 task_id 用于成本/绩效归集，
+            #   但不应包含任何 workflow 上下文 step_results/variables）
             call_kwargs = employee_service.execute_task.call_args[1]
             assert "context_data" in call_kwargs
-            assert call_kwargs["context_data"] is None, (
-                "context_data should be None when no workflow context exists"
+            ctx = call_kwargs["context_data"]
+            assert ctx is None or (
+                isinstance(ctx, dict)
+                and "step_results" not in ctx
+                and "variables" not in ctx
+                and set(ctx.keys()) <= {"task_id"}
+            ), (
+                f"context_data should not contain workflow context, got {ctx}"
             )
 
             # Verify result is successful

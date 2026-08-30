@@ -51,36 +51,104 @@ async def test_capability_score_no_data_returns_default():
 
 @pytest.mark.asyncio
 async def test_risk_score_no_failures_returns_low_risk():
-    """无失败记录时风险评分低（<=0.2）。"""
-    session = MagicMock()
-    router = AgentRouter(session)
+    """无失败记录时风险评分低（<=0.2）。
 
-    mock_result = MagicMock()
-    mock_row = MagicMock()
-    mock_row.total = 0
-    mock_row.unrecovered = 0
-    mock_result.first.return_value = mock_row
-    session.execute = AsyncMock(return_value=mock_result)
+    使用真实 in-memory DB 验证 ORM 查询（assigned_to 为 JSON 列表列，
+    不允许 JSON LIKE —— PostgreSQL 上会中止事务）。
+    """
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-    score = await router.get_agent_risk_score(employee_id=str(uuid4()))
-    assert score <= 0.2  # 无失败 = 低风险
+    from src.database.models import Base, TaskModel
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with factory() as session:
+            emp_id = str(uuid4())
+            session.add(
+                TaskModel(
+                    id=str(uuid4()),
+                    title="t",
+                    task_type="ai_inference",
+                    status="completed",
+                    priority="medium",
+                    assigned_to=[emp_id],
+                    creator_id="u1",
+                )
+            )
+            await session.commit()
+
+            router = AgentRouter(session)
+            score = await router.get_agent_risk_score(employee_id=emp_id)
+            assert score <= 0.2  # 有任务但无失败记录 = 低风险
+
+            # 没有任何任务的员工同样低风险
+            score_none = await router.get_agent_risk_score(employee_id=str(uuid4()))
+            assert score_none <= 0.2
+    finally:
+        await engine.dispose()
 
 
 @pytest.mark.asyncio
 async def test_risk_score_with_failures():
-    """有未恢复失败时风险评分升高。"""
-    session = MagicMock()
-    router = AgentRouter(session)
+    """有未恢复失败时风险评分升高；已恢复失败不抬高风险。"""
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-    mock_result = MagicMock()
-    mock_row = MagicMock()
-    mock_row.total = 3
-    mock_row.unrecovered = 1
-    mock_result.first.return_value = mock_row
-    session.execute = AsyncMock(return_value=mock_result)
+    from src.database.models import Base, FailureRecordModel, TaskModel
 
-    score = await router.get_agent_risk_score(employee_id=str(uuid4()))
-    assert score > 0.2  # 有未恢复失败 = 风险升高
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with factory() as session:
+            emp_id = str(uuid4())
+            task_id = str(uuid4())
+            session.add(
+                TaskModel(
+                    id=task_id,
+                    title="t",
+                    task_type="ai_inference",
+                    status="failed",
+                    priority="medium",
+                    assigned_to=[emp_id],
+                    creator_id="u1",
+                )
+            )
+            session.add(
+                FailureRecordModel(
+                    task_id=task_id,
+                    failure_category="agent_error",
+                    failure_summary="task failed",
+                    created_by=1,
+                    is_successful=False,  # 未恢复
+                )
+            )
+            await session.commit()
+
+            router = AgentRouter(session)
+            score = await router.get_agent_risk_score(employee_id=emp_id)
+            assert score > 0.2  # 有未恢复失败 = 风险升高
+
+            # 恢复后风险回落
+            record = (
+                await session.execute(
+                    select(FailureRecordModel).where(
+                        FailureRecordModel.task_id == task_id
+                    )
+                )
+            ).scalar_one()
+            record.is_successful = True
+            await session.commit()
+
+            score_recovered = await router.get_agent_risk_score(employee_id=emp_id)
+            assert score_recovered <= 0.2  # 全部恢复 = 低风险
+    finally:
+        await engine.dispose()
 
 
 # =============================================================================

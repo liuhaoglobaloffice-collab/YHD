@@ -351,8 +351,15 @@ class KnowledgeRetrievalService:
         if not candidate_set:
             # No candidates found via keyword; try fetching recent documents
             from sqlalchemy import select
+            from ..database.repositories.knowledge import (
+                DocumentRepository as _DocRepo,
+            )
+
             result = await repo.session.execute(
-                select(repo.model_class).order_by(repo.model_class.created_at.desc()).limit(100)
+                select(repo.model_class)
+                .where(repo.model_class.status.notin_(_DocRepo._EXCLUDED_STATUSES))
+                .order_by(repo.model_class.created_at.desc())
+                .limit(100)
             )
             for m in result.scalars().all():
                 candidate_set[m.id] = m
@@ -412,11 +419,15 @@ class KnowledgeRetrievalService:
 
         repo = MemoryRepository(self.session)
 
-        # Query memories by type or all recent memories
+        # Query memories by type or all recent memories.
+        # Scope to the requesting user + shared agent-experience rows to
+        # prevent cross-user memory leakage (isolation regression guard).
         if query.memory_type:
-            models = await repo.list_by_type(query.memory_type, limit=100)
+            models = await repo.list_by_type(
+                query.memory_type, limit=100, scoped_user_id=str(user.id)
+            )
         else:
-            models = await repo.list_recent(limit=100)
+            models = await repo.list_recent(limit=100, scoped_user_id=str(user.id))
 
         results = []
         query_lower = query.query.lower()

@@ -145,7 +145,10 @@ class AIEmployeeRegistry:
             "position": model_data.position,
             "description": model_data.description,
             "agent_type": model_data.agent_type,
+            # provider_config is persisted through the provider/model columns
+            # (see converters.model_to_employee which reconstructs it on read)
             "provider": model_data.provider,
+            "model": model_data.model,
             "status": model_data.status,
             "meta": model_data.meta,
             "updated_at": model_data.updated_at,

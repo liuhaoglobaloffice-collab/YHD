@@ -11,7 +11,7 @@ Recovery Executor — 自动执行失败恢复策略
 7. ABORT — 终止
 """
 
-import logging
+import structlog
 from datetime import UTC, datetime
 from typing import Any, Dict, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.ai.recovery import RecoveryChain, StrategyAction
 from src.database.models import FailureRecordModel
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class StrategyExecutionResult:

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Health check and system info endpoints
 """
 
@@ -16,7 +16,9 @@ from src.api.schemas import HealthResponse, SystemInfoResponse
 from src.core.config import get_settings
 from src.core.lifecycle import get_lifecycle_manager
 from src.identity.models import User
+from src.scheduler import get_business_scheduler
 from src.security.policy import get_policy_engine
+from src.security.secrets import check_production_secrets
 
 logger = structlog.get_logger(__name__)
 
@@ -67,12 +69,25 @@ async def ready_check(
     except Exception as e:
         logger.warning("health_db_check_failed", error=str(e))
 
+    # 业务调度器为可选组件（默认关闭），状态仅展示、不影响健康判定
+    scheduler = get_business_scheduler()
+    scheduler_status = scheduler.status() if scheduler else {
+        "enabled": bool(settings.scheduler_enabled),
+        "running": False,
+        "interval_seconds": settings.scheduler_interval_seconds,
+        "auto_activate": bool(settings.scheduler_auto_activate),
+        "runs": 0,
+        "last_run_at": None,
+        "last_error": None,
+    }
+
     all_healthy = all(checks.values())
     return {
         "status": "healthy" if all_healthy else "degraded",
         "version": __version__,
         "environment": settings.app_env,
         "checks": checks,
+        "scheduler": scheduler_status,
         "timestamp": datetime.now(UTC),
     }
 
@@ -115,3 +130,4 @@ async def system_info(
         features=features,
         policies=policies,
     )
+

@@ -71,6 +71,8 @@ export interface SEOContentResult {
   content?: string;
   search_intent?: string;
   method: string;
+  source_type?: string;
+  llm_error?: string | null;
   saved_id?: number | null;
 }
 
@@ -98,6 +100,7 @@ export interface SEOSavedContent {
   suggested_tags: string[];
   search_intent?: string;
   method: string;
+  source_type?: string;
   created_at: string;
 }
 
@@ -248,5 +251,32 @@ export async function fetchRankings(): Promise<KeywordRank[]> {
 export async function fetchSEOContents(): Promise<SEOSavedContent[]> {
   const res = await fetch(`${API_BASE}${API_PREFIX}/site/seo/contents`, { headers: authHeaders() });
   if (!res.ok) throw new Error(`获取内容失败: ${res.status}`);
+  return res.json();
+}
+// ==================== SEO 文件（P1-G5.4） ====================
+
+export interface SEOFilesResult {
+  source_type: string;
+  sitemap_xml: string;
+  robots_txt: string;
+  published_pages: number;
+  sitemap_url: string;
+}
+
+export interface PageSchemaResult {
+  source_type: string;
+  schema: Record<string, unknown>;
+  json_ld: string;
+}
+
+export async function fetchSEOFiles(siteId: number): Promise<SEOFilesResult> {
+  const res = await fetch(`${API_BASE}${API_PREFIX}/site/sites/${siteId}/seo/files`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`获取 SEO 文件失败: ${res.status}`);
+  return res.json();
+}
+
+export async function fetchPageSchema(siteId: number, pageId: number): Promise<PageSchemaResult> {
+  const res = await fetch(`${API_BASE}${API_PREFIX}/site/sites/${siteId}/pages/${pageId}/schema`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`获取结构化数据失败: ${res.status}`);
   return res.json();
 }

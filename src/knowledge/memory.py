@@ -219,7 +219,9 @@ class MemoryService:
 
         model = MemoryModel(
             id=memory_id,
-            user_id=user.id,
+            # MemoryModel.user_id is a String column (cross-DB safe): coerce
+            # the integer User.id to str — PostgreSQL strictly rejects int.
+            user_id=str(user.id),
             memory_type=memory_type.value,
             content=json.dumps(content_data),
             importance=confidence,
@@ -233,7 +235,9 @@ class MemoryService:
 
         # Audit log
         await self.audit.log(
+            self.session,
             action=AuditAction.CREATE,
+            status="success",
             user_id=user.id,
             resource_type="memory",
             resource_id=memory_id,
@@ -425,7 +429,9 @@ class MemoryService:
 
         # Audit log
         await self.audit.log(
+            self.session,
             action=AuditAction.DELETE,
+            status="success",
             user_id=user.id,
             resource_type="memory",
             resource_id=memory_id,
@@ -566,3 +572,46 @@ class MemoryService:
             int: Number of expired memories cleaned
         """
         return await self._clean_expired()
+
+
+    async def store_agent_experience(self, employee_id: str, task_type: str, result_summary: str):
+        """Store agent execution experience to shared knowledge base."""
+        try:
+            import json
+            from uuid import uuid4
+            from ..database.models import MemoryModel
+            model = MemoryModel(
+                id=str(uuid4()),
+                user_id="0",
+                memory_type=MemoryType.LONG_TERM.value,
+                content=json.dumps({"key": task_type, "value": result_summary, "metadata": {"employee_id": employee_id, "task_type": task_type, "shared": True}}),
+                context=json.dumps({"employee_id": employee_id, "task_type": task_type, "shared": True}),
+            )
+            result = await self.repository.create(model)
+            return self._model_to_memory(result) if result else None
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Failed to store agent experience: {e}")
+            return None
+
+    async def recall_agent_experience(self, task_type: str, limit: int = 5, requester_trust_score: float = 1.0):
+        """Recall shared agent experience by task type with trust-based access control."""
+        TRUST_THRESHOLD = 0.3
+        if requester_trust_score < TRUST_THRESHOLD:
+            return []
+        try:
+            models = await self.repository.list_by_type(MemoryType.LONG_TERM.value, limit=limit)
+            results = []
+            for m in models:
+                import json as _json
+                ctx = _json.loads(m.context) if isinstance(m.context, str) else (m.context or {})
+                mem = self._model_to_memory(m)
+                mem.metadata = ctx
+                meta = mem.metadata or {}
+                if meta.get("task_type") == task_type and meta.get("shared"):
+                    results.append(mem)
+            return results
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Failed to recall agent experience: {e}")
+            return []

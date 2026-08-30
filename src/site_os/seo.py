@@ -3,6 +3,10 @@ S4 独立站 + SEO - SEO 引擎
 
 提供关键词分析、内容优化（AI 生成建议）、排名跟踪。
 优先调用 LLM 生成内容建议，未配置时回退规则模板。
+
+P1-G5.2 合规：
+- 所有生成结果带 source_type（LLM / RULE_BASED / NOT_CONFIGURED），不伪装数据来源
+- 真实 LLM 调用经 CostTracker 记录 provider/model/tokens/cost/latency/status
 """
 
 import json
@@ -10,10 +14,19 @@ import logging
 import os
 import random
 from datetime import UTC, datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
 
 logger = logging.getLogger(__name__)
+
+# P1-G5.2 合法 source_type 常量（与 src/workflow/trade_templates.py 规范一致）
+SOURCE_LLM = "LLM"
+SOURCE_RULE_BASED = "RULE_BASED"
+SOURCE_NOT_CONFIGURED = "NOT_CONFIGURED"
+
+
+class LLMNotConfiguredError(RuntimeError):
+    """LLM Provider 未配置（LLM_PROVIDER=mock）——诚实降级，不伪装。"""
 
 
 class SEOEngine:
@@ -58,18 +71,18 @@ class SEOEngine:
     ) -> List[Dict[str, Any]]:
         """关键词分析与扩展。"""
         if base_keywords:
+            # Y1.0：搜索量与难度需来自关键词数据源（Google Keyword Planner / 第三方 API）。
+            # 未接入前不再用 random 编造，返回"待接入"标记，扩展词仍基于词根规则生成。
             results = []
             for kw in base_keywords:
-                volume = random.randint(1000, 9000)
-                difficulty = random.randint(15, 55)
                 results.append(
                     {
                         "keyword": kw,
-                        "volume": volume,
-                        "difficulty": difficulty,
-                        "opportunity": round(
-                            volume * (100 - difficulty) / 10000, 1
-                        ),
+                        "volume": None,
+                        "difficulty": None,
+                        "opportunity": None,
+                        "data_source": "unavailable",
+                        "note": "未接入关键词数据源，暂无真实搜索量与难度",
                         "suggestions": [
                             f"{kw} factory",
                             f"{kw} wholesale",
@@ -99,18 +112,63 @@ class SEOEngine:
         ]
 
     async def generate_content(
-        self, keyword: str, site_name: Optional[str] = None, content_type: str = "blog"
+        self,
+        keyword: str,
+        site_name: Optional[str] = None,
+        content_type: str = "blog",
+        session: Optional[Any] = None,
+        user_id: Optional[int] = None,
     ) -> Dict[str, Any]:
-        """生成 SEO 内容建议（AI 或规则模板）。"""
+        """生成 SEO 内容建议（真实 LLM / 规则模板）。
+
+        P1-G5.2 合规：
+        - LLM 可用且成功 → source_type=LLM，CostTracker 落盘成本
+        - LLM 调用失败 → 降级规则模板，source_type=RULE_BASED + llm_error
+        - LLM 未配置 → 规则模板，source_type=NOT_CONFIGURED（不伪装 AI 生成）
+        """
         try:
-            return await self._generate_with_llm(keyword, site_name, content_type)
+            data, response, provider_name, model = await self._generate_with_llm(
+                keyword, site_name, content_type
+            )
+        except LLMNotConfiguredError:
+            result = self._generate_mock(keyword, site_name, content_type)
+            result["source_type"] = SOURCE_NOT_CONFIGURED
+            result["llm_error"] = None
+            return result
         except Exception as e:  # noqa: BLE001
             logger.warning("seo_llm_failed_falling_back error=%s", str(e))
-            return self._generate_mock(keyword, site_name, content_type)
+            result = self._generate_mock(keyword, site_name, content_type)
+            result["source_type"] = SOURCE_RULE_BASED
+            result["llm_error"] = f"{type(e).__name__}: {e}"
+            return result
+
+        # 真实 LLM 调用成功：记录 provider / model / tokens / cost / latency / status
+        if session is not None and user_id:
+            try:
+                from src.ai.cost_tracker import CostTracker
+
+                usage = getattr(response, "usage", None)
+                response_time = getattr(response, "response_time_ms", None)
+                await CostTracker(session).record(
+                    user_id=user_id,
+                    provider=provider_name,
+                    model=model,
+                    input_tokens=int(getattr(usage, "input_tokens", 0) or 0),
+                    output_tokens=int(getattr(usage, "output_tokens", 0) or 0),
+                    latency_ms=float(response_time) if response_time else None,
+                    status="success",
+                    meta={"feature": "seo_content", "keyword": keyword},
+                )
+            except Exception:  # 成本记录失败不影响内容返回
+                logger.warning("seo_cost_record_failed", exc_info=True)
+
+        data["source_type"] = SOURCE_LLM
+        data["llm_error"] = None
+        return data
 
     async def _generate_with_llm(
         self, keyword: str, site_name: Optional[str], content_type: str
-    ) -> Dict[str, Any]:
+    ) -> Tuple[Dict[str, Any], Any, str, str]:
         from src.ai.gateway import get_gateway
         from src.ai.providers import ProviderType
 
@@ -122,7 +180,7 @@ class SEOEngine:
             provider = ProviderType.OLLAMA
             model = os.getenv("OLLAMA_DEFAULT_MODEL", "qwen2.5:3b")
         else:
-            raise RuntimeError("LLM 未配置")
+            raise LLMNotConfiguredError("LLM 未配置（LLM_PROVIDER=mock）")
 
         prompt = (
             "你是外贸独立站 SEO 内容专家。请围绕关键词生成一篇优质英文博客文章方案。\n"
@@ -144,7 +202,7 @@ class SEOEngine:
             max_tokens=3000,
         )
         data = self._parse_json(response.content)
-        return {
+        payload = {
             "keyword": keyword,
             "title": data.get("title"),
             "suggested_slug": data.get("slug"),
@@ -155,6 +213,7 @@ class SEOEngine:
             "search_intent": data.get("search_intent"),
             "method": "ai",
         }
+        return payload, response, provider.value, model
 
     @staticmethod
     def _parse_json(content: str) -> Dict[str, Any]:
@@ -224,28 +283,22 @@ class SEOEngine:
 
     async def track_rankings(self, keywords: List[str]) -> List[Dict[str, Any]]:
         """跟踪关键词排名（Mock：返回模拟排名；真实可接 GSC/SERP API）。"""
+        # Y1.0：真实排名只能来自 Google Search Console / SERP API。
+        # 在未接入真实数据源前，返回 rank=None 的"未跟踪"记录，
+        # 不再使用 random 生成排名与搜索量冒充真实数据。
         results = []
         for kw in keywords:
-            rank = random.choice([None, 3, 8, 15, 22, 34, 47, 61, 78])
-            volume = random.randint(1000, 9000)
-            prev = random.choice([None, 5, 12, 18, 30, 40, 55, 70])
-            trend = "new"
-            if rank and prev:
-                if rank < prev:
-                    trend = "up"
-                elif rank > prev:
-                    trend = "down"
-                else:
-                    trend = "stable"
             results.append(
                 {
                     "keyword": kw,
-                    "rank": rank,
-                    "previous_rank": prev,
-                    "trend": trend,
-                    "search_volume": volume,
+                    "rank": None,
+                    "previous_rank": None,
+                    "trend": "not_tracked",
+                    "search_volume": None,
                     "url": f"/blog/{kw.lower().replace(' ', '-')}",
                     "checked_at": datetime.now(UTC).isoformat(),
+                    "data_source": "unavailable",
+                    "note": "未接入 Google Search Console / SERP API，暂无真实排名数据",
                 }
             )
         return results

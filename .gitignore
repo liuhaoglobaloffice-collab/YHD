@@ -29,7 +29,15 @@ htmlcov/
 dev.db
 *.db
 *.db-journal
+*.db.backup*
+*.db.archived*
 *.sqlite3
+
+# Local AI tooling workspace
+.workbuddy/
+
+# Scratch verification scripts (root-level temporary)
+_tmp_*.py
 
 # Node / frontend
 node_modules/

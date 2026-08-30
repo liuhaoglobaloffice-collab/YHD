@@ -76,14 +76,28 @@ class WorkflowResponse(BaseModel):
 
     @classmethod
     def from_workflow(cls, workflow):
+        # 域对象 Workflow（dataclass）字段为 workflow_id/steps，而非 id/definition；
+        # 这里映射为 API 契约（与前端 workflows.ts 的 Workflow 接口一致）
+        steps = []
+        for step in (workflow.steps or []):
+            step_dict = step.to_dict() if hasattr(step, "to_dict") else {
+                "step_id": getattr(step, "step_id", None),
+                "name": getattr(step, "name", None),
+                "description": getattr(step, "description", ""),
+            }
+            steps.append(step_dict)
         return cls(
-            id=str(workflow.id),
+            id=str(workflow.workflow_id),
             name=workflow.name,
             description=workflow.description or "",
-            definition=workflow.definition,
+            definition={
+                "steps": steps,
+                "required_permissions": getattr(workflow, "required_permissions", []) or [],
+                "tags": getattr(workflow, "tags", []) or [],
+            },
             status=workflow.status,
-            created_at=workflow.created_at.isoformat(),
-            updated_at=workflow.updated_at.isoformat(),
+            created_at=workflow.created_at.isoformat() if workflow.created_at else "",
+            updated_at=workflow.updated_at.isoformat() if workflow.updated_at else "",
         )
 
 
@@ -101,14 +115,15 @@ class ExecutionResponse(BaseModel):
 
     @classmethod
     def from_execution(cls, execution):
+        # 域对象 WorkflowExecution 字段为 execution_id/variables，而非 id/input_data
         return cls(
-            id=str(execution.id),
+            id=str(execution.execution_id),
             workflow_id=str(execution.workflow_id),
             status=execution.status,
-            input_data=execution.input_data or {},
+            input_data=execution.variables or {},
             result=execution.result,
             error=execution.error,
-            started_at=execution.started_at.isoformat(),
+            started_at=execution.started_at.isoformat() if execution.started_at else "",
             completed_at=execution.completed_at.isoformat() if execution.completed_at else None,
         )
 

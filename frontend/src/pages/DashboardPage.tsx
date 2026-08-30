@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { fetchDashboardOverview, type DashboardOverview } from '../services/dashboard';
+import { fetchDashboardOverview, fetchDashboardActivities, toFeedActivity, type DashboardOverview, type ActivityItem as RawActivityItem } from '../services/dashboard';
 import { fetchCostSummary, type CostSummary } from '../services/costs';
 import { useI18n } from '../i18n';
 import { AIWorkStatus, type AIStatus } from '../components/AIWorkStatus';
@@ -21,24 +21,30 @@ export function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [days, setDays] = useState(7);
+  const [activities, setActivities] = useState<Array<import('../components/AIActivityFeed').ActivityItem>>([]);
+  const [activitiesLoading, setActivitiesLoading] = useState(true);
 
   useEffect(() => {
     loadDashboard();
   }, []);
 
   const loadDashboard = async () => {
+    setActivitiesLoading(true);
     try {
-      const [overview, costSummary] = await Promise.all([
+      const [overview, costSummary, acts] = await Promise.all([
         fetchDashboardOverview(),
         fetchCostSummary(7).catch(() => null),
+        fetchDashboardActivities(10).catch(() => []),
       ]);
       setData(overview);
       setCost(costSummary);
+      setActivities((acts || []).map(toFeedActivity));
     } catch (e) {
       console.error('Failed to load dashboard', e);
       setError('加载仪表盘数据失败');
     }
     setLoading(false);
+    setActivitiesLoading(false);
   };
 
   const switchDays = async (d: number) => {
@@ -82,22 +88,13 @@ export function DashboardPage() {
     idle: Math.max(0, (data.ai_employees || 0) - (data.running_tasks || 0) - (data.failed_tasks || 0)),
   };
 
-  // Mock 活动数据（明确标注为演示状态）
-  const demoActivities: ActivityItem[] = [
-    { id: '1', time: '09:30', aiName: 'DeepSeek', action: '完成东南亚市场分析', status: 'success' as const },
-    { id: '2', time: '09:42', aiName: 'Claude', action: '完成代码审查', status: 'success' as const },
-    { id: '3', time: '10:05', aiName: 'GPT', action: '生成客户开发方案', status: 'running' as const },
-    { id: '4', time: '10:20', aiName: 'Kimi', action: '更新客户资料', status: 'success' as const },
-    { id: '5', time: '10:32', aiName: 'Gemini', action: '完成供应商分析', status: 'success' as const },
-  ];
+
 
   return (
     <section className="page">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
         <h1 style={{ margin: 0 }}>CEO 驾驶舱</h1>
-        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', background: 'rgba(250,204,21,0.1)', padding: '2px 10px', borderRadius: 8 }}>
-          ⚡ 演示模式 · 部分数据为 AI 模拟
-        </span>
+
       </div>
 
       {/* ===== AI 团队概览 ===== */}
@@ -171,9 +168,11 @@ export function DashboardPage() {
 
         {/* 右侧：AI 活动时间线 */}
         <AIActivityFeed
-          activities={demoActivities}
-          title="AI 活动时间线（演示）"
+          activities={activities}
+          title="AI 活动时间线（真实）"
           maxItems={8}
+          loading={activitiesLoading && !activities.length}
+          emptyText={activities.length ? '' : '暂无活动记录。一旦有审计、任务或工作流执行，将在此展示。'}
         />
       </div>
 

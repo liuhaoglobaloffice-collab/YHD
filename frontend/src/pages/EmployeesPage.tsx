@@ -100,6 +100,81 @@ export function EmployeesPage() {
     }
   };
 
+  // P1-G2.2: 老板手动干预（信任 override / 暂停 / 恢复）
+  const [trustEdit, setTrustEdit] = useState<{ empId: string; score: string; reason: string } | null>(null);
+  const [intervening, setIntervening] = useState(false);
+
+  const handleSuspendResume = async (emp: Employee) => {
+    const isSuspended = emp.status === 'suspended';
+    if (!window.confirm(isSuspended ? `恢复员工 ${emp.name}？` : `暂停员工 ${emp.name}？暂停后不再接收新任务。`)) return;
+    setIntervening(true);
+    try {
+      const endpoint = isSuspended ? 'resume' : 'suspend';
+      const token = localStorage.getItem('liuhao_auth_token') ?? '';
+      const resp = await fetch(`${API_BASE}/api/v1/workforce/employees/${emp.id}/${endpoint}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.detail || `操作失败 (HTTP ${resp.status})`);
+      }
+      await loadEmployees();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setIntervening(false);
+    }
+  };
+
+  const handleTrustOverride = async () => {
+    if (!trustEdit) return;
+    const score = parseFloat(trustEdit.score);
+    if (Number.isNaN(score) || score < 0 || score > 1) {
+      setError('信任评分必须在 0 ~ 1 之间');
+      return;
+    }
+    setIntervening(true);
+    try {
+      const token = localStorage.getItem('liuhao_auth_token') ?? '';
+      const resp = await fetch(`${API_BASE}/api/v1/workforce/employees/${trustEdit.empId}/trust-override`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ score, reason: trustEdit.reason || '手动调整' }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.detail || `设置失败 (HTTP ${resp.status})`);
+      }
+      setTrustEdit(null);
+      await loadEmployees();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setIntervening(false);
+    }
+  };
+
+  const handleClearTrustOverride = async (empId: string) => {
+    setIntervening(true);
+    try {
+      const token = localStorage.getItem('liuhao_auth_token') ?? '';
+      const resp = await fetch(`${API_BASE}/api/v1/workforce/employees/${empId}/trust-override`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.detail || `操作失败 (HTTP ${resp.status})`);
+      }
+      await loadEmployees();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setIntervening(false);
+    }
+  };
+
   const openExecute = (id: string) => {
     setExecutingId(id);
     setPrompt('');
@@ -315,6 +390,54 @@ export function EmployeesPage() {
         </div>
       )}
 
+      {/* P1-G2.2: 信任调整弹层 */}
+      {trustEdit && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#1a1a2e', border: '1px solid #2a4a6a', borderRadius: 8, padding: 20, width: 380 }}>
+            <h3 style={{ color: '#4cc9f0', fontSize: 14, margin: '0 0 4px 0' }}>调整信任评分</h3>
+            <p style={{ color: '#888', fontSize: 11, margin: '0 0 12px 0' }}>
+              手动值将覆盖动态计算的信任评分（记录操作者与原因，可追溯）
+            </p>
+            <label style={{ display: 'block', fontSize: 11, color: '#888', marginBottom: 4 }}>信任评分 (0 ~ 1)</label>
+            <input
+              value={trustEdit.score}
+              onChange={e => setTrustEdit({ ...trustEdit, score: e.target.value })}
+              type="number" step="0.05" min="0" max="1"
+              style={{ width: '100%', padding: '6px 8px', background: '#0d0d1a', border: '1px solid #333', color: '#e0e0e0', borderRadius: 4, fontSize: 12, marginBottom: 10 }}
+            />
+            <label style={{ display: 'block', fontSize: 11, color: '#888', marginBottom: 4 }}>调整原因</label>
+            <textarea
+              value={trustEdit.reason}
+              onChange={e => setTrustEdit({ ...trustEdit, reason: e.target.value })}
+              rows={2} placeholder="例：连续完成 3 个任务，提升信任"
+              style={{ width: '100%', padding: '6px 8px', background: '#0d0d1a', border: '1px solid #333', color: '#e0e0e0', borderRadius: 4, fontSize: 12, resize: 'vertical', marginBottom: 12 }}
+            />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={handleTrustOverride}
+                disabled={intervening}
+                style={{ padding: '6px 16px', background: '#00695c', border: 'none', color: '#fff', borderRadius: 4, cursor: 'pointer', fontSize: 12, opacity: intervening ? 0.6 : 1 }}
+              >
+                {intervening ? '保存中...' : '保存覆盖值'}
+              </button>
+              <button
+                onClick={() => handleClearTrustOverride(trustEdit.empId)}
+                disabled={intervening}
+                style={{ padding: '6px 16px', background: '#5d4037', border: 'none', color: '#fff', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}
+              >
+                恢复动态计算
+              </button>
+              <button
+                onClick={() => setTrustEdit(null)}
+                style={{ padding: '6px 16px', background: '#333', border: 'none', color: '#e0e0e0', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 主区域：员工列表 + 活动时间线 */}
       <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 16 }}>
         {/* 员工卡片列表 */}
@@ -342,6 +465,9 @@ export function EmployeesPage() {
                       model={emp.agent_type ?? undefined}
                       currentTask={STATUS_TASK[emp.status]}
                       suggestion={STATUS_SUGGESTION[emp.status]}
+                      trust_score={emp.trust_score}
+                      capability_score={emp.capability_score}
+                      risk_score={emp.risk_score}
                     />
                     <button
                       className="btn btn-execute"
@@ -352,6 +478,31 @@ export function EmployeesPage() {
                     >
                       执行任务
                     </button>
+                    {/* P1-G2.2: 老板手动干预操作 */}
+                    <div style={{ position: 'absolute', top: 8, right: 8, display: 'flex', gap: 4 }}>
+                      <button
+                        onClick={() => handleSuspendResume(emp)}
+                        disabled={intervening}
+                        title={emp.status === 'suspended' ? '恢复该 AI 员工' : '暂停该 AI 员工（不再接收新任务）'}
+                        style={{
+                          padding: '2px 8px', fontSize: 10, cursor: 'pointer', borderRadius: 3,
+                          background: emp.status === 'suspended' ? '#2e7d32' : '#5d4037',
+                          border: 'none', color: '#fff', opacity: intervening ? 0.5 : 1,
+                        }}
+                      >
+                        {emp.status === 'suspended' ? '恢复' : '暂停'}
+                      </button>
+                      <button
+                        onClick={() => setTrustEdit({ empId: emp.id, score: String(emp.trust_score ?? 0.5), reason: '' })}
+                        title="手动调整信任评分（覆盖动态计算）"
+                        style={{
+                          padding: '2px 8px', fontSize: 10, cursor: 'pointer', borderRadius: 3,
+                          background: '#37474f', border: 'none', color: '#fff',
+                        }}
+                      >
+                        调信
+                      </button>
+                    </div>
                   </div>
                 );
               })}

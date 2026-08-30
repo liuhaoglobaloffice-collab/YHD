@@ -268,9 +268,14 @@ JSON 字段说明：
 
             from uuid import UUID
 
+            # 按实际注册的 Provider 动态选择模型，不硬编码厂商模型名
+            provider = providers[0]
+            models = gateway.list_models(provider) or []
+            model_id = models[0].model_id if models else "gpt-4o-mini"
+
             response = await gateway.complete(
-                provider=providers[0],
-                model_id="gpt-4o-mini",
+                provider=provider,
+                model_id=model_id,
                 messages=[
                     {
                         "role": "user",

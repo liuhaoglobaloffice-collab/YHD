@@ -384,6 +384,14 @@ class TaskExecutor:
                     safe_ctx["variables"] = variables
                 context_data = safe_ctx if safe_ctx else None
 
+        # 注入调用链标识：使 AI 调用成本/绩效可按 task、workflow、goal 归集
+        context_data = dict(context_data or {})
+        context_data.setdefault("task_id", str(task.id))
+        if task.workflow_id:
+            context_data["workflow_id"] = str(task.workflow_id)
+        if not context_data:
+            context_data = None
+
         # Delegate to AI Employee
         exec_result = await self.employee_service.execute_task(
             employee_id=employee_id,

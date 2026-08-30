@@ -59,6 +59,18 @@ class FakeGateway:
     def list_providers(self):
         return list(self._providers)
 
+    # 兼容真实启动流程：app 启动会注册 Provider/Model，替身需接受这些注册调用
+    # （no-op），否则启动阶段 AttributeError。list_models 返回空，由 parse_with_llm
+    # 回退到默认模型名。
+    def register_provider(self, provider):
+        return None
+
+    def register_model(self, model):
+        return None
+
+    def list_models(self, provider=None, enabled_only=True):
+        return []
+
     async def complete(self, **kwargs):
         if self._error:
             raise self._error

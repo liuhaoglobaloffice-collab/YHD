@@ -109,11 +109,13 @@ class EmployeeLifecycleManager:
         employee = await self.registry.update(employee_id, employee)
 
         # Audit
-        self.audit.log(
+        await self.audit.log(
+            self.registry.session,
             action=AuditAction.UPDATE,
+            status="success",
             resource_type="ai_employee",
             resource_id=str(employee_id),
-            actor_id=actor_id,
+            user_id=actor_id,
             details={
                 "lifecycle_action": "activate",
                 "old_status": old_status.value,
@@ -179,11 +181,13 @@ class EmployeeLifecycleManager:
         employee = await self.registry.update(employee_id, employee)
 
         # Audit
-        self.audit.log(
+        await self.audit.log(
+            self.registry.session,
             action=AuditAction.UPDATE,
+            status="success",
             resource_type="ai_employee",
             resource_id=str(employee_id),
-            actor_id=actor_id,
+            user_id=actor_id,
             details={
                 "lifecycle_action": "suspend",
                 "old_status": old_status.value,
@@ -250,11 +254,13 @@ class EmployeeLifecycleManager:
         employee = await self.registry.update(employee_id, employee)
 
         # Audit
-        self.audit.log(
+        await self.audit.log(
+            self.registry.session,
             action=AuditAction.UPDATE,
+            status="success",
             resource_type="ai_employee",
             resource_id=str(employee_id),
-            actor_id=actor_id,
+            user_id=actor_id,
             details={
                 "lifecycle_action": "retire",
                 "old_status": old_status.value,

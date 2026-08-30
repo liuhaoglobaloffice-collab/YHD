@@ -4,7 +4,7 @@ S4 独立站 + SEO API.
 提供独立站配置管理、内容发布、SEO 关键词分析/内容生成/排名跟踪端点。
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -15,15 +15,33 @@ from src.api.dependencies import get_current_user
 from src.api.dependencies.database import get_db
 from src.api.dependencies.permissions import require_permission
 from src.identity.audit import AuditService
-from src.identity.models import User
+from src.identity.models import AccountType, User
 from src.identity.visibility import visible_user_ids
 from src.site_os.models import KeywordRank, SEOContent, SiteConfig, SitePage
-from src.site_os.seo import SEOEngine
+from src.site_os.seo import SEOEngine, SOURCE_LLM, SOURCE_NOT_CONFIGURED, SOURCE_RULE_BASED
+from src.site_os.seo_files import SEOFilesGenerator
 from src.site_os.service import SiteService
 
 logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/site", tags=["site"])
+
+
+def _site_scope(user: User) -> tuple:
+    """P1-G5.2 修复：站点可见性 (owner_ids, tenant_id)。
+
+    OWNER 主账号 visible_user_ids() 返回空集（语义为"不过滤"），旧实现把空集
+    当作"无归属用户"导致主账号查不到任何站点。此处 OWNER → (None, tenant)；
+    子账号 → (可见集合，空集回退本人, tenant)。
+    """
+    tenant = getattr(user, "tenant_id", None)
+    if (
+        getattr(user, "account_type", None) == AccountType.OWNER
+        or getattr(user, "is_superuser", False)
+    ):
+        return None, tenant
+    ids = visible_user_ids(user)
+    return (ids if ids else {user.id}), tenant
 
 
 # ==================== Schemas ====================
@@ -146,6 +164,16 @@ def _rank_out(r: KeywordRank) -> Dict[str, Any]:
     }
 
 
+def _derive_source_type(method: Optional[str]) -> str:
+    """由 method 列推导合规 source_type（兼容旧 ai/mock 数据）。"""
+    m = method or "mock"
+    if m in (SOURCE_LLM, SOURCE_RULE_BASED, SOURCE_NOT_CONFIGURED):
+        return m
+    if m == "ai":
+        return SOURCE_LLM
+    return SOURCE_RULE_BASED
+
+
 def _content_out(c: SEOContent) -> Dict[str, Any]:
     return {
         "id": c.id,
@@ -159,6 +187,8 @@ def _content_out(c: SEOContent) -> Dict[str, Any]:
         "suggested_tags": c.suggested_tags or [],
         "search_intent": c.search_intent,
         "method": c.method,
+        # P1-G5.2: 兼容旧数据（ai/mock）与新数据（method 列直接存 source_type）
+        "source_type": _derive_source_type(c.method),
         "created_at": c.created_at.isoformat(),
     }
 
@@ -195,7 +225,8 @@ async def list_sites(
 ):
     """列出独立站。"""
     service = SiteService(session)
-    sites = await service.list_sites(visible_user_ids(current_user))
+    _ids, _tenant = _site_scope(current_user)
+    sites = await service.list_sites(_ids, _tenant)
     return {"items": [_site_out(s) for s in sites], "total": len(sites)}
 
 
@@ -239,7 +270,8 @@ async def site_stats(
 ):
     """独立站访问/转化统计。"""
     service = SiteService(session)
-    if not await service.get_site(site_id, visible_user_ids(current_user)):
+    _ids, _tenant = _site_scope(current_user)
+    if not await service.get_site(site_id, _ids, _tenant):
         raise HTTPException(status_code=404, detail="站点不存在")
     return await service.site_stats(site_id)
 
@@ -275,7 +307,8 @@ async def list_pages(
 ):
     """列出站点页面。"""
     service = SiteService(session)
-    if not await service.get_site(site_id, visible_user_ids(current_user)):
+    _ids, _tenant = _site_scope(current_user)
+    if not await service.get_site(site_id, _ids, _tenant):
         raise HTTPException(status_code=404, detail="站点不存在")
     result = await service.list_pages(site_id, status, page, page_size)
     return {"items": [_page_out(p) for p in result["items"]], "total": result["total"]}
@@ -337,6 +370,48 @@ async def delete_page(
     return {"ok": True}
 
 
+@router.get("/sites/{site_id}/seo/files")
+async def get_seo_files(
+    site_id: int,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(require_permission("site", "read")),
+):
+    """生成站点 SEO 文件（sitemap.xml / robots.txt，规则驱动）。"""
+    service = SiteService(session)
+    _ids, _tenant = _site_scope(current_user)
+    site = await service.get_site(site_id, _ids, _tenant)
+    if not site:
+        raise HTTPException(status_code=404, detail="站点不存在")
+    result = await service.list_pages(site_id, "published", 1, 10000)
+    return SEOFilesGenerator().generate_files(site, result["items"])
+
+
+@router.get("/sites/{site_id}/pages/{page_id}/schema")
+async def get_page_schema(
+    site_id: int,
+    page_id: int,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(require_permission("site", "read")),
+):
+    """生成页面 JSON-LD 结构化数据（规则驱动）。"""
+    service = SiteService(session)
+    _ids, _tenant = _site_scope(current_user)
+    site = await service.get_site(site_id, _ids, _tenant)
+    if not site:
+        raise HTTPException(status_code=404, detail="站点不存在")
+    page = await service.get_page(page_id)
+    if not page or page.site_id != site_id:
+        raise HTTPException(status_code=404, detail="页面不存在")
+    generator = SEOFilesGenerator()
+    schema = generator.generate_page_schema(site, page)
+    return {
+        "source_type": SOURCE_RULE_BASED,
+        "schema": schema,
+        "json_ld": generator.to_json_ld_script(schema),
+    }
+
 # ==================== SEO 引擎 ====================
 
 
@@ -362,7 +437,14 @@ async def generate_content(
 ):
     """生成 SEO 内容建议（AI/规则模板）。"""
     engine = SEOEngine()
-    data = await engine.generate_content(request.keyword, current_user.username, request.content_type)
+    # P1-G5.2: 注入 session/user_id，真实 LLM 调用记录成本
+    data = await engine.generate_content(
+        request.keyword,
+        current_user.username,
+        request.content_type,
+        session=session,
+        user_id=current_user.id,
+    )
     saved_id = None
     if request.save:
         service = SiteService(session)
@@ -404,11 +486,13 @@ async def list_rankings(
     """查看最新关键词排名。"""
     service = SiteService(session)
     if site_id is not None:
-        if not await service.get_site(site_id, visible_user_ids(current_user)):
+        _ids, _tenant = _site_scope(current_user)
+        if not await service.get_site(site_id, _ids, _tenant):
             raise HTTPException(status_code=404, detail="站点不存在")
         ranks = await service.list_keyword_ranks(site_id)
     else:
-        sites = await service.list_sites(visible_user_ids(current_user))
+        _ids, _tenant = _site_scope(current_user)
+        sites = await service.list_sites(_ids, _tenant)
         for s in sites:
             ranks = await service.list_keyword_ranks(s.id)
             if ranks:
@@ -427,12 +511,14 @@ async def list_seo_contents(
     """查看已生成的 SEO 内容建议。"""
     service = SiteService(session)
     if site_id is not None:
-        if not await service.get_site(site_id, visible_user_ids(current_user)):
+        _ids, _tenant = _site_scope(current_user)
+        if not await service.get_site(site_id, _ids, _tenant):
             raise HTTPException(status_code=404, detail="站点不存在")
         contents = await service.list_seo_contents(site_id)
     else:
         contents = []
-        sites = await service.list_sites(visible_user_ids(current_user))
+        _ids, _tenant = _site_scope(current_user)
+        sites = await service.list_sites(_ids, _tenant)
         for s in sites:
             contents.extend(await service.list_seo_contents(s.id))
     return [_content_out(c) for c in contents]
@@ -448,7 +534,7 @@ async def bulk_create_pages_from_seo(
     request: BulkCreateFromSEORequest,
     session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    _: None = Depends(require_permission("page", "create")),
+    _: None = Depends(require_permission("site", "create")),
 ):
     """从 SEO 内容批量创建独立站页面。"""
     service = SiteService(session)

@@ -30,6 +30,7 @@ import { SubPortalPage } from '../pages/SubPortalPage';
 import { CompanyPage } from '../pages/CompanyPage';
 import { QuotesPage } from '../pages/QuotesPage';
 import { GoalCenterPage } from '../pages/GoalCenterPage';
+import { KnowledgePage } from '../pages/KnowledgePage';
 import { LoginPage } from '../pages/LoginPage';
 import { clearAuthToken, getAuthToken, fetchMe } from '../services/auth';
 
@@ -153,6 +154,7 @@ export function AppRoutes() {
           <Route path="/company" element={<CompanyPage />} />
           <Route path="/quotes" element={<QuotesPage />} />
           <Route path="/goals" element={<GoalCenterPage />} />
+          <Route path="/knowledge" element={<KnowledgePage />} />
           <Route path="/onboarding" element={<OnboardingPage />} />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />

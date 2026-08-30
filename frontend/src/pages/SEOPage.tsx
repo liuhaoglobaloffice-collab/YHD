@@ -20,6 +20,18 @@ const TREND_LABELS: Record<string, string> = {
   new: '新收录',
 };
 
+// P1-G5.2: 数据来源徽标（诚实展示，不伪装 AI 生成）
+const SOURCE_TYPE_LABELS: Record<string, string> = {
+  LLM: 'AI 生成',
+  RULE_BASED: '模板生成',
+  NOT_CONFIGURED: '模板生成（LLM 未配置）',
+};
+
+const sourceLabel = (sourceType?: string, method?: string): string => {
+  if (sourceType && SOURCE_TYPE_LABELS[sourceType]) return SOURCE_TYPE_LABELS[sourceType];
+  return method === 'ai' ? 'AI 生成' : '模板生成';
+};
+
 export function SEOPage() {
   const { t } = useI18n();
   const readonly = isReadonly();
@@ -185,12 +197,15 @@ export function SEOPage() {
           <div className="generated-content">
             <div className="executions-header">
               <strong>{generated.title}</strong>
-              <span className={`analysis-method`}>{generated.method === 'ai' ? 'AI 生成' : '模板生成'}</span>
+              <span className={`analysis-method`}>{sourceLabel(generated.source_type, generated.method)}</span>
             </div>
             <div className="execution-item-sub">
               <span>URL: /{generated.suggested_slug}</span>
               <span>意图: {generated.search_intent}</span>
             </div>
+            {generated.llm_error && (
+              <p className="error-text">LLM 调用失败已降级为规则模板：{generated.llm_error}</p>
+            )}
             {generated.meta_description && (
               <div className="dimension">
                 <strong>Meta 描述</strong>
@@ -260,7 +275,7 @@ export function SEOPage() {
               <div key={c.id} className="lead-item">
                 <div className="execution-item-main">
                   <span className="execution-employee">{c.title}</span>
-                  <span className={`analysis-method`}>{c.method === 'ai' ? 'AI' : '模板'}</span>
+                  <span className={`analysis-method`}>{sourceLabel(c.source_type, c.method)}</span>
                 </div>
                 <div className="execution-item-sub">
                   <span>/{c.suggested_slug} · {c.keyword}</span>

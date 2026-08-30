@@ -472,16 +472,19 @@ class RetrievalService:
         paginated = results[query.offset : query.offset + query.limit]
 
         # Audit log
-        await self.audit.log(
-            action=AuditAction.READ,
-            user_id=user.id,
-            resource_type="knowledge",
-            details={
-                "query": query.query,
-                "mode": query.mode.value,
-                "results_count": len(paginated),
-            },
-        )
+        if self.session is not None:
+            await self.audit.log(
+                self.session,
+                action=AuditAction.READ,
+                status="success",
+                user_id=user.id,
+                resource_type="knowledge",
+                details={
+                    "query": query.query,
+                    "mode": query.mode.value,
+                    "results_count": len(paginated),
+                },
+            )
 
         return paginated
 
@@ -706,12 +709,15 @@ class RetrievalService:
             raise ValidationError(f"Chunk not found: {chunk_id}")
 
         # Audit log
-        await self.audit.log(
-            action=AuditAction.READ,
-            user_id=user.id,
-            resource_type="knowledge",
-            resource_id=chunk_id,
-        )
+        if self.session is not None:
+            await self.audit.log(
+                self.session,
+                action=AuditAction.READ,
+                status="success",
+                user_id=user.id,
+                resource_type="knowledge",
+                resource_id=chunk_id,
+            )
 
         return chunk
 

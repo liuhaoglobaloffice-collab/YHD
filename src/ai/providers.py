@@ -399,6 +399,9 @@ class ProviderGateway:
                 provider = DeepSeekProvider(config, secrets_manager or Mock())
             elif provider_type == ProviderType.MOONSHOT:
                 provider = MoonshotProvider(config, secrets_manager or Mock())
+            elif provider_type == ProviderType.OLLAMA:
+                # Ollama doesn't need a secrets manager
+                provider = OllamaProvider(config)
             else:
                 raise ConfigurationError(
                     f"Unknown provider type: {provider_type}",
@@ -411,17 +414,84 @@ class ProviderGateway:
             logger.info(f"Lazy initialized provider: {provider_type}")
             return provider
 
-        elif provider_type == ProviderType.OLLAMA:
-            # Ollama doesn't need a secrets manager
-            provider = OllamaProvider(config)
-            self._providers[provider_type] = provider
-            logger.info(f"Lazy initialized provider: {provider_type}")
-            return provider
-
         # Provider not registered at all
         raise ResourceNotFoundError(
             f"Provider not registered: {provider_type}", resource=f"provider:{provider_type}"
         )
+
+    def _resolve_fallback(
+        self, requested: ProviderType
+    ) -> Optional[tuple["ProviderType", str]]:
+        """Pick a registered REAL provider to serve a request for a provider
+        type that is not available in this deployment.
+
+        Self-hosted deployments ship built-in agents whose default providers
+        are cloud vendors (MOONSHOT / OPENAI / ...). When only Ollama (or
+        another real provider) is configured, those agents can still run:
+        remap to an available real provider and its default model.
+
+        - Never remaps onto a MockProvider / production sentinel.
+        - Prefers self-hosted (Ollama), then any other registered provider.
+        - Returns None when no real provider is available (caller then
+          raises the original "not registered" error).
+        """
+        available: List[ProviderType] = []
+        for ptype in self.list_providers():
+            inst = self._providers.get(ptype)
+            if inst is not None and isinstance(inst, MockProvider):
+                continue  # mock / sentinel can never serve a real completion
+            available.append(ptype)
+        if not available:
+            return None
+
+        priority = [ProviderType.OLLAMA]
+        ordered = [p for p in priority if p in available] + [
+            p for p in available if p not in priority
+        ]
+        chosen = ordered[0]
+
+        # Default model registered for this provider at startup is kept in
+        # the provider config metadata; fall back to first enabled model.
+        model_id: Optional[str] = None
+        cfg = self._provider_configs.get(chosen)
+        if cfg and getattr(cfg, "metadata", None):
+            model_id = cfg.metadata.get("model")
+        if not model_id:
+            models = self._model_registry.list_models(chosen, enabled_only=True)
+            if models:
+                model_id = models[0].model_id
+        if not model_id:
+            return None
+        return chosen, model_id
+
+    def _maybe_remap_provider(
+        self, provider: ProviderType, model_id: str
+    ) -> tuple[ProviderType, str]:
+        """Remap (provider, model_id) onto a usable real provider when the
+        requested provider is unavailable (unregistered, or only a mock
+        sentinel). Returns the original pair unchanged when usable."""
+        inst = self._providers.get(provider)
+        is_mock_sentinel = inst is not None and isinstance(inst, MockProvider)
+        registered = (
+            provider in self._providers or provider in self._provider_configs
+        )
+        if registered and not is_mock_sentinel:
+            return provider, model_id
+
+        fallback = self._resolve_fallback(provider)
+        if fallback is None:
+            return provider, model_id  # let the caller raise the original error
+        fb_provider, fb_model = fallback
+        logger.warning(
+            "provider_fallback_remap",
+            extra={
+                "requested_provider": str(provider),
+                "requested_model": model_id,
+                "remapped_provider": str(fb_provider),
+                "remapped_model": fb_model,
+            },
+        )
+        return fb_provider, fb_model
 
     def register_model(self, model: ModelConfig):
         """Register a model."""
@@ -447,11 +517,13 @@ class ProviderGateway:
         Audit: All requests logged.
         Fail Closed: Unknown provider/model denied.
         """
-        # Validate provider exists
+        # Self-host fallback: remap unavailable providers (unregistered or
+        # mock sentinel) onto an available real provider + default model.
+        provider, model_id = self._maybe_remap_provider(provider, model_id)
+
+        # Validate provider exists（先解析懒注册的 ProviderConfig，再判定未注册）
         if provider not in self._providers:
-            raise ResourceNotFoundError(
-                f"Provider not registered: {provider}", resource=f"provider:{provider}"
-            )
+            self._get_or_create_provider(provider)
 
         # Validate model exists
         try:
@@ -516,6 +588,9 @@ class ProviderGateway:
         Raises:
             ResourceNotFoundError: Unknown provider/model
         """
+        # Self-host fallback: remap unavailable providers onto a real one
+        provider, model_id = self._maybe_remap_provider(provider, model_id)
+
         # Validate provider exists
         if provider not in self._providers and provider not in self._provider_configs:
             raise ResourceNotFoundError(
@@ -981,6 +1056,10 @@ class MoonshotProvider(GenericHTTPProvider):
 class OllamaProvider(BaseProvider):
     """Ollama local LLM provider implementation."""
 
+    # 本机/容器内地址：绝不路由到外部 HTTP 代理（否则 httpx 按
+    # HTTP_PROXY/ALL_PROXY 环境变量把 localhost 请求发给代理，导致连接失败）
+    _LOCAL_HOST_MARKERS = ("localhost", "127.0.0.1", "[::1]", "host.docker.internal")
+
     def __init__(self, config: ProviderConfig):
         super().__init__(config)
         self._client = None
@@ -995,7 +1074,11 @@ class OllamaProvider(BaseProvider):
             try:
                 import ollama
 
-                self._client = ollama.AsyncClient(host=self._host)
+                kwargs: dict[str, Any] = {}
+                host_lower = (self._host or "").lower()
+                if any(marker in host_lower for marker in self._LOCAL_HOST_MARKERS):
+                    kwargs["trust_env"] = False
+                self._client = ollama.AsyncClient(host=self._host, **kwargs)
             except ImportError:
                 raise ConfigurationError(
                     "Ollama SDK not installed. Install with: pip install ollama",
@@ -1034,10 +1117,19 @@ class OllamaProvider(BaseProvider):
             # Extract response content
             content = response.get("message", {}).get("content", "")
 
-            # Token usage (Ollama returns these in response)
-            usage_data = response.get("usage", {})
-            prompt_tokens = usage_data.get("prompt_tokens", 0)
-            completion_tokens = usage_data.get("completion_tokens", 0)
+            # Token usage：Ollama chat 响应没有 usage 字段，
+            # 真实 token 计数在 prompt_eval_count / eval_count
+            usage_data = response.get("usage") or {}
+            prompt_tokens = (
+                usage_data.get("prompt_tokens")
+                or response.get("prompt_eval_count")
+                or 0
+            )
+            completion_tokens = (
+                usage_data.get("completion_tokens")
+                or response.get("eval_count")
+                or 0
+            )
 
             return ProviderResponse(
                 request_id=request.request_id,
@@ -1099,14 +1191,23 @@ class OllamaProvider(BaseProvider):
 
             async for chunk in response:
                 if chunk.get("done"):
-                    usage_data = chunk.get("usage", {})
+                    usage_data = chunk.get("usage") or {}
+                    prompt_tokens = (
+                        usage_data.get("prompt_tokens")
+                        or chunk.get("prompt_eval_count")
+                        or 0
+                    )
+                    completion_tokens = (
+                        usage_data.get("completion_tokens")
+                        or chunk.get("eval_count")
+                        or 0
+                    )
                     yield {
                         "done": True,
                         "usage": {
-                            "prompt_tokens": usage_data.get("prompt_tokens", 0),
-                            "completion_tokens": usage_data.get("completion_tokens", 0),
-                            "total_tokens": usage_data.get("prompt_tokens", 0)
-                            + usage_data.get("completion_tokens", 0),
+                            "prompt_tokens": prompt_tokens,
+                            "completion_tokens": completion_tokens,
+                            "total_tokens": prompt_tokens + completion_tokens,
                         },
                         "total_duration": chunk.get("total_duration"),
                     }

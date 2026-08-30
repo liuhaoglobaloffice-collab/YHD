@@ -137,16 +137,17 @@ async def submit_ceo_command(
         # Audit log
         audit_service = AuditService(session)
         await audit_service.log(
+            session,
             user_id=user.id,
             action=AuditAction.AI_BRAIN_COMMAND_CREATED,
             resource_type="ai_brain_command",
             resource_id=str(command.command_id),
+            status="success",
             details={
                 "command": request.command[:200],  # Truncate for audit
                 "priority": request.priority.value,
                 "status": command.status.value,
             },
-            result="success",
         )
 
         logger.info(
@@ -182,13 +183,14 @@ async def submit_ceo_command(
         # Audit failure
         audit_service = AuditService(session)
         await audit_service.log(
+            session,
             user_id=user.id,
             action=AuditAction.AI_BRAIN_COMMAND_CREATED,
             resource_type="ai_brain_command",
             resource_id="unknown",
+            status="failure",
+            error_message=str(e),
             details={"command": request.command[:200], "error": str(e)},
-            result="failure",
-            failure_reason=str(e),
         )
 
         raise HTTPException(
@@ -356,12 +358,13 @@ async def cancel_command(
         # Audit log
         audit_service = AuditService(session)
         await audit_service.log(
+            session,
             user_id=user.id,
             action=AuditAction.AI_BRAIN_COMMAND_CANCELLED,
             resource_type="ai_brain_command",
             resource_id=str(command_id),
+            status="success",
             details={"action": "cancelled"},
-            result="success",
         )
 
         logger.info("command_cancelled", command_id=str(command_id))

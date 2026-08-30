@@ -6,6 +6,14 @@ import os
 import time
 from contextlib import asynccontextmanager
 
+from dotenv import load_dotenv
+
+# .env 必须在读取任何环境变量之前加载：
+# uvicorn 启动路径（src.api.app:create_app，与 Dockerfile CMD 一致）不经过 src/main.py，
+# 而 provider 注册段（下方 os.getenv("LLM_PROVIDER") 等）直接读进程环境。
+# 缺少此调用时，.env 中配置的 Ollama/OpenAI 永远不会生效，静默回退 MockProvider。
+load_dotenv()
+
 import structlog
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -67,11 +75,25 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("market_seed_failed", error=str(e))
 
+    # Start business scheduler (P0: 老板长期不在线 — 自主执行 active goals)
+    try:
+        from src.scheduler import start_business_scheduler
+
+        await start_business_scheduler()
+    except Exception as e:
+        logger.warning("scheduler_start_failed", error=str(e))
+
     logger.info("api_startup_complete")
 
     yield
 
     # Shutdown
+    try:
+        from src.scheduler import stop_business_scheduler
+
+        await stop_business_scheduler()
+    except Exception as e:
+        logger.warning("scheduler_stop_failed", error=str(e))
     await close_database()
     await lifecycle.shutdown()
     logger.info("api_shutdown_complete")
@@ -334,6 +356,29 @@ async def _initialize_providers() -> None:
             "production_blocked": False,
             "environment": settings.app_env,
         }
+
+    # ── Embedding 生产防护（Y1.0）──
+    # mock embedding 恒返回 [0.1,0.2,0.3]，语义检索完全无意义。
+    # 生产环境若未配置真实 embedding provider，启动即明确告警（fail-loud，不静默）。
+    try:
+        emb_provider = (settings.embedding_provider or "mock").lower()
+        if settings.is_production and emb_provider == "mock":
+            logger.error(
+                "embedding_mock_in_production",
+                provider=emb_provider,
+                message="EMBEDDING_PROVIDER is 'mock' in production. "
+                "Semantic search will be meaningless. "
+                "Set EMBEDDING_PROVIDER=self_host (Ollama) or openai in .env.",
+            )
+        else:
+            logger.info(
+                "embedding_provider_configured",
+                provider=emb_provider,
+                model=settings.embedding_model or "(default)",
+                production=settings.is_production,
+            )
+    except Exception:
+        logger.warning("embedding_status_check_failed", exc_info=True)
 
     # Store provider status as module-level variable for health check
     import src.api.app as _app_module

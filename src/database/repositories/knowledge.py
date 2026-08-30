@@ -65,9 +65,17 @@ class DocumentRepository(BaseRepository[DocumentModel]):
         )
         return list(result.scalars().all())
 
+    # Document lifecycle statuses that must never surface in retrieval:
+    # failed uploads are marked "archived"/"failed", soft-deleted ones "deleted".
+    _EXCLUDED_STATUSES = ("archived", "deleted", "failed")
+
     async def search_full_text(self, query: str, limit: int = 20) -> List[DocumentModel]:
         """
         Search documents by title or content
+
+        Only live documents are returned; archived / failed / soft-deleted
+        documents are excluded so a failed re-upload never leaves a searchable
+        ghost row.
 
         Args:
             query: Search query
@@ -82,7 +90,8 @@ class DocumentRepository(BaseRepository[DocumentModel]):
                 or_(
                     DocumentModel.title.ilike(f"%{query}%"),
                     DocumentModel.content.ilike(f"%{query}%"),
-                )
+                ),
+                DocumentModel.status.notin_(self._EXCLUDED_STATUSES),
             )
             .order_by(DocumentModel.created_at.desc())
             .limit(limit)
@@ -166,11 +175,16 @@ class MemoryRepository(BaseRepository[MemoryModel]):
     def __init__(self, session: AsyncSession):
         super().__init__(MemoryModel, session)
 
+    # Memory rows written with this user_id are shared agent experiences
+    # (see MemoryService.store_agent_experience) and are visible to everyone.
+    SHARED_MEMORY_USER_ID = "0"
+
     async def list_by_type(
         self,
         memory_type: str,
         limit: int = 100,
         offset: int = 0,
+        scoped_user_id: Optional[str] = None,
     ) -> List[MemoryModel]:
         """
         List memories by type
@@ -179,35 +193,53 @@ class MemoryRepository(BaseRepository[MemoryModel]):
             memory_type: Memory type
             limit: Maximum memories to return
             offset: Number to skip
+            scoped_user_id: When given, only return the owner's memories plus
+                shared agent-experience rows (tenant/user isolation for
+                cross-user knowledge search).
 
         Returns:
             List of memories (sorted by importance, then recency)
         """
+        query = select(MemoryModel).where(MemoryModel.memory_type == memory_type)
+        if scoped_user_id is not None:
+            query = query.where(
+                MemoryModel.user_id.in_(
+                    [str(scoped_user_id), self.SHARED_MEMORY_USER_ID]
+                )
+            )
         result = await self.session.execute(
-            select(MemoryModel)
-            .where(MemoryModel.memory_type == memory_type)
-            .order_by(MemoryModel.importance.desc(), MemoryModel.created_at.desc())
+            query.order_by(MemoryModel.importance.desc(), MemoryModel.created_at.desc())
             .limit(limit)
             .offset(offset)
         )
         return list(result.scalars().all())
 
-    async def list_recent(self, limit: int = 50) -> List[MemoryModel]:
+    async def list_recent(
+        self, limit: int = 50, scoped_user_id: Optional[str] = None
+    ) -> List[MemoryModel]:
         """
         List recent memories (by last accessed)
 
         Args:
             limit: Maximum memories to return
+            scoped_user_id: When given, only return the owner's memories plus
+                shared agent-experience rows (user isolation).
 
         Returns:
             List of recent memories
         """
-        result = await self.session.execute(
-            select(MemoryModel)
-            .order_by(
-                MemoryModel.last_accessed_at.desc().nulls_last(), MemoryModel.created_at.desc()
+        query = select(MemoryModel)
+        if scoped_user_id is not None:
+            query = query.where(
+                MemoryModel.user_id.in_(
+                    [str(scoped_user_id), self.SHARED_MEMORY_USER_ID]
+                )
             )
-            .limit(limit)
+        result = await self.session.execute(
+            query.order_by(
+                MemoryModel.last_accessed_at.desc().nulls_last(),
+                MemoryModel.created_at.desc(),
+            ).limit(limit)
         )
         return list(result.scalars().all())
 

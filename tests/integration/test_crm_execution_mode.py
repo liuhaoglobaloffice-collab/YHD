@@ -96,6 +96,96 @@ class TestLeadAcquisitionEngineSourceType:
             assert lead["source_type"] == EXECUTION_MODE_MOCK
 
     @pytest.mark.asyncio
+    async def test_google_real_api_success_marks_real(self, monkeypatch):
+        """P0 真实获客激活：Google Custom Search API 成功响应 → 线索解析 + source_type=REAL。
+
+        用 httpx.MockTransport 模拟真实 API 成功响应（不依赖外网），
+        验证 items → 线索字段解析（title/company/website/搜索词）与 REAL 标记。
+        """
+        import httpx
+
+        monkeypatch.setenv("GOOGLE_SEARCH_API_KEY", "test-key")
+        monkeypatch.setenv("GOOGLE_SEARCH_CX", "test-cx")
+
+        captured_requests = []
+
+        def _google_handler(request: httpx.Request) -> httpx.Response:
+            captured_requests.append(request)
+            return httpx.Response(
+                200,
+                json={
+                    "items": [
+                        {
+                            "title": "Global LED Trading Co.",
+                            "link": "https://globaled.example.com",
+                        },
+                        {
+                            "title": "Euro Hardware Import GmbH",
+                            "link": "https://eurohardware.example.com",
+                        },
+                    ]
+                },
+            )
+
+        transport = httpx.MockTransport(_google_handler)
+        real_async_client = httpx.AsyncClient
+
+        def _client_factory(*args, **kwargs):
+            return real_async_client(transport=transport)
+
+        monkeypatch.setattr("src.crm.engines.httpx.AsyncClient", _client_factory)
+
+        engine = LeadAcquisitionEngine()
+        result = await engine.run(
+            sources=["google"], keywords=["LED lighting"], limit=5
+        )
+        leads = result["leads"]
+        assert len(leads) == 2
+        assert result["stats"]["google"] == 2
+        for lead in leads:
+            assert lead["source"] == "google"
+            assert lead["source_type"] == EXECUTION_MODE_REAL, "真实 API 成功路径必须标记 REAL"
+            assert lead["source_detail"] == "LED lighting"
+        # 线索字段真实解析自 API 响应
+        assert leads[0]["company"] == "Global LED Trading Co."
+        assert leads[0]["name"] == "Global LED Trading Co."
+        assert leads[0]["website"] == "https://globaled.example.com"
+        assert leads[1]["company"] == "Euro Hardware Import GmbH"
+        # 请求真实发往 Google Custom Search 端点并携带凭据
+        assert captured_requests, "必须发起真实 HTTP 请求"
+        req = captured_requests[0]
+        assert "googleapis.com/customsearch/v1" in str(req.url)
+        assert "key=test-key" in str(req.url)
+        assert "cx=test-cx" in str(req.url)
+        assert "LED+lighting+wholesale+import+company" in str(req.url)
+
+    @pytest.mark.asyncio
+    async def test_google_real_api_error_falls_back_to_mock(self, monkeypatch):
+        """Google API 返回错误（如配额超限 429）→ 回退 MOCK（诚实降级不崩溃）。"""
+        import httpx
+
+        monkeypatch.setenv("GOOGLE_SEARCH_API_KEY", "test-key")
+        monkeypatch.setenv("GOOGLE_SEARCH_CX", "test-cx")
+
+        def _error_handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(429, json={"error": {"message": "quota exceeded"}})
+
+        transport = httpx.MockTransport(_error_handler)
+        real_async_client = httpx.AsyncClient
+
+        def _client_factory(*args, **kwargs):
+            return real_async_client(transport=transport)
+
+        monkeypatch.setattr("src.crm.engines.httpx.AsyncClient", _client_factory)
+
+        engine = LeadAcquisitionEngine()
+        result = await engine.run(sources=["google"], keywords=["LED"], limit=2)
+        leads = result["leads"]
+        assert len(leads) > 0
+        for lead in leads:
+            assert lead["source_type"] == EXECUTION_MODE_MOCK, "API 失败必须回退 MOCK，不得标记 REAL"
+
+    @pytest.mark.asyncio
     async def test_all_sources_have_source_type(self):
         """所有来源的线索都标记 source_type。"""
         engine = LeadAcquisitionEngine()
