@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
 from ..ai.agents import AgentContext, AgentRegistry, AgentRuntime, AgentType, create_default_agents
+from ..ai.providers import ProviderType
 from ..ai.cost_tracker import CostTracker
 from ..ai.gateway import get_gateway
 from ..ai.memory_store import AgentMemoryStore
@@ -449,6 +450,7 @@ class AIEmployeeService:
         actor_id: Optional[UUID] = None,
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
+        context_data: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Execute a task using the AI employee's assigned agent.
@@ -462,6 +464,7 @@ class AIEmployeeService:
             actor_id: User triggering the execution
             temperature: Optional temperature override
             max_tokens: Optional max tokens override
+            context_data: Optional workflow context (previous step results) to inject
 
         Returns:
             Dict with execution result, including the LLM response
@@ -478,7 +481,6 @@ class AIEmployeeService:
             raise ValidationError(
                 f"Employee {employee.name} has no agent type assigned. "
                 "Assign an agent type before executing tasks.",
-                field="agent_type",
             )
 
         # Set up Agent Runtime
@@ -495,13 +497,42 @@ class AIEmployeeService:
         if not agent_config:
             raise ValidationError(
                 f"No agent configuration found for type: {employee.agent_type}",
-                field="agent_type",
             )
+
+        # ── provider_config override: 允许 Employee 自定义 Provider / Model ──
+        override_config = None
+        if employee.provider_config:
+            from dataclasses import replace
+            pc = employee.provider_config
+            provider_str = pc.get("provider", "")
+            model_str = pc.get("model", pc.get("model_id", ""))
+            if provider_str or model_str:
+                override_provider = agent_config.provider
+                override_model = agent_config.model_id
+                if provider_str:
+                    try:
+                        override_provider = ProviderType(provider_str)
+                    except (ValueError, KeyError):
+                        logger.warning("invalid_provider_in_provider_config: %s", provider_str)
+                if model_str:
+                    override_model = model_str
+                override_config = replace(
+                    agent_config,
+                    provider=override_provider,
+                    model_id=override_model,
+                )
+                logger.info(
+                    "employee_provider_config_applied",
+                    extra={"employee_id": str(employee.id), "provider": override_provider.value, "model": override_model},
+                )
 
         # Register all default agents
         for agent in default_agents:
             try:
-                agent_registry.register(agent)
+                if override_config and agent.agent_type == employee.agent_type:
+                    agent_registry.register(override_config)
+                else:
+                    agent_registry.register(agent)
             except Exception:
                 pass  # Already registered
 
@@ -527,8 +558,65 @@ class AIEmployeeService:
         memory_store = AgentMemoryStore(self.registry.session)
         history = await memory_store.to_messages(mem_user_id, str(employee.id))
 
-        # Build messages
-        messages = history + [{"role": "user", "content": prompt}]
+        # Build messages: history + (optional workflow context) + user prompt
+        messages = list(history)
+
+        # ── 注入 workflow context 作为系统上下文（不覆盖原有 system prompt）──
+        if context_data:
+            try:
+                import json
+                context_str = json.dumps(
+                    context_data, ensure_ascii=False, default=str
+                )
+                # 限制上下文长度，防止 prompt 超长
+                max_ctx_len = 5000
+                if len(context_str) > max_ctx_len:
+                    context_str = context_str[:max_ctx_len] + "\n...[上下文已截断]"
+                messages.append({
+                    "role": "system",
+                    "content": (
+                        "以下是工作流上下文中前序步骤的结果信息，"
+                        "请基于这些上下文执行当前任务：\n\n" + context_str
+                    ),
+                })
+            except Exception:
+                logger.warning("workflow_context_inject_failed", exc_info=True)
+                # context 注入失败不影响主流程
+
+        # ── Knowledge Retrieval：检索相关知识注入上下文 ──
+        try:
+            from ..knowledge.knowledge_retrieval import (
+                KnowledgeRetrievalService,
+            )
+            kr_service = KnowledgeRetrievalService(
+                session=self.registry.session,
+                rbac_service=self.rbac,
+                audit_service=self.audit,
+            )
+            # 尝试加载用户用于知识检索
+            from sqlalchemy import select
+            from ..identity.models import User as UserModel
+            stmt = select(UserModel).where(UserModel.id == mem_user_id)
+            result = await self.registry.session.execute(stmt)
+            user = result.scalar_one_or_none()
+            if user:
+                knowledge_ctx = await kr_service.build_context(
+                    user=user, task=prompt, max_items=5,
+                )
+                if knowledge_ctx.results:
+                    ctx_summary = knowledge_ctx.get_summary()
+                    messages.append({
+                        "role": "system",
+                        "content": (
+                            "以下是公司知识库中与当前任务相关的信息，"
+                            "请基于这些知识回答问题：\n\n" + ctx_summary
+                        ),
+                    })
+        except Exception:
+            logger.warning("knowledge_retrieval_failed", exc_info=True)
+            # 知识检索失败不影响主流程
+
+        messages.append({"role": "user", "content": prompt})
 
         # Execute
         execution = await runtime.execute(
@@ -581,7 +669,7 @@ class AIEmployeeService:
                 await CostTracker(self.registry.session).record(
                     user_id=mem_user_id,
                     provider=resp.provider.value if resp else "unknown",
-                    model=resp.model_id if resp else employee.model,
+                    model=resp.model_id if resp else ((override_config or agent_config).model_id if (override_config or agent_config) else ""),
                     input_tokens=usage.input_tokens if usage else 0,
                     output_tokens=usage.output_tokens if usage else 0,
                     latency_ms=float(resp.response_time_ms) if resp and resp.response_time_ms else None,
@@ -658,12 +746,41 @@ class AIEmployeeService:
         if not agent_config:
             raise ValidationError(
                 f"No agent configuration found for type: {employee.agent_type}",
-                field="agent_type",
             )
+
+        # ── provider_config override (stream) ──
+        override_config = None
+        if employee.provider_config:
+            from dataclasses import replace
+            pc = employee.provider_config
+            provider_str = pc.get("provider", "")
+            model_str = pc.get("model", pc.get("model_id", ""))
+            if provider_str or model_str:
+                override_provider = agent_config.provider
+                override_model = agent_config.model_id
+                if provider_str:
+                    try:
+                        override_provider = ProviderType(provider_str)
+                    except (ValueError, KeyError):
+                        logger.warning("invalid_provider_in_provider_config: %s", provider_str)
+                if model_str:
+                    override_model = model_str
+                override_config = replace(
+                    agent_config,
+                    provider=override_provider,
+                    model_id=override_model,
+                )
+                logger.info(
+                    "employee_provider_config_applied",
+                    extra={"employee_id": str(employee.id), "provider": override_provider.value, "model": override_model},
+                )
 
         for agent in default_agents:
             try:
-                agent_registry.register(agent)
+                if override_config and agent.agent_type == employee.agent_type:
+                    agent_registry.register(override_config)
+                else:
+                    agent_registry.register(agent)
             except Exception:
                 pass
 
@@ -687,7 +804,38 @@ class AIEmployeeService:
         memory_store = AgentMemoryStore(self.registry.session)
         history = await memory_store.to_messages(mem_user_id, str(employee.id))
 
-        messages = history + [{"role": "user", "content": prompt}]
+        # ── Knowledge Retrieval：检索相关知识注入上下文（stream）──
+        messages = list(history)
+        try:
+            from ..knowledge.knowledge_retrieval import (
+                KnowledgeRetrievalService,
+            )
+            kr_service = KnowledgeRetrievalService(
+                session=self.registry.session,
+                rbac_service=self.rbac,
+                audit_service=self.audit,
+            )
+            from sqlalchemy import select
+            from ..identity.models import User as UserModel
+            stmt = select(UserModel).where(UserModel.id == mem_user_id)
+            result = await self.registry.session.execute(stmt)
+            user = result.scalar_one_or_none()
+            if user:
+                knowledge_ctx = await kr_service.build_context(
+                    user=user, task=prompt, max_items=5,
+                )
+                if knowledge_ctx.results:
+                    ctx_summary = knowledge_ctx.get_summary()
+                    messages.append({
+                        "role": "system",
+                        "content": (
+                            "以下是公司知识库中与当前任务相关的信息，"
+                            "请基于这些知识回答问题：\n\n" + ctx_summary
+                        ),
+                    })
+        except Exception:
+            logger.warning("knowledge_retrieval_failed", exc_info=True)
+        messages.append({"role": "user", "content": prompt})
 
         execution_id: Optional[str] = None
         full_output: List[str] = []
@@ -723,8 +871,8 @@ class AIEmployeeService:
                             out_tok = max(1, len(output_text) // 2)
                             await CostTracker(self.registry.session).record(
                                 user_id=mem_user_id,
-                                provider=employee.provider or "unknown",
-                                model=employee.model,
+                                provider=(override_config or agent_config).provider.value if (override_config or agent_config) else "unknown",
+                                model=(override_config or agent_config).model_id if (override_config or agent_config) else "",
                                 input_tokens=inp_tok,
                                 output_tokens=out_tok,
                                 status="success",

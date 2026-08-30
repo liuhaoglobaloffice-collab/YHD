@@ -290,6 +290,7 @@ def employee_to_model(employee: AIEmployee) -> AIEmployeeModel:
         description=employee.description,
         agent_type=employee.agent_type.value if employee.agent_type else None,
         provider=employee.provider_config.get("provider") if employee.provider_config else None,
+        model=employee.provider_config.get("model", employee.provider_config.get("model_id")) if employee.provider_config else None,
         status=employee.status.value,
         meta=metadata,
         created_at=employee.created_at,
@@ -326,6 +327,12 @@ def model_to_employee(model: AIEmployeeModel) -> AIEmployee:
     total_execution_time_seconds = metadata.pop("total_execution_time_seconds", 0.0)
     total_cost_usd = metadata.pop("total_cost_usd", 0.0)
 
+    # Reconstruct provider_config from database columns
+    provider_config = {}
+    if model.provider:
+        provider_config["provider"] = model.provider
+    if model.model:
+        provider_config["model"] = model.model
     return AIEmployee(
         id=UUID(model.id),
         name=model.name,
@@ -333,7 +340,7 @@ def model_to_employee(model: AIEmployeeModel) -> AIEmployee:
         position=Position(model.position),
         description=model.description,
         agent_type=AgentType(model.agent_type) if model.agent_type else None,
-        provider_config={"provider": model.provider} if model.provider else {},
+        provider_config=provider_config,
         status=AIEmployeeStatus(model.status),
         activated_at=activated_at,
         suspended_at=suspended_at,
