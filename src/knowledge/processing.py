@@ -65,6 +65,36 @@ class ChunkMetadata:
             "created_at": self.created_at.isoformat(),
         }
 
+    def to_chunk(self):
+        """Convert to the storage-friendly Chunk used by the Embedding Pipeline.
+
+        P2-6 chunker unification: this adapter lets chunks produced by
+        DocumentProcessor flow directly into EmbeddingPipeline without
+        re-chunking. Rich metadata (chunk_type, page, section, sheet) is
+        preserved in the Chunk metadata dict.
+        """
+        from .chunker import Chunk
+
+        meta: Dict[str, Any] = {
+            "chunk_type": self.chunk_type.value,
+            "document_version": self.document_version,
+        }
+        if self.page is not None:
+            meta["page"] = self.page
+        if self.section is not None:
+            meta["section"] = self.section
+        if self.sheet is not None:
+            meta["sheet"] = self.sheet
+        meta.update(self.metadata or {})
+
+        return Chunk(
+            chunk_id=self.chunk_id,
+            document_id=self.document_id,
+            content=self.content,
+            chunk_index=self.chunk_index,
+            metadata=meta,
+        )
+
 
 class Chunker:
     """

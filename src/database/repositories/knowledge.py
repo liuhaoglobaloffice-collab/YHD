@@ -13,7 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.database.models import (
     CompanyBrainEntityModel,
     CompanyBrainFactModel,
+    DocumentChunkModel,
     DocumentModel,
+    EmbeddingStorageModel,
     MemoryModel,
 )
 from src.database.repository import BaseRepository
@@ -431,6 +433,97 @@ class CompanyBrainFactRepository(BaseRepository[CompanyBrainFactModel]):
                 )
             )
             .values(is_active=False, updated_at=datetime.now(UTC))
+        )
+        await self.session.commit()
+        return result.rowcount
+
+
+class DocumentChunkRepository(BaseRepository[DocumentChunkModel]):
+    """Repository for DocumentChunk operations (Phase 2.2)."""
+
+    def __init__(self, session: AsyncSession):
+        super().__init__(DocumentChunkModel, session)
+
+    async def list_by_document(self, document_id: str, limit: int = 1000) -> List[DocumentChunkModel]:
+        result = await self.session.execute(
+            select(DocumentChunkModel)
+            .where(DocumentChunkModel.document_id == document_id)
+            .order_by(DocumentChunkModel.chunk_index)
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
+    async def delete_by_document(self, document_id: str) -> int:
+        from sqlalchemy import delete
+
+        result = await self.session.execute(
+            delete(DocumentChunkModel).where(DocumentChunkModel.document_id == document_id)
+        )
+        await self.session.commit()
+        return result.rowcount
+
+
+class EmbeddingStorageRepository(BaseRepository[EmbeddingStorageModel]):
+    """Repository for EmbeddingStorage operations (Phase 2.2)."""
+
+    def __init__(self, session: AsyncSession):
+        super().__init__(EmbeddingStorageModel, session)
+
+    async def find_by_document(self, document_id: str) -> List[EmbeddingStorageModel]:
+        result = await self.session.execute(
+            select(EmbeddingStorageModel)
+            .where(EmbeddingStorageModel.document_id == document_id)
+            .order_by(EmbeddingStorageModel.created_at)
+        )
+        return list(result.scalars().all())
+
+    async def find_by_chunk(self, chunk_id: str) -> Optional[EmbeddingStorageModel]:
+        result = await self.session.execute(
+            select(EmbeddingStorageModel).where(EmbeddingStorageModel.chunk_id == chunk_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def upsert(
+        self,
+        document_id: str,
+        chunk_id: str,
+        vector: List[float],
+        provider: str,
+        embedding_model: Optional[str] = None,
+    ) -> EmbeddingStorageModel:
+        from uuid import uuid4
+
+        existing = await self.find_by_chunk(chunk_id)
+        if existing:
+            existing.vector = vector
+            existing.dimension = len(vector)
+            existing.provider = provider
+            if embedding_model:
+                existing.embedding_model = embedding_model
+            await self.session.flush()
+            return existing
+
+        from datetime import UTC, datetime
+
+        record = EmbeddingStorageModel(
+            id=str(uuid4()),
+            document_id=document_id,
+            chunk_id=chunk_id,
+            vector=vector,
+            dimension=len(vector),
+            provider=provider,
+            embedding_model=embedding_model or "",
+            created_at=datetime.now(UTC),
+        )
+        self.session.add(record)
+        await self.session.flush()
+        return record
+
+    async def delete_by_document(self, document_id: str) -> int:
+        from sqlalchemy import delete
+
+        result = await self.session.execute(
+            delete(EmbeddingStorageModel).where(EmbeddingStorageModel.document_id == document_id)
         )
         await self.session.commit()
         return result.rowcount

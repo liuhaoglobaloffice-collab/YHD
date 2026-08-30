@@ -40,6 +40,10 @@ class InMemoryVectorStore:
     def __init__(self):
         self.records: List[VectorRecord] = []
 
+    def has_chunk(self, chunk_id: str) -> bool:
+        """Return True if a chunk_id already exists (idempotency check)."""
+        return any(r.chunk_id == chunk_id for r in self.records)
+
     def insert(
         self,
         document_id: str,
@@ -203,6 +207,14 @@ class SQLiteVectorStore:
                 )
             )
         return records
+
+    def has_chunk(self, chunk_id: str) -> bool:
+        """Return True if a chunk_id already exists (idempotency check)."""
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM vector_records WHERE chunk_id = ?", (chunk_id,)
+            ).fetchone()
+            return row is not None
 
     def insert(
         self,

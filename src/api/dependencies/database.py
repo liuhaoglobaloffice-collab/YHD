@@ -180,6 +180,9 @@ async def init_database():
                     "owner_user_id": "INTEGER",
                     "created_by": "INTEGER",
                 },
+                "embedding_storage": {
+                    "embedding_model": "VARCHAR(255)",
+                },
             }
             for table, columns in migrations.items():
                 cols = [

@@ -68,6 +68,14 @@ class Settings(BaseSettings):
     ollama_default_model: str = Field(default="qwen2.5:7b", description="Default Ollama model")
     ollama_timeout: int = Field(default=60, description="Ollama request timeout in seconds")
     ollama_enabled: bool = Field(default=False, description="Enable Ollama provider")
+
+    # Embedding (Phase 2.2: Embedding Pipeline)
+    embedding_provider: str = Field(
+        default="mock", description="Embedding provider name (mock/openai/self_host)"
+    )
+    embedding_model: str = Field(
+        default="", description="Embedding model name (e.g. nomic-embed-text, text-embedding-3-small)"
+    )
     jwt_secret_key: str = Field(
         default="abcdefghijklmnopqrstuvwxyz1234567890ABCDEF",
         description="MUST be set via environment variable; test/dev fallback is provided",

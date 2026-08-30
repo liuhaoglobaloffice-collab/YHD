@@ -136,19 +136,29 @@ class EmbeddingStorageModel(Base):
 
     Stores vector metadata and provider identifier in a future-friendly
     shape separate from the document payload itself.
+
+    The unique constraint on (document_id, chunk_id) provides idempotency:
+    re-embedding the same chunk updates the existing record rather than
+    creating a duplicate.
     """
 
     __tablename__ = "embedding_storage"
 
     id = Column(String(36), primary_key=True)
     document_id = Column(String(36), ForeignKey("documents.id"), nullable=True)
-    chunk_id = Column(String(36), nullable=True)
+    chunk_id = Column(String(36), nullable=False)
     vector = Column(JSON, nullable=False)
     dimension = Column(Integer, nullable=False, default=3)
     provider = Column(String(80), nullable=False, default="mock")
+    embedding_model = Column(String(255), nullable=True, comment="Embedding model name (e.g. nomic-embed-text)")
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
 
     document = relationship("DocumentModel", back_populates="embeddings")
+
+    __table_args__ = (
+        Index("idx_embedding_doc_chunk", "document_id", "chunk_id", unique=True),
+        Index("idx_embedding_provider", "provider"),
+    )
 
 
 class MemoryModel(Base):
