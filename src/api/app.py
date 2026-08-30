@@ -26,6 +26,16 @@ from src.core.lifecycle import get_lifecycle_manager
 
 logger = structlog.get_logger(__name__)
 
+# Provider status: set during initialization, consumed by health check and provider status endpoint
+_provider_status = {
+    "configured": False,
+    "provider": "uninitialized",
+    "registered_any": False,
+    "using_mock": True,
+    "production_blocked": False,
+    "environment": "development",
+}
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -269,16 +279,65 @@ async def _initialize_providers() -> None:
             type=ptype.value,
         )
 
-    # Fallback to mock if no real provider was configured
+    # Provider status: track whether we have a real provider
+    settings = get_settings()
     if not registered_any:
-        for ptype in agent_provider_types:
-            mock_provider = MockProvider()
-            mock_provider.provider_type = ptype
-            try:
-                gateway.register_provider(mock_provider)
-            except Exception:
-                pass
-        logger.info("using_mock_provider", provider=raw)
+        if settings.is_production:
+            # Production: NEVER silently use MockProvider
+            logger.critical(
+                "no_real_provider_configured",
+                provider=raw,
+                message="No real LLM provider configured. "
+                "Set LLM_PROVIDER and the corresponding API key in .env. "
+                "System will NOT produce real AI responses.",
+            )
+            # Register a sentinel that will fail clearly if called
+            for ptype in agent_provider_types:
+                sentinel = MockProvider()
+                sentinel.provider_type = ptype
+                sentinel._production_blocked = True  # Mark as production-blocked
+                try:
+                    gateway.register_provider(sentinel)
+                except Exception:
+                    pass
+        else:
+            # Development: MockProvider fallback with clear warning
+            logger.warning(
+                "using_mock_provider",
+                provider=raw,
+                message="No real LLM provider configured. "
+                "Using MockProvider for development. "
+                "Set LLM_PROVIDER and API keys in .env for real AI execution.",
+            )
+            for ptype in agent_provider_types:
+                mock_provider = MockProvider()
+                mock_provider.provider_type = ptype
+                try:
+                    gateway.register_provider(mock_provider)
+                except Exception:
+                    pass
+        # Export provider status for health check
+        provider_status = {
+            "configured": False,
+            "provider": raw,
+            "registered_any": False,
+            "using_mock": not settings.is_production,
+            "production_blocked": settings.is_production,
+            "environment": settings.app_env,
+        }
+    else:
+        provider_status = {
+            "configured": True,
+            "provider": raw,
+            "registered_any": True,
+            "using_mock": False,
+            "production_blocked": False,
+            "environment": settings.app_env,
+        }
+
+    # Store provider status as module-level variable for health check
+    import src.api.app as _app_module
+    _app_module._provider_status = provider_status
 
     # Register models for all default agents
     for agent in default_agents:

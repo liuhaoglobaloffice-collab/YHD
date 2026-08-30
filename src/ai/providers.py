@@ -582,7 +582,11 @@ class ProviderGateway:
 
 
 class MockProvider(BaseProvider):
-    """Mock provider that returns a canned response for development/testing."""
+    """Mock provider that returns a canned response for development/testing.
+
+    In production mode (when _production_blocked=True), calling complete()
+    or stream_complete() will raise an error to prevent silent mock usage.
+    """
 
     def __init__(self, config: Optional[ProviderConfig] = None):
         if config is None:
@@ -593,9 +597,16 @@ class MockProvider(BaseProvider):
             )
         super().__init__(config)
         self._request_count = 0
+        self._production_blocked = False
 
     async def complete(self, request: ProviderRequest) -> ProviderResponse:
         """Return a mock completion response."""
+        if self._production_blocked:
+            raise RuntimeError(
+                "No real LLM provider configured. "
+                "Set LLM_PROVIDER and the corresponding API key in .env. "
+                "MockProvider is blocked in production mode."
+            )
         self._request_count += 1
 
         # Extract the last user message content for the mock response
@@ -627,6 +638,12 @@ class MockProvider(BaseProvider):
 
     async def stream_complete(self, request: ProviderRequest):
         """Yield mock chunks for streaming clients."""
+        if self._production_blocked:
+            raise RuntimeError(
+                "No real LLM provider configured. "
+                "Set LLM_PROVIDER and the corresponding API key in .env. "
+                "MockProvider is blocked in production mode."
+            )
         user_msg = ""
         for msg in reversed(request.messages):
             if msg.get("role") == "user":

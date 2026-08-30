@@ -75,6 +75,7 @@ class HealthResponse(BaseModel):
     version: str
     environment: str
     timestamp: datetime
+    provider: Optional[dict] = None
 
 
 # System info

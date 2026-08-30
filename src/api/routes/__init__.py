@@ -21,6 +21,7 @@ from src.api.routes import (
     permissions,
     platforms,  # S2 - Multi-platform integration
     productization,
+    provider_status,  # P2-7: Provider status endpoint
     quotes,  # P3f - Quotation Management
     rag,  # Week 4 - RAG System
     ready,  # readiness endpoint
@@ -77,6 +78,7 @@ api_router.include_router(jarvis.router)  # Jarvis Voice Interaction
 api_router.include_router(meetings.router)  # Weekly Meeting Chat
 api_router.include_router(rag.router)  # Week 4 - RAG System
 api_router.include_router(productization.router)
+api_router.include_router(provider_status.router)  # P2-7: Provider status
 api_router.include_router(system.router)  # S6 - System overview & monitoring
 api_router.include_router(products.router)  # P3c - Product Catalog
 api_router.include_router(quotes.router)  # P3f - Quotation Management

@@ -45,3 +45,17 @@ class MockRiskAssessmentProvider(RiskAssessmentProvider, LLMProvider):
 
     async def embeddings(self, text: str, **kwargs: Any) -> List[float]:
         return [0.1, 0.2, 0.3]
+
+    async def health_check(self, timeout: float = 10.0) -> dict:
+        """Mock provider is always available (no external dependency).
+
+        Returns
+        -------
+        dict
+            ``{"provider": "mock", "status": "healthy", "detail": ...}``
+        """
+        return {
+            "provider": "mock",
+            "status": "healthy",
+            "detail": "mock provider is always available (no real LLM)",
+        }

@@ -61,3 +61,35 @@ def provider_status_from_env(provider: ProviderType) -> str:
     if provider == ProviderType.OLLAMA:
         return "healthy" if str(value).startswith(("http://", "https://")) else "degraded"
     return "healthy"
+
+
+def get_system_provider_status() -> dict:
+    """Get the overall system provider status.
+    
+    Returns a dict with:
+    - configured: bool (whether any real provider is configured)
+    - providers: list of provider statuses
+    - using_mock: bool (whether mock fallback is active)
+    - production_blocked: bool (production mode with no real provider)
+    """
+    from src.api.app import _provider_status as status
+    if status is None:
+        status = {"configured": False, "provider": "none", "registered_any": False,
+                  "using_mock": True, "production_blocked": False,
+                  "environment": "development"}
+    
+    providers = []
+    for ptype, metadata in _PROVIDER_CATALOG.items():
+        pstatus = provider_status_from_env(ptype)
+        providers.append({
+            "name": metadata["name"],
+            "type": ptype.value,
+            "status": pstatus,
+            "env_var": metadata["env_var"],
+            "models": metadata["models"],
+        })
+    
+    return {
+        **status,
+        "providers": providers,
+    }

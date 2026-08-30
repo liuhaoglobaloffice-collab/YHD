@@ -27,20 +27,25 @@ router = APIRouter(prefix="/health", tags=["health"])
 async def health_check():
     """
     Health check endpoint
-    Returns system status
+    Returns system status including provider status
     """
     settings = get_settings()
     lifecycle = get_lifecycle_manager()
 
     status = "healthy" if lifecycle.is_ready() else "unhealthy"
 
-    logger.info("health_check", status=status)
+    # Get provider status
+    from src.api.provider_catalog import get_system_provider_status
+    provider = get_system_provider_status()
+
+    logger.info("health_check", status=status, provider_configured=provider["configured"])
 
     return HealthResponse(
         status=status,
         version=__version__,
         environment=settings.app_env,
         timestamp=datetime.now(UTC),
+        provider=provider,
     )
 
 

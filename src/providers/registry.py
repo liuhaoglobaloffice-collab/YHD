@@ -26,6 +26,32 @@ def register_provider(name: str, provider_cls: Type[Union[RiskAssessmentProvider
     _REGISTRY[_normalize_name(name)] = provider_cls
 
 
+def has_provider(name: str) -> bool:
+    """Check whether a provider name is registered (or natively supported).
+
+    A provider is considered available if it has been explicitly registered
+    with ``register_provider()``, or if it is one of the built-in names
+    (mock, openai, self_host).
+
+    Parameters
+    ----------
+    name : str
+        Provider name (e.g. ``"mock"``, ``"openai"``, ``"self_host"``).
+
+    Returns
+    -------
+    bool
+        ``True`` if the provider is available, ``False`` otherwise.
+    """
+    key = _normalize_name(name)
+    if key in _REGISTRY:
+        return True
+    # Built-in names that are always available
+    if key in {"mock", "openai", "self_host"}:
+        return True
+    return False
+
+
 def get_provider(name: str = "mock") -> Union[RiskAssessmentProvider, LLMProvider]:
     """Return an instantiated provider object, defaulting to mock.
 
