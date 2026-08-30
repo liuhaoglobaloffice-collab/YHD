@@ -322,7 +322,7 @@ def test_task_executor_execution_timing():
 
 
 def test_task_executor_no_employee_assigned():
-    """Test: Task with no assigned employee returns structured result."""
+    """Test: Task with no assigned employee must fail — no silent placeholder success."""
     async def _run():
         session_factory = await create_test_session()
         async with session_factory() as session:
@@ -341,14 +341,13 @@ def test_task_executor_no_employee_assigned():
 
             assert task.status == TaskStatus.PENDING
 
-            result = await executor.execute_task(task.id, user)
+            # Should fail with clear error — no silent success
+            with pytest.raises(ExecutionError) as exc_info:
+                await executor.execute_task(task.id, user)
 
-            # Should succeed with note about no assignment
+            assert "No AI employee assigned" in str(exc_info.value)
             updated_task = await task_service.get_task(task.id, user)
-            assert updated_task.status == TaskStatus.COMPLETED
-            assert result.success is True
-            assert result.output["note"] == "No AI employee assigned. Task accepted but not executed."
-            assert result.metadata["requires_assignment"] is True
+            assert updated_task.status == TaskStatus.FAILED
 
     asyncio.run(_run())
 
@@ -526,5 +525,278 @@ def test_task_executor_execute_ready_tasks():
             # After execution, task3 should be completed
             updated = await task_service.get_task(task3.id, user)
             assert updated.status == TaskStatus.COMPLETED
+
+    asyncio.run(_run())
+
+
+# ============================================================================
+# Context passing tests
+# ============================================================================
+
+
+def test_task_executor_context_passed_to_employee():
+    """Test: context parameter is passed through to AIEmployeeService.execute_task."""
+    async def _run():
+        session_factory = await create_test_session()
+        async with session_factory() as session:
+            task_service = TaskService(session)
+            user = create_test_user()
+
+            from uuid import uuid4
+            employee_id = uuid4()
+
+            # Mock employee service that captures context_data
+            employee_service = MagicMock(spec=AIEmployeeService)
+            captured_context = {}
+
+            async def mock_execute_task(employee_id, prompt, actor_id=None,
+                                         temperature=None, max_tokens=None,
+                                         context_data=None):
+                captured_context["context_data"] = context_data
+                return {
+                    "execution_id": "ctx-test-1",
+                    "employee_id": str(employee_id),
+                    "employee_name": "Ctx Employee",
+                    "agent_type": "general",
+                    "status": "completed",
+                    "output": "Context-aware result",
+                    "error": None,
+                    "response_time_ms": 100,
+                }
+            employee_service.execute_task = AsyncMock(side_effect=mock_execute_task)
+
+            executor = TaskExecutor(
+                task_service=task_service,
+                employee_service=employee_service,
+            )
+
+            # Create task with input_data containing workflow context
+            task = await task_service.create_task(
+                title="Context Test",
+                description="Test context passing",
+                task_type=TaskType.GENERAL,
+                user=user,
+                assigned_to=[employee_id],
+                input_data={
+                    "prompt": "Execute context test",
+                    "_workflow_context": {
+                        "step_results": {"step-1": {"status": "completed", "result": "Step 1 done"}},
+                        "variables": {"market": "Vietnam"},
+                    },
+                },
+            )
+
+            # Execute with context
+            result = await executor.execute_task(task.id, user, context={"extra": "info"})
+
+            # Verify context was captured by employee_service
+            assert employee_service.execute_task.called
+            call_kwargs = employee_service.execute_task.call_args[1]
+            assert "context_data" in call_kwargs, "context_data should be in execute_task call"
+            ctx = call_kwargs["context_data"]
+            assert ctx is not None, "context_data should not be None"
+            assert "step_results" in ctx, "context_data should contain step_results"
+            assert "step-1" in ctx["step_results"]
+
+            # Verify result is successful
+            assert result.success is True
+            assert result.output is not None
+
+    asyncio.run(_run())
+
+
+def test_task_executor_no_workflow_context_unchanged():
+    """Test: Task without workflow context executes normally (backward compatible)."""
+    async def _run():
+        session_factory = await create_test_session()
+        async with session_factory() as session:
+            task_service = TaskService(session)
+            user = create_test_user()
+
+            from uuid import uuid4
+            employee_id = uuid4()
+
+            # Mock employee service
+            employee_service = MagicMock(spec=AIEmployeeService)
+            employee_service.execute_task = AsyncMock(return_value={
+                "execution_id": "no-ctx-test",
+                "employee_id": str(employee_id),
+                "employee_name": "NoCtx Employee",
+                "agent_type": "general",
+                "status": "completed",
+                "output": "Normal result without context",
+                "error": None,
+                "response_time_ms": 100,
+            })
+
+            executor = TaskExecutor(
+                task_service=task_service,
+                employee_service=employee_service,
+            )
+
+            # Create task WITHOUT workflow context
+            task = await task_service.create_task(
+                title="Normal Task",
+                description="No workflow context",
+                task_type=TaskType.GENERAL,
+                user=user,
+                assigned_to=[employee_id],
+                input_data={"prompt": "Execute normal task"},
+            )
+
+            # Execute without context
+            result = await executor.execute_task(task.id, user)
+
+            # Verify employee_service was called without context_data
+            call_kwargs = employee_service.execute_task.call_args[1]
+            assert "context_data" in call_kwargs
+            assert call_kwargs["context_data"] is None, (
+                "context_data should be None when no workflow context exists"
+            )
+
+            # Verify result is successful
+            assert result.success is True
+            assert result.output["output"] == "Normal result without context"
+
+    asyncio.run(_run())
+
+
+# ============================================================================
+# TaskService.complete_task / fail_task audit & event tests
+# ============================================================================
+
+
+def test_complete_task_audit_and_event():
+    """Test that complete_task writes audit log and publishes event."""
+    async def _run():
+        session_factory = await create_test_session()
+        async with session_factory() as session:
+            from sqlalchemy import select
+            from src.core.events import EventBus
+            from src.identity.audit import AuditService, AuditAction
+
+            # Use real AuditService and EventBus
+            audit_service = AuditService()
+            event_bus = EventBus()
+            captured_events = []
+            original_publish = event_bus.publish
+
+            def capturing_publish(event):
+                captured_events.append(event)
+                original_publish(event)
+            event_bus.publish = capturing_publish
+
+            task_service = TaskService(
+                session=session,
+                audit_service=audit_service,
+                event_bus=event_bus,
+            )
+            user = create_test_user()
+
+            task = await task_service.create_task(
+                title="Complete Me",
+                description="Task to complete",
+                task_type=TaskType.GENERAL,
+                user=user,
+            )
+
+            # Complete task
+            result_data = {"output": "done", "metrics": {"accuracy": 0.95}}
+            completed_task = await task_service.complete_task(task.id, result_data, user)
+
+            # 1. Verify status persisted
+            assert completed_task.status == TaskStatus.COMPLETED
+            db_task = await task_service.get_task(task.id, user)
+            assert db_task.status == TaskStatus.COMPLETED
+
+            # 2. Verify audit log was created
+            from src.identity.models import AuditLog
+            stmt = select(AuditLog).where(
+                AuditLog.resource_type == "task",
+                AuditLog.resource_id == str(task.id),
+            )
+            result = await session.execute(stmt)
+            audit_logs = list(result.scalars().all())
+            assert len(audit_logs) >= 1
+            complete_audit = next(
+                (a for a in audit_logs if a.details and a.details.get("action") == "complete"),
+                None,
+            )
+            assert complete_audit is not None, "No 'complete' audit log found"
+            assert complete_audit.status == "success"
+
+            # 3. Verify event was published
+            task_completed_events = [e for e in captured_events if e.name == "task.completed"]
+            assert len(task_completed_events) >= 1
+            assert task_completed_events[0].data["task_id"] == str(task.id)
+
+    asyncio.run(_run())
+
+
+def test_fail_task_audit_and_event():
+    """Test that fail_task writes audit log and publishes event."""
+    async def _run():
+        session_factory = await create_test_session()
+        async with session_factory() as session:
+            from sqlalchemy import select
+            from src.core.events import EventBus
+            from src.identity.audit import AuditService
+
+            audit_service = AuditService()
+            event_bus = EventBus()
+            captured_events = []
+            original_publish = event_bus.publish
+
+            def capturing_publish(event):
+                captured_events.append(event)
+                original_publish(event)
+            event_bus.publish = capturing_publish
+
+            task_service = TaskService(
+                session=session,
+                audit_service=audit_service,
+                event_bus=event_bus,
+            )
+            user = create_test_user()
+
+            task = await task_service.create_task(
+                title="Fail Me",
+                description="Task to fail",
+                task_type=TaskType.GENERAL,
+                user=user,
+            )
+
+            # Fail task
+            error_msg = "Something went wrong"
+            failed_task = await task_service.fail_task(task.id, error_msg, user)
+
+            # 1. Verify status persisted
+            assert failed_task.status == TaskStatus.FAILED
+            assert failed_task.error == error_msg
+            db_task = await task_service.get_task(task.id, user)
+            assert db_task.status == TaskStatus.FAILED
+            assert db_task.error == error_msg
+
+            # 2. Verify audit log was created
+            from src.identity.models import AuditLog
+            stmt = select(AuditLog).where(
+                AuditLog.resource_type == "task",
+                AuditLog.resource_id == str(task.id),
+            )
+            result = await session.execute(stmt)
+            audit_logs = list(result.scalars().all())
+            assert len(audit_logs) >= 1
+            fail_audit = next(
+                (a for a in audit_logs if a.details and a.details.get("action") == "fail"),
+                None,
+            )
+            assert fail_audit is not None, "No 'fail' audit log found"
+            assert fail_audit.status == "failure"
+
+            # 3. Verify event was published
+            task_failed_events = [e for e in captured_events if e.name == "task.failed"]
+            assert len(task_failed_events) >= 1
+            assert task_failed_events[0].data["task_id"] == str(task.id)
+            assert task_failed_events[0].data["error"] == error_msg
 
     asyncio.run(_run())

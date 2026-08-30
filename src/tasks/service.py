@@ -63,6 +63,7 @@ class TaskService:
         metadata: Optional[Dict[str, Any]] = None,
         tags: Optional[List[str]] = None,
         deadline: Optional[Any] = None,
+        max_retries: int = 3,
     ) -> Task:
         """
         Create a new task
@@ -120,6 +121,7 @@ class TaskService:
             metadata=metadata or {},
             tags=tags or [],
             deadline=deadline,
+            max_retries=max_retries,
         )
 
         # Store in database
@@ -199,7 +201,7 @@ class TaskService:
         task_type_str = payload.get("task_type", "other")
         try:
             task_type = TaskType(task_type_str)
-        except Exception:
+        except ValueError:
             task_type = TaskType.OTHER
 
         title = payload.get("title", "Task from assessment")
@@ -592,6 +594,39 @@ class TaskService:
         # Convert model to dict (exclude SQLAlchemy internal attrs)
         model_dict = {k: v for k, v in vars(model).items() if not k.startswith("_")}
         await self.repo.update(str(task_id), model_dict)
+
+        # Audit
+        await self.audit_service.log(
+            self.session,
+            action=AuditAction.UPDATE,
+            resource_type="task",
+            resource_id=task.id,
+            user_id=user.id,
+            details={
+                "action": "complete",
+                "result": result,
+            },
+            status="success",
+        )
+
+        # Event
+        self.event_bus.publish(
+            Event(
+                name="task.completed",
+                data={
+                    "task_id": str(task.id),
+                    "title": task.title,
+                },
+            )
+        )
+
+        logger.info(
+            "task_completed",
+            task_id=task.id,
+            title=task.title,
+            user_id=user.id,
+        )
+
         return task
 
     async def fail_task(
@@ -620,4 +655,39 @@ class TaskService:
         # Convert model to dict (exclude SQLAlchemy internal attrs)
         model_dict = {k: v for k, v in vars(model).items() if not k.startswith("_")}
         await self.repo.update(str(task_id), model_dict)
+
+        # Audit
+        await self.audit_service.log(
+            self.session,
+            action=AuditAction.UPDATE,
+            resource_type="task",
+            resource_id=task.id,
+            user_id=user.id,
+            details={
+                "action": "fail",
+                "error": error,
+            },
+            status="failure",
+        )
+
+        # Event
+        self.event_bus.publish(
+            Event(
+                name="task.failed",
+                data={
+                    "task_id": str(task.id),
+                    "title": task.title,
+                    "error": error,
+                },
+            )
+        )
+
+        logger.info(
+            "task_failed",
+            task_id=task.id,
+            title=task.title,
+            error=error,
+            user_id=user.id,
+        )
+
         return task

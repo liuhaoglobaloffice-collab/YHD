@@ -17,7 +17,7 @@ from src.ai.command_processor import CEOCommandProcessor
 from src.ai.models import ParsedCommand
 from src.ai.planner import IntelligentPlanner
 from src.ai.workflow_bridge import WorkflowBridge
-from src.database.models import GoalModel, FailureRecordModel
+from src.database.models import GoalModel, TaskModel
 from src.identity.models import User
 
 logger = logging.getLogger(__name__)
@@ -174,6 +174,8 @@ class GoalService:
         # 根据执行结果更新 Goal 状态
         from src.workflow.models import WorkflowExecutionStatus
         if execution.status == WorkflowExecutionStatus.COMPLETED:
+            # 深检查：确保没有 Task 在 Workflow COMPLETED 时仍为 FAILED
+            await self._verify_no_failed_tasks(workflow_id)
             goal.progress_pct = 100.0
             goal.status = "completed"
             goal.completed_at = datetime.now(UTC)
@@ -191,7 +193,6 @@ class GoalService:
                     "status": "failed",
                     "error": execution.error,
                 }
-            if goal.plan_data:
                 goal.plan_data["failure_reason"] = execution.error
         else:
             # 还在运行中，只更新进度
@@ -233,6 +234,8 @@ class GoalService:
         goal = await self.session.get(GoalModel, goal_id)
         if not goal:
             raise ValueError("目标不存在")
+        if goal.status in ("completed", "cancelled", "failed"):
+            raise ValueError(f"目标已经是终态，不允许回退: {goal.status}")
         goal.status = "failed"
         if goal.plan_data:
             goal.plan_data["failure_reason"] = reason
@@ -245,6 +248,8 @@ class GoalService:
         goal = await self.session.get(GoalModel, goal_id)
         if not goal:
             raise ValueError("目标不存在")
+        if goal.status in ("completed", "cancelled", "failed"):
+            raise ValueError(f"目标已经是终态，不允许取消: {goal.status}")
         goal.status = "cancelled"
         await self.session.commit()
         await self.session.refresh(goal)
@@ -284,6 +289,27 @@ class GoalService:
             "page": page,
             "page_size": page_size,
         }
+
+    async def _verify_no_failed_tasks(self, workflow_id: str) -> None:
+        """深检查：Workflow COMPLETED 时确保没有 Task 为 FAILED 状态。"""
+        from sqlalchemy import select
+        query = select(TaskModel).where(
+            TaskModel.workflow_id == workflow_id,
+            TaskModel.status == "failed",
+        )
+        result = await self.session.execute(query)
+        failed_tasks = list(result.scalars().all())
+        if failed_tasks:
+            logger.error(
+                "goal_workflow_inconsistent_state",
+                workflow_id=workflow_id,
+                failed_task_count=len(failed_tasks),
+                failed_task_ids=[t.id for t in failed_tasks],
+            )
+            raise RuntimeError(
+                f"Workflow COMPLETED but {len(failed_tasks)} task(s) are FAILED. "
+                "State inconsistency detected — goal cannot be marked completed."
+            )
 
     def _to_dict(self, goal: GoalModel) -> Dict[str, Any]:
         return {

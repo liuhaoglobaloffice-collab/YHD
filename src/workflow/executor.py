@@ -7,6 +7,7 @@ Execute workflow definitions with different patterns (sequential, parallel, cond
 """
 
 import asyncio
+import json
 from datetime import UTC, datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
@@ -14,7 +15,7 @@ from uuid import UUID
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.ai.recovery import FailureCategory, RecoveryChain, StrategyAction
+from src.ai.recovery import RecoveryChain, StrategyAction
 from src.ai.recovery_executor import RecoveryExecutor
 from src.core.di import get_dependency
 from src.core.events import Event, EventBus
@@ -39,8 +40,8 @@ logger = structlog.get_logger(__name__)
 # 单个步骤执行超时（秒），防止长时间任务阻塞
 STEP_TIMEOUT_SECONDS = 300  # 5 分钟
 
-# 失败恢复最大重试次数
-MAX_RECOVERY_RETRIES = 3
+# 工作流上下文序列化安全限制（字符数）
+MAX_CONTEXT_CHARS = 10000
 
 
 class WorkflowExecutor:
@@ -286,11 +287,12 @@ class WorkflowExecutor:
                         # Step 3: 如果策略是 RETRY 且未超过阈值，重新执行工作流
                         if strategy == StrategyAction.RETRY and strategy_result.success:
                             retry_count = record.retry_count
+                            max_retries = self._recovery.SAFETY_THRESHOLDS["max_retries"]
                             logger.info(
                                 "workflow_recovery_retry",
                                 workflow_id=str(workflow_id),
                                 attempt=retry_count,
-                                max_retries=MAX_RECOVERY_RETRIES,
+                                max_retries=max_retries,
                             )
                             # 重置执行状态，重新执行
                             execution.status = WorkflowExecutionStatus.RUNNING
@@ -570,15 +572,46 @@ class WorkflowExecutor:
     ) -> Any:
         config = step.task_config or {}
 
-        # Create task via TaskService
+        # ── 注入 workflow context 到 task input_data ──
+        input_data = dict(config.get("input_data", {}))
+        if execution.variables is not None:
+            # 安全上下文：只暴露非内部控制字段
+            safe_context = {
+                k: v for k, v in execution.variables.items() if not k.startswith("_")
+            }
+            input_data["_workflow_context"] = {
+                "step_results": dict(execution.step_results),
+                "variables": safe_context,
+            }
+            # 如果存在前序步骤结果且当前没有显式 prompt，自动构建含上下文的 prompt
+            if not input_data.get("prompt") and execution.step_results:
+                context_summary = self._build_step_context(execution.step_results)
+                if context_summary:
+                    input_data["prompt"] = (
+                        f"前序步骤已完成，结果如下：\n\n{context_summary}\n\n"
+                        f"请基于以上上下文完成当前任务：{step.name}"
+                    )
+
+        # Create task via TaskService (with workflow context injected)
+        # Parse assigned_to from config if present (for workflow-level employee assignment)
+        task_assigned_to = None
+        raw_assigned = config.get("assigned_to")
+        if raw_assigned:
+            task_assigned_to = [UUID(a) if isinstance(a, str) else a for a in raw_assigned]
+        # Also check for employee_id from WorkflowBridge step config
+        raw_employee_id = config.get("employee_id")
+        if raw_employee_id and not task_assigned_to:
+            task_assigned_to = [UUID(raw_employee_id) if isinstance(raw_employee_id, str) else raw_employee_id]
+
         task = await self.task_service.create_task(
             title=step.name,
             description=config.get("description", ""),
             task_type=TaskType(config.get("task_type", "general")),
             user=user,
             priority=TaskPriority(config.get("priority", "medium")),
+            assigned_to=task_assigned_to,
             workflow_id=execution.workflow_id,
-            input_data=config.get("input_data", {}),
+            input_data=input_data,
             metadata={
                 "execution_id": str(execution.execution_id),
                 "step_id": step.step_id,
@@ -595,7 +628,7 @@ class WorkflowExecutor:
         # Execute the task via TaskExecutor if available
         if self.task_executor:
             try:
-                result = await self.task_executor.execute_task(task.id, user)
+                result = await self.task_executor.execute_task(task.id, user, context=input_data)
                 logger.info(
                     "task_step_executed",
                     step_id=step.step_id,
@@ -606,13 +639,31 @@ class WorkflowExecutor:
                 # If the task executor returned a failure, propagate to fail the workflow
                 if not result.success:
                     error_msg = result.error or "Task execution returned failure"
+                    # 写入失败结果，不留伪造的 completed
+                    step_result = {
+                        "task_id": str(task.id),
+                        "status": "failed",
+                        "result": result.output,
+                        "error": error_msg,
+                    }
+                    execution.mark_step_failed(step.step_id, error_msg)
+                    execution.variables[f"_step_{step.step_id}"] = {"error": error_msg}
+                    await self._persist_execution(execution)
                     raise RuntimeError(error_msg)
-                return {
+
+                # ── 成功：写入 step_results 和 variables ──
+                step_result = {
                     "task_id": str(task.id),
                     "status": result.metadata.get("task_status", "completed"),
                     "result": result.output,
                     "error": result.error,
                 }
+                execution.record_step_result(step.step_id, step_result)
+                # 将步骤输出写入 variables 供后续步骤读取
+                execution.variables[f"_step_{step.step_id}"] = result.output
+                # 持久化中间状态
+                await self._persist_execution(execution)
+                return step_result
             except Exception as e:
                 error_msg = str(e)
                 logger.error(
@@ -711,3 +762,41 @@ class WorkflowExecutor:
 
         # Fail Closed: Unknown condition format defaults to False
         return False
+
+    def _build_step_context(self, step_results: Dict[str, Any]) -> str:
+        """Build a human-readable summary of previous step results for context injection.
+
+        Args:
+            step_results: Dict mapping step_id to step result dicts
+
+        Returns:
+            Truncated string summary of previous step outputs
+        """
+        parts = []
+        total_len = 0
+        for step_id, result in step_results.items():
+            if isinstance(result, dict):
+                output = result.get("result") or result.get("output", "")
+                status = result.get("status", "completed")
+                name = result.get("name", step_id)
+            else:
+                output = str(result) if result else ""
+                status = "completed"
+                name = step_id
+
+            if isinstance(output, dict):
+                try:
+                    output = json.dumps(output, ensure_ascii=False, default=str)
+                except (TypeError, ValueError):
+                    output = str(output)
+
+            entry = f"[{name}] (status: {status}):\n{output}"
+            if total_len + len(entry) > MAX_CONTEXT_CHARS:
+                remaining = MAX_CONTEXT_CHARS - total_len
+                if remaining > 100:
+                    parts.append(entry[:remaining] + "...[截断]")
+                break
+            parts.append(entry)
+            total_len += len(entry)
+
+        return "\n\n".join(parts)

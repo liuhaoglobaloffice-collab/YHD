@@ -14,11 +14,9 @@ Recovery Executor — 自动执行失败恢复策略
 import logging
 from datetime import UTC, datetime
 from typing import Any, Dict, Optional
-from uuid import UUID, uuid4
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.ai.recovery import FailureCategory, RecoveryChain, StrategyAction
+from src.ai.recovery import RecoveryChain, StrategyAction
 from src.database.models import FailureRecordModel
 
 logger = logging.getLogger(__name__)

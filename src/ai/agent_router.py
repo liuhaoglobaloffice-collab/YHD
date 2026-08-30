@@ -118,30 +118,18 @@ class AgentRouter:
                     reason=f"Selected {employee.name} from {mapping['department'].value}",
                 )
             else:
-                # No employee found, create placeholder assignment
-                assignment = AgentAssignment(
-                    task_id=task_id,
-                    task_description=task.get("description", task["name"]),
-                    agent_type=agent_type,
-                    confidence=0.5,
-                    reason=f"No {agent_type} employee available, will create dynamically",
+                # ⚠️ 不允许无员工时静默创建 placeholder 并声称任务完成
+                error_msg = (
+                    f"No {agent_type} AI employee available for task '{task.get('name', 'unknown')}'. "
+                    "Register an AI employee with the required department/position before activating goals."
                 )
-
-                logger.warning(
-                    f"No {agent_type} employee found for task {task_id}, "
-                    "assignment created without employee"
-                )
+                logger.error(error_msg)
+                raise ValueError(error_msg)
 
         except Exception as e:
             logger.error(f"Error routing task {task_id}: {e}")
-            # Fallback assignment
-            assignment = AgentAssignment(
-                task_id=task_id,
-                task_description=task.get("description", task["name"]),
-                agent_type=agent_type,
-                confidence=0.0,
-                reason=f"Routing error: {str(e)}",
-            )
+            # ⚠️ 不允许掩盖路由错误，必须向上传播
+            raise ValueError(f"Failed to route task '{task.get('name', 'unknown')}': {e}") from e
 
         return assignment
 

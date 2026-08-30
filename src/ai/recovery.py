@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import select, desc
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models import FailureRecordModel

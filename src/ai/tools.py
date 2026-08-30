@@ -279,12 +279,10 @@ class ToolRegistry:
                     return execution
 
         # Check policy
-        policy_decision = await self._policy_engine.evaluate(
-            resource_type="tool",
-            resource_id=tool_id,
+        policy_decision = self._policy_engine.evaluate(
+            resource="tool",
             action="execute",
-            actor_id=actor_id,
-            context={"agent_type": agent_type, "parameters": parameters, "trace_id": str(trace_id)},
+            context={"agent_type": agent_type, "parameters": parameters, "trace_id": str(trace_id), "tool_id": tool_id, "actor_id": str(actor_id) if actor_id else None},
         )
 
         if policy_decision.action != PolicyAction.ALLOW:

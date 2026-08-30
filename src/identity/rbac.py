@@ -678,6 +678,19 @@ class RBACService:
         self.session = session
         logger.debug("rbac_service_initialized")
 
+    def has_permission(self, user: User, permission: Permission) -> bool:
+        """
+        Synchronous permission check using the standalone has_permission function.
+
+        Args:
+            user: User to check
+            permission: Permission enum
+
+        Returns:
+            bool: Whether user has permission
+        """
+        return has_permission(user, permission)
+
     async def check_permission(
         self,
         user: User,

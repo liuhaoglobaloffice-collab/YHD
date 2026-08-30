@@ -108,6 +108,12 @@ class PolicyEngine:
             "allowed_tools": [],  # Empty = none allowed
         }
 
+        # Tool execution (enabled by default; security handled by ToolRegistry)
+        self._policies["tool"] = {
+            "enabled": True,
+            "require_approval": False,
+        }
+
         logger.info("policy_engine_initialized", policies=list(self._policies.keys()))
 
     def evaluate(

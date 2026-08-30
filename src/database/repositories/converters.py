@@ -202,6 +202,8 @@ def task_to_model(task: Task) -> TaskModel:
             if task.dependencies
             else None
         ),
+        retry_count=task.retry_count,
+        max_retries=task.max_retries,
         input_data=task.input_data,
         result_data=task.result.output if task.result else None,
         error=task.result.error if task.result else task.error,
@@ -248,6 +250,8 @@ def model_to_task(model: TaskModel) -> Task:
         workflow_id=UUID(model.workflow_id) if model.workflow_id else None,
         parent_task_id=UUID(model.parent_task_id) if model.parent_task_id else None,
         dependencies=dependencies,
+        retry_count=model.retry_count or 0,
+        max_retries=model.max_retries or 3,
         input_data=model.input_data or {},
         result=result,
         error=model.error,

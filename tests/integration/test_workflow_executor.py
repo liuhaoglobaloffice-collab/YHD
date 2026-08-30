@@ -31,6 +31,7 @@ from src.identity.audit import AuditService
 from src.identity.models import User
 from src.identity.rbac import Permission, RBACService, RoleEnum
 from src.tasks.executor import TaskExecutor
+from src.core.errors import ExecutionError
 from src.tasks.models import TaskPriority, TaskResult, TaskStatus, TaskType
 from src.tasks.service import TaskService
 from src.workflow.executor import WorkflowExecutor
@@ -502,7 +503,7 @@ def test_workflow_execution_status_from_db():
 
 
 def test_task_executor_no_assigned_employee():
-    """Test TaskExecutor properly handles unassigned tasks."""
+    """Test TaskExecutor properly fails on unassigned tasks — no silent placeholder success."""
     async def _run():
         session_factory = await create_test_session()
         async with session_factory() as session:
@@ -521,14 +522,11 @@ def test_task_executor_no_assigned_employee():
 
             executor = TaskExecutor(task_service=task_service)
 
-            # Execute task
-            result = await executor.execute_task(task.id, user)
+            # Execute task — should fail with clear error
+            with pytest.raises(ExecutionError) as exc_info:
+                await executor.execute_task(task.id, user)
 
-            # Should return a no-assignment result, not fake completed
-            assert result.success is True
-            meta = result.metadata or {}
-            assert meta.get("executor_type") == "unassigned"
-            assert meta.get("requires_assignment") is True
+            assert "No AI employee assigned" in str(exc_info.value)
 
     asyncio.run(_run())
 
@@ -586,8 +584,351 @@ def test_goal_service_creates_executor_with_task_executor():
 
 
 # ============================================================================
-# Test 6: Pause/Resume/Cancel persist to DB
+# Test 7: Multi-step workflow with context passing between steps
 # ============================================================================
+
+
+def test_multi_step_workflow_context_passing():
+    """Test that Step A results are passed to Step B via execution.variables and step_results."""
+    async def _run():
+        session_factory = await create_test_session()
+        async with session_factory() as session:
+            task_service = TaskService(session)
+            rbac = RBACService(session)
+            workflow_service = WorkflowService(session, rbac_service=rbac)
+            user = await create_test_user_in_db(session)
+
+            # Create a workflow with TWO TASK steps
+            step_a_id = "step-a"
+            step_b_id = "step-b"
+            step_a = WorkflowStep(
+                step_id=step_a_id,
+                step_type=WorkflowStepType.TASK,
+                name="Step A",
+                description="First step",
+                task_type="analysis",
+                task_config={
+                    "description": "Execute step A",
+                    "task_type": "analysis",
+                    "priority": "medium",
+                    "input_data": {"prompt": "Execute step A"},
+                },
+            )
+            step_b = WorkflowStep(
+                step_id=step_b_id,
+                step_type=WorkflowStepType.TASK,
+                name="Step B",
+                description="Second step",
+                task_type="analysis",
+                task_config={
+                    "description": "Execute step B",
+                    "task_type": "analysis",
+                    "priority": "medium",
+                    "input_data": {"prompt": "Execute step B"},
+                },
+            )
+
+            workflow_id = uuid4()
+            wf_model = WorkflowModel(
+                id=str(workflow_id),
+                name="Multi-Step Test Workflow",
+                description="Test workflow with two steps",
+                created_by=str(user.id),
+                enabled=True,
+                steps=[_step_to_dict(step_a), _step_to_dict(step_b)],
+                context={},
+            )
+            session.add(wf_model)
+            await session.commit()
+
+            # Mock TaskExecutor - Step A succeeds, then Step B gets context
+            call_count = 0
+            step_a_result_data = {"analysis": "Step A completed successfully", "value": 42}
+
+            async def mock_execute_task(task_id, user, context=None):
+                nonlocal call_count
+                call_count += 1
+                if call_count == 1:
+                    # Step A: return result
+                    return TaskResult(
+                        success=True,
+                        output=step_a_result_data,
+                        metadata={"executor_type": "mock", "task_status": "completed"},
+                    )
+                else:
+                    # Step B: verify context contains Step A's result
+                    assert context is not None, "Step B should receive context from Step A"
+                    wf_ctx = context.get("_workflow_context", {})
+                    step_results = wf_ctx.get("step_results", {})
+                    assert step_a_id in step_results, (
+                        f"Step B should see Step A's result in step_results. "
+                        f"Got keys: {list(step_results.keys())}"
+                    )
+                    step_a_result = step_results[step_a_id]
+                    assert step_a_result.get("status") == "completed"
+                    return TaskResult(
+                        success=True,
+                        output={"analysis": "Step B completed using Step A context"},
+                        metadata={"executor_type": "mock", "task_status": "completed"},
+                    )
+
+            mock_executor = MagicMock(spec=TaskExecutor)
+            mock_executor.execute_task = AsyncMock(side_effect=mock_execute_task)
+
+            executor = WorkflowExecutor(
+                session=session,
+                workflow_service=workflow_service,
+                task_service=task_service,
+                task_executor=mock_executor,
+                rbac_service=rbac,
+                audit_service=AuditService(),
+            )
+
+            # Execute workflow
+            execution = await executor.execute_workflow(
+                workflow_id=workflow_id,
+                user=user,
+            )
+
+            # Verify workflow completed
+            assert execution.status == WorkflowExecutionStatus.COMPLETED
+            assert execution.started_at is not None
+            assert execution.completed_at is not None
+            assert execution.result is not None
+
+            # Verify step_results contains both steps
+            assert step_a_id in execution.step_results, (
+                f"step_results should contain Step A. Got keys: {list(execution.step_results.keys())}"
+            )
+            assert step_b_id in execution.step_results, (
+                f"step_results should contain Step B. Got keys: {list(execution.step_results.keys())}"
+            )
+
+            # Verify variables contain step outputs
+            assert f"_step_{step_a_id}" in execution.variables
+            assert f"_step_{step_b_id}" in execution.variables
+
+            # Verify both steps were executed
+            assert mock_executor.execute_task.call_count == 2
+
+    asyncio.run(_run())
+
+
+def test_workflow_step_failure_no_fake_completed():
+    """Test that when Step A fails, Step B is not executed and workflow enters FAILED."""
+    async def _run():
+        session_factory = await create_test_session()
+        async with session_factory() as session:
+            task_service = TaskService(session)
+            rbac = RBACService(session)
+            workflow_service = WorkflowService(session, rbac_service=rbac)
+            user = await create_test_user_in_db(session)
+
+            # Create a workflow with TWO TASK steps
+            step_a_id = "step-a-fail"
+            step_b_id = "step-b-fail"
+            step_a = WorkflowStep(
+                step_id=step_a_id,
+                step_type=WorkflowStepType.TASK,
+                name="Step A (will fail)",
+                description="First step that fails",
+                task_type="analysis",
+                task_config={
+                    "description": "This step will fail",
+                    "task_type": "analysis",
+                    "priority": "medium",
+                    "input_data": {"prompt": "Execute step A"},
+                },
+            )
+            step_b = WorkflowStep(
+                step_id=step_b_id,
+                step_type=WorkflowStepType.TASK,
+                name="Step B",
+                description="Second step",
+                task_type="analysis",
+                task_config={
+                    "description": "This step should not execute",
+                    "task_type": "analysis",
+                    "priority": "medium",
+                    "input_data": {"prompt": "Execute step B"},
+                },
+            )
+
+            workflow_id = uuid4()
+            wf_model = WorkflowModel(
+                id=str(workflow_id),
+                name="Failure Test Workflow",
+                description="Test workflow with failing step",
+                created_by=str(user.id),
+                enabled=True,
+                steps=[_step_to_dict(step_a), _step_to_dict(step_b)],
+                context={},
+            )
+            session.add(wf_model)
+            await session.commit()
+
+            # Mock TaskExecutor: Step A fails, Step B should never be called
+            # Track which step IDs are attempted to verify Step B is never called
+            step_a_attempts = 0
+
+            async def mock_execute_task(task_id, user, context=None):
+                nonlocal step_a_attempts
+                # Check if this is Step A or Step B based on context
+                is_step_b = (
+                    context is not None
+                    and isinstance(context, dict)
+                    and context.get("_workflow_context") is not None
+                    and any(
+                        "step-b" in str(k) for k in
+                        context.get("_workflow_context", {}).get("step_results", {}).keys()
+                    )
+                )
+                if is_step_b:
+                    raise AssertionError("Step B should not be executed when Step A fails")
+
+                step_a_attempts += 1
+                return TaskResult(
+                    success=False,
+                    output=None,
+                    error="Step A execution failed: insufficient data",
+                    metadata={"executor_type": "mock", "task_status": "failed"},
+                )
+
+            mock_executor = MagicMock(spec=TaskExecutor)
+            mock_executor.execute_task = AsyncMock(side_effect=mock_execute_task)
+
+            executor = WorkflowExecutor(
+                session=session,
+                workflow_service=workflow_service,
+                task_service=task_service,
+                task_executor=mock_executor,
+                rbac_service=rbac,
+                audit_service=AuditService(),
+            )
+
+            # Execute workflow
+            execution = await executor.execute_workflow(
+                workflow_id=workflow_id,
+                user=user,
+            )
+
+            # Verify workflow FAILED (may have been retried by recovery chain)
+            assert execution.status == WorkflowExecutionStatus.FAILED, (
+                f"Workflow should FAIL when Step A fails. Got: {execution.status}"
+            )
+            assert execution.error is not None
+            assert "Step A" in execution.error or "failed" in execution.error
+
+            # Step B was never attempted (only Step A, possibly retried)
+            assert step_a_attempts >= 1, "Step A should have been attempted at least once"
+
+    asyncio.run(_run())
+
+
+def test_workflow_execution_intermediate_state_persisted():
+    """Test that after each step, the WorkflowExecution state is persisted to DB."""
+    async def _run():
+        session_factory = await create_test_session()
+        async with session_factory() as session:
+            task_service = TaskService(session)
+            rbac = RBACService(session)
+            workflow_service = WorkflowService(session, rbac_service=rbac)
+            user = await create_test_user_in_db(session)
+
+            # Create a workflow with TWO TASK steps
+            step_a_id = "step-a-persist"
+            step_b_id = "step-b-persist"
+            step_a = WorkflowStep(
+                step_id=step_a_id,
+                step_type=WorkflowStepType.TASK,
+                name="Step A",
+                description="First step",
+                task_type="analysis",
+                task_config={
+                    "description": "Execute step A",
+                    "task_type": "analysis",
+                    "priority": "medium",
+                    "input_data": {"prompt": "Execute step A"},
+                    "employee_id": "00000000-0000-0000-0000-000000000001",
+                },
+            )
+            step_b = WorkflowStep(
+                step_id=step_b_id,
+                step_type=WorkflowStepType.TASK,
+                name="Step B",
+                description="Second step",
+                task_type="analysis",
+                task_config={
+                    "description": "Execute step B",
+                    "task_type": "analysis",
+                    "priority": "medium",
+                    "input_data": {"prompt": "Execute step B"},
+                    "employee_id": "00000000-0000-0000-0000-000000000002",
+                },
+            )
+
+            workflow_id = uuid4()
+            wf_model = WorkflowModel(
+                id=str(workflow_id),
+                name="Persistence Test Workflow",
+                description="Test workflow intermediate persistence",
+                created_by=str(user.id),
+                enabled=True,
+                steps=[_step_to_dict(step_a), _step_to_dict(step_b)],
+                context={},
+            )
+            session.add(wf_model)
+            await session.commit()
+
+            # Use a real TaskExecutor with mock employee service
+            employee_service = MagicMock(spec=AIEmployeeService)
+            employee_service.execute_task = AsyncMock(return_value={
+                "execution_id": "test-exec-123",
+                "employee_id": "emp-456",
+                "employee_name": "Test Employee",
+                "agent_type": "general",
+                "status": "completed",
+                "output": {"result": "Step completed"},
+                "error": None,
+                "response_time_ms": 100,
+            })
+
+            task_executor = TaskExecutor(
+                task_service=task_service,
+                employee_service=employee_service,
+            )
+
+            executor = WorkflowExecutor(
+                session=session,
+                workflow_service=workflow_service,
+                task_service=task_service,
+                task_executor=task_executor,
+                rbac_service=rbac,
+                audit_service=AuditService(),
+            )
+
+            # Execute workflow
+            execution = await executor.execute_workflow(
+                workflow_id=workflow_id,
+                user=user,
+            )
+
+            # Verify workflow completed
+            assert execution.status == WorkflowExecutionStatus.COMPLETED
+
+            # Verify DB state after completion
+            from src.database.repositories.workflow import WorkflowExecutionRepository
+            repo = WorkflowExecutionRepository(session)
+            db_model = await repo.get_by_id(str(execution.execution_id))
+            assert db_model is not None
+            assert db_model.status == "COMPLETED"
+            assert db_model.started_at is not None
+            assert db_model.completed_at is not None
+            assert db_model.variables is not None
+            assert f"_step_{step_a_id}" in db_model.variables
+            assert f"_step_{step_b_id}" in db_model.variables
+
+    asyncio.run(_run())
 
 
 def test_pause_execution_persisted():

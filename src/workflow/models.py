@@ -152,6 +152,20 @@ class WorkflowExecution:
         if result is not None:
             self.step_results[step_id] = result
 
+    def record_step_result(self, step_id: str, result: Dict[str, Any]):
+        """Record a step execution result and mark the step as completed.
+
+        This is the primary method for recording step results from TaskExecutor.
+        It stores the result in step_results and marks the step as completed.
+
+        Args:
+            step_id: The step identifier
+            result: The step result dict containing task_id, status, result, error
+        """
+        self.step_results[step_id] = result
+        if step_id not in self.completed_steps:
+            self.completed_steps.append(step_id)
+
     def mark_step_failed(self, step_id: str, error: str):
         """Mark step as failed."""
         if step_id not in self.failed_steps:

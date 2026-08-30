@@ -440,6 +440,10 @@ class TaskModel(Base):
     # Dependencies
     dependencies = Column(JSON)  # List[{"task_id": str, "type": str}]
 
+    # Failure recovery
+    retry_count = Column(Integer, nullable=False, default=0, comment="已重试次数")
+    max_retries = Column(Integer, nullable=False, default=3, comment="最大重试次数")
+
     # Data
     input_data = Column(JSON)  # Dict[str, Any]
     result_data = Column(JSON)  # Dict[str, Any]

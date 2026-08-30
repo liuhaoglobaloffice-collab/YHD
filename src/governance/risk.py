@@ -85,6 +85,16 @@ class RiskEvaluator:
         operation = f"{resource}:{action}"
         context = context or {}
 
+        # Allow pre-determined risk level from context to take precedence
+        if "risk_level" in context:
+            risk_from_context = context["risk_level"]
+            if isinstance(risk_from_context, RiskLevel):
+                return risk_from_context
+            try:
+                return RiskLevel(risk_from_context)
+            except (ValueError, TypeError):
+                pass
+
         # Critical risk
         if operation in self.CRITICAL_RISK_OPERATIONS:
             logger.warning(
