@@ -2,18 +2,31 @@
 Knowledge Retrieval System
 
 Unified retrieval layer for knowledge search.
+
+P0-2: The service can be wired with database persistence:
+- ``chunk_repository`` / ``embedding_repository`` / ``session`` enable
+  durable chunk + embedding storage (DocumentChunkModel,
+  EmbeddingStorageModel) through the existing EmbeddingPipeline.
+- ``index_chunks_persisted()`` writes chunks + embeddings in one
+  transaction: on embedding failure the whole batch is rolled back so
+  no half-finished state survives.
+- ``load_persisted()`` rebuilds the in-memory keyword index from the
+  database after a process restart; embeddings are read from the
+  persistent vector store (SQLiteVectorStore).
 """
 
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
+from sqlalchemy import select
+
 from ..core.errors import PermissionDeniedError, ValidationError
 from ..identity.audit import AuditAction, AuditService
 from ..identity.models import User
 from ..identity.rbac import Permission, RBACService
-from .embedding import EmbeddingService
-from .processing import ChunkMetadata
+from .embedding import EmbeddingService, EmbeddingPipeline
+from .processing import ChunkMetadata, ChunkType
 from .vector_store import InMemoryVectorStore
 
 
@@ -75,20 +88,32 @@ class RetrievalService:
         audit_service: AuditService,
         embedding_service: Optional[EmbeddingService] = None,
         vector_store: Optional[InMemoryVectorStore] = None,
+        session=None,
+        chunk_repository=None,
+        embedding_repository=None,
     ):
         self.rbac = rbac_service
         self.audit = audit_service
 
-        # In-memory storage (will be replaced with vector store)
+        # In-memory keyword index (rebuilt from the database on load_persisted)
         self._chunks: Dict[str, ChunkMetadata] = {}
         self._inverted_index: Dict[str, List[str]] = {}
         self._document_owners: Dict[str, str] = {}
         self._document_visibility: Dict[str, str] = {}
 
-        # Embedding & vector store for semantic search
-        self._embedding_service = embedding_service or EmbeddingService(provider_name="mock")
+        # Embedding & vector store for semantic search.
+        # P0-2: production wiring passes a persistent SQLiteVectorStore.
+        # The embedding provider follows Settings (embedding_provider),
+        # so .env configuration is respected (mock/openai/self_host).
+        self._embedding_service = embedding_service or EmbeddingService()
         self._vector_store = vector_store or InMemoryVectorStore()
         self._embeddings_indexed: bool = False
+
+        # P0-2: database persistence (chunks + embeddings)
+        self.session = session
+        self.chunk_repository = chunk_repository
+        self.embedding_repository = embedding_repository
+        self._restored: bool = False
 
     def index_chunk(self, chunk: ChunkMetadata) -> None:
         """
@@ -194,6 +219,207 @@ class RetrievalService:
         """
         for chunk in chunks:
             self.index_chunk(chunk)
+
+    # ------------------------------------------------------------------
+    # P0-2: Database persistence (chunks + embeddings)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _chunk_meta_json(chunk: ChunkMetadata) -> Dict[str, Any]:
+        """Serialize chunk metadata for DocumentChunkModel.metadata_."""
+        reserved = {"owner_id", "visibility"}
+        custom = {k: v for k, v in (chunk.metadata or {}).items() if k not in reserved}
+        return {
+            "chunk_type": chunk.chunk_type.value,
+            "document_version": chunk.document_version,
+            "page": chunk.page,
+            "section": chunk.section,
+            "sheet": chunk.sheet,
+            "token_count": chunk.token_count,
+            "char_count": chunk.char_count,
+            "owner_id": (chunk.metadata or {}).get("owner_id"),
+            "visibility": (chunk.metadata or {}).get("visibility", "private"),
+            "custom": custom,
+        }
+
+    @staticmethod
+    def _model_to_chunk(model) -> ChunkMetadata:
+        """Convert DocumentChunkModel back to ChunkMetadata."""
+        meta = dict(model.metadata_ or {})
+        chunk_meta = dict(meta.get("custom", {}))
+        if meta.get("owner_id"):
+            chunk_meta["owner_id"] = meta["owner_id"]
+        if meta.get("visibility"):
+            chunk_meta["visibility"] = meta["visibility"]
+        return ChunkMetadata(
+            chunk_id=str(model.id),
+            document_id=model.document_id,
+            document_version=meta.get("document_version", 1),
+            chunk_index=model.chunk_index,
+            chunk_type=ChunkType(meta.get("chunk_type", ChunkType.PARAGRAPH.value)),
+            content=model.chunk_text,
+            page=meta.get("page"),
+            section=meta.get("section"),
+            sheet=meta.get("sheet"),
+            token_count=meta.get("token_count", 0),
+            char_count=meta.get("char_count", len(model.chunk_text)),
+            metadata=chunk_meta,
+        )
+
+    async def index_chunks_persisted(self, chunks: List[ChunkMetadata]) -> Dict[str, Any]:
+        """
+        Index chunks in memory AND persist them (chunks + embeddings) to
+        the database in a single transaction.
+
+        Transaction semantics: chunk rows and EmbeddingStorageModel rows
+        share one session. The EmbeddingPipeline commits on success and
+        rolls back on failure — an embedding failure therefore discards
+        the chunk rows too, leaving no half-finished state.
+
+        Idempotency: re-indexing the same document replaces its chunk /
+        embedding / vector records (no unbounded duplicates).
+
+        Returns:
+            dict: EmbeddingPipeline result
+                {document_id, chunks_count, embeddings_created,
+                 embeddings_skipped, storage_status, provider,
+                 embedding_model}
+
+        Raises:
+            ValidationError: If persistence is not configured
+        """
+        if self.session is None or self.chunk_repository is None:
+            raise ValidationError(
+                "RetrievalService is not configured with database persistence"
+            )
+        if not chunks:
+            return {
+                "document_id": "",
+                "chunks_count": 0,
+                "embeddings_created": 0,
+                "embeddings_skipped": 0,
+                "storage_status": "noop",
+            }
+
+        document_id = chunks[0].document_id
+
+        # 1. In-memory keyword index (immediate searchability)
+        self.index_chunks(chunks)
+
+        from sqlalchemy import delete as sa_delete
+
+        from ..database.models import DocumentChunkModel, EmbeddingStorageModel
+
+        # 2. Replace persisted chunks for this document (idempotent re-index)
+        await self.session.execute(
+            sa_delete(DocumentChunkModel).where(
+                DocumentChunkModel.document_id == document_id
+            )
+        )
+        await self.session.execute(
+            sa_delete(EmbeddingStorageModel).where(
+                EmbeddingStorageModel.document_id == document_id
+            )
+        )
+        for chunk in chunks:
+            self.session.add(
+                DocumentChunkModel(
+                    id=chunk.chunk_id,
+                    document_id=document_id,
+                    chunk_text=chunk.content,
+                    chunk_index=chunk.chunk_index,
+                    metadata_=self._chunk_meta_json(chunk),
+                )
+            )
+        await self.session.flush()
+
+        # 3. Drop stale vector entries before re-embedding
+        self._vector_store.delete(document_id=document_id)
+
+        # 4. Embeddings via the existing pipeline: commits on success,
+        #    rolls back (chunks included) on failure.
+        pipeline = EmbeddingPipeline(
+            vector_store=self._vector_store,
+            provider_name=self._embedding_service.provider_name,
+            storage_repository=self.embedding_repository,
+        )
+        result = await pipeline.run_chunks([c.to_chunk() for c in chunks])
+
+        # The pipeline already embedded + inserted every chunk into the
+        # vector store; mark embeddings ready so _ensure_embeddings()
+        # does not re-embed everything on the next search.
+        self._embeddings_indexed = True
+        return result
+
+    async def load_persisted(self) -> int:
+        """
+        Restore the in-memory index from persisted chunks (restart recovery).
+
+        Reads DocumentChunkModel rows, rebuilds the keyword index and
+        document ownership/visibility maps. Embeddings are NOT regenerated:
+        they live in the persistent vector store (SQLiteVectorStore).
+
+        Returns:
+            int: Number of chunks restored
+        """
+        if self.chunk_repository is None or self.session is None:
+            return 0
+
+        from ..database.models import DocumentChunkModel
+
+        result = await self.session.execute(
+            select(DocumentChunkModel).order_by(
+                DocumentChunkModel.document_id, DocumentChunkModel.chunk_index
+            )
+        )
+        models = list(result.scalars().all())
+
+        for model in models:
+            chunk = self._model_to_chunk(model)
+            self.index_chunk(chunk)
+
+            meta = dict(model.metadata_ or {})
+            owner_id = meta.get("owner_id")
+            if owner_id:
+                self._document_owners[model.document_id] = str(owner_id)
+                self._document_visibility[model.document_id] = meta.get(
+                    "visibility", "private"
+                )
+
+        # Embeddings already live in the persistent vector store
+        if self._vector_store.records:
+            self._embeddings_indexed = True
+
+        self._restored = True
+        return len(models)
+
+    async def remove_document_chunks_persisted(self, document_id: str) -> int:
+        """
+        Remove a document's chunks from memory, the database, and the
+        vector store (full cleanup).
+
+        Returns:
+            int: Number of in-memory chunks removed
+        """
+        if self.session is not None:
+            from sqlalchemy import delete as sa_delete
+
+            from ..database.models import DocumentChunkModel, EmbeddingStorageModel
+
+            await self.session.execute(
+                sa_delete(DocumentChunkModel).where(
+                    DocumentChunkModel.document_id == document_id
+                )
+            )
+            await self.session.execute(
+                sa_delete(EmbeddingStorageModel).where(
+                    EmbeddingStorageModel.document_id == document_id
+                )
+            )
+            await self.session.commit()
+
+        self._vector_store.delete(document_id=document_id)
+        return self.remove_document_chunks(document_id)
 
     def _tokenize(self, text: str) -> List[str]:
         """Tokenize text for keyword search"""

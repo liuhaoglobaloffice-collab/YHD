@@ -2,8 +2,9 @@
 Knowledge API Routes
 Stage 4: Document management, search, company brain, and memory
 
-Phase 2F-2 Update: Added database dependency for future Phase 2G migration.
-Current implementation still uses memory storage - will be migrated in Phase 2G.
+P0-2: Document upload/list/search run on the database persistence
+chain (DocumentService → DocumentRepository → DB; RetrievalService →
+DocumentChunkRepository/EmbeddingStorageRepository + SQLiteVectorStore).
 """
 
 from typing import Any, Dict, List, Optional
@@ -23,11 +24,12 @@ from src.api.factories.knowledge import (
     get_document_service,
     get_knowledge_retrieval,
     get_memory_service,
+    get_retrieval_service,
 )
 from src.identity.audit import AuditAction, AuditService
 from src.identity.models import User
 from src.knowledge.company_brain import CompanyBrain, EntityType
-from src.knowledge.documents import DocumentService, DocumentType
+from src.knowledge.documents import DocumentService, DocumentStatus, DocumentType
 from src.knowledge.knowledge_retrieval import (
     KnowledgeQuery,
     KnowledgeRetrievalService,
@@ -36,7 +38,7 @@ from src.knowledge.knowledge_retrieval import (
 )
 from src.knowledge.memory import MemoryService, MemoryType
 from src.knowledge.processing import DocumentProcessor
-from src.knowledge.retrieval import RetrievalService
+from src.knowledge.retrieval import RetrievalService, SearchMode, SearchQuery
 from src.knowledge.rag_pipeline import RAGPipeline
 from src.knowledge.retriever import Retriever
 from src.knowledge.vector_store import InMemoryVectorStore, SQLiteVectorStore
@@ -244,7 +246,26 @@ class KnowledgeContextResponse(BaseModel):
 # Phase 4: Services now use dependency injection via factories
 # processor is lightweight; retrieval_service is lazily created via factory
 processor = DocumentProcessor()
-retrieval_service = None  # Initialized lazily via get_knowledge_retrieval dependency
+retrieval_service = None  # Initialized lazily via get_retrieval_service dependency
+
+# Extension → MIME type mapping (P0-2: upload persistence chain)
+_EXT_TO_MIME = {
+    ".pdf": "application/pdf",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".txt": "text/plain",
+    ".md": "text/markdown",
+    ".csv": "text/csv",
+}
+
+# DocumentType (extension-style) → MIME type mapping
+_TYPE_TO_MIME = {
+    DocumentType.PDF: "application/pdf",
+    DocumentType.DOCX: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    DocumentType.XLSX: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    DocumentType.MARKDOWN: "text/markdown",
+    DocumentType.TEXT: "text/plain",
+}
 
 
 # Phase 2.3 RAG lightweight endpoints
@@ -388,48 +409,70 @@ async def upload_document(
     session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     doc_service: DocumentService = Depends(get_document_service),
+    retrieval_svc: RetrievalService = Depends(get_retrieval_service),
     _: None = Depends(require_permission("knowledge", "write")),
 ):
     """
     Upload and process a document
 
+    P0-2 persistence chain:
+        Document (DB) → Chunks (DB) → Embeddings (DB + vector store)
+        → Retrieval index. All steps survive a process restart.
+
     Requires: KNOWLEDGE_WRITE permission
     """
+    import os
+
     try:
         # Read file content
         content = await file.read()
 
-        # Detect document type
+        # Resolve MIME type (fallback: extension mapping)
         filename = file.filename or "document.txt"
-        if filename.endswith(".pdf"):
-            doc_type = DocumentType.PDF
-        elif filename.endswith((".doc", ".docx")):
-            doc_type = DocumentType.DOCX
-        elif filename.endswith((".xls", ".xlsx")):
-            doc_type = DocumentType.XLSX
-        elif filename.endswith(".md"):
-            doc_type = DocumentType.MARKDOWN
-        else:
-            doc_type = DocumentType.TEXT
+        mime_type = (
+            file.content_type
+            if file.content_type in DocumentService.ALLOWED_TYPES
+            else _EXT_TO_MIME.get(os.path.splitext(filename)[1].lower(), "text/plain")
+        )
 
         # Use filename as title if not provided
         if not title:
             title = filename
 
-        # Store document
-        doc = await doc_service.create_document(
-            title=title,
-            content=content,
-            doc_type=doc_type,
-            metadata={"filename": filename, "uploader_id": str(current_user.id)},
+        # Store document (persisted to the database by DocumentService)
+        doc = await doc_service.upload_document(
             user=current_user,
+            filename=filename,
+            file_type=mime_type,
+            size=len(content),
+            content=content,
+            metadata={
+                "title": title,
+                "filename": filename,
+                "uploader_id": str(current_user.id),
+            },
         )
 
         # Process document into chunks
-        chunks = processor.process_document(doc)
+        chunks = await processor.process_document(
+            document_id=doc.id,
+            document_version=doc.version,
+            file_type=mime_type,
+            content=content,
+            metadata={
+                "owner_id": str(current_user.id),
+                "visibility": "private",
+                "file_type": mime_type,
+                "filename": filename,
+            },
+        )
 
-        # Index chunks for search
-        retrieval_service.index_chunks(chunks)
+        # Persist chunks + embeddings and index for search
+        # (single transaction: embedding failure rolls back chunks too)
+        embed_result = await retrieval_svc.index_chunks_persisted(chunks)
+
+        # Mark document as indexed
+        await doc_service.update_status(doc.id, DocumentStatus.INDEXED)
 
         # Audit: Document uploaded
         await AuditService.log(
@@ -439,25 +482,33 @@ async def upload_document(
             resource_id=str(doc.id),
             status="success",
             user_id=current_user.id,
-            details={"title": title, "type": doc_type.value, "chunk_count": len(chunks)},
+            details={
+                "title": title,
+                "type": mime_type,
+                "chunk_count": len(chunks),
+                "embeddings_created": embed_result.get("embeddings_created", 0),
+                "storage_status": embed_result.get("storage_status"),
+            },
         )
 
         logger.info(
             "document_uploaded",
             document_id=doc.id,
             title=title,
-            type=doc_type.value,
+            type=mime_type,
             chunk_count=len(chunks),
             user_id=current_user.id,
         )
 
         return DocumentUploadResponse(
-            document_id=doc.id,
-            title=doc.title,
-            type=doc.type.value,
+            document_id=UUID(doc.id),
+            title=doc.title or title,
+            type=mime_type,
             chunk_count=len(chunks),
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("document_upload_failed", error=str(e), user_id=current_user.id)
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
@@ -473,14 +524,21 @@ async def list_documents(
     _: None = Depends(require_permission("knowledge", "read")),
 ):
     """
-    List documents
+    List documents (database query)
 
     Requires: KNOWLEDGE_READ permission
     """
     try:
+        file_type = None
+        if doc_type:
+            try:
+                file_type = _TYPE_TO_MIME.get(DocumentType(doc_type))
+            except ValueError:
+                file_type = None
+
         docs = await doc_service.list_documents(
             user=current_user,
-            doc_type=DocumentType(doc_type) if doc_type else None,
+            file_type=file_type,
             limit=limit,
         )
 
@@ -499,21 +557,31 @@ async def search_documents(
     request: SearchRequest,
     session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    retrieval_svc: RetrievalService = Depends(get_retrieval_service),
     _: None = Depends(require_permission("knowledge", "read")),
 ):
     """
-    Search documents
+    Search documents (hybrid: keyword index + persistent vector store)
 
     Requires: KNOWLEDGE_READ permission
     """
     try:
-        results = retrieval_service.search(
+        query = SearchQuery(
             query=request.query,
-            user=current_user,
-            document_id=request.document_id,
-            document_type=request.document_type,
+            mode=SearchMode.HYBRID,
+            document_ids=[str(request.document_id)] if request.document_id else None,
             limit=request.limit,
         )
+
+        results = await retrieval_svc.search(user=current_user, query=query)
+
+        # Optional document type filter (chunk metadata)
+        if request.document_type:
+            results = [
+                r for r in results
+                if r.chunk.metadata.get("file_type") == request.document_type
+                or r.chunk.metadata.get("chunk_type") == request.document_type
+            ]
 
         logger.info(
             "search_executed",

@@ -22,6 +22,8 @@ from src.knowledge.company_brain import CompanyBrain
 from src.knowledge.documents import DocumentService
 from src.knowledge.knowledge_retrieval import KnowledgeRetrievalService
 from src.knowledge.memory import MemoryService
+from src.knowledge.retrieval import RetrievalService
+from src.knowledge.vector_store import SQLiteVectorStore
 from src.security.policy import PolicyEngine
 
 
@@ -115,7 +117,7 @@ async def get_knowledge_retrieval(
         session: Database session from dependency injection
 
     Returns:
-        Fully configured KnowledgeRetrievalService instance
+        KnowledgeRetrievalService instance
     """
     rbac_service = RBACService(session)
 
@@ -124,3 +126,41 @@ async def get_knowledge_retrieval(
         rbac_service=rbac_service,
         audit_service=AuditService,
     )
+
+
+async def get_retrieval_service(
+    session: AsyncSession = Depends(get_db),
+) -> RetrievalService:
+    """
+    Create RetrievalService with database persistence (P0-2).
+
+    Wiring:
+    - SQLiteVectorStore: persistent vector storage (survives restarts)
+    - DocumentChunkRepository / EmbeddingStorageRepository: durable
+      chunk + embedding records in the main database
+    - load_persisted(): rebuilds the keyword index from the database
+
+    Args:
+        session: Database session from dependency injection
+
+    Returns:
+        RetrievalService instance with persistence enabled
+    """
+    from src.database.repositories.knowledge import (
+        DocumentChunkRepository,
+        EmbeddingStorageRepository,
+    )
+
+    rbac_service = RBACService(session)
+
+    service = RetrievalService(
+        rbac_service=rbac_service,
+        audit_service=AuditService,
+        vector_store=SQLiteVectorStore(),
+        session=session,
+        chunk_repository=DocumentChunkRepository(session),
+        embedding_repository=EmbeddingStorageRepository(session),
+    )
+    # Restart recovery: rebuild the in-memory index from the database
+    await service.load_persisted()
+    return service

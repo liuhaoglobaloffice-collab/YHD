@@ -2,6 +2,11 @@
 Document Management System
 
 Handles document lifecycle, versioning, and security.
+
+P0-2: All document CRUD is persisted through DocumentRepository →
+DocumentModel (database). DocumentMetadata remains the API-facing
+dataclass; every read/write now goes to the database so documents
+survive process restarts.
 """
 
 import hashlib
@@ -9,12 +14,15 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
+from uuid import uuid4
+
+from sqlalchemy import select
 
 from ..core.errors import NotFoundError, PermissionDeniedError, ValidationError
 from ..identity.audit import AuditAction, AuditService
 from ..identity.models import User
 from ..identity.rbac import Permission, RBACService
-from ..security.policy import PolicyContext, PolicyEngine
+from ..security.policy import PolicyEngine
 
 
 class DocumentStatus(str, Enum):
@@ -56,6 +64,9 @@ class DocumentMetadata:
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     metadata: Dict[str, Any] = field(default_factory=dict)
+    title: Optional[str] = None
+    content: Optional[str] = None
+    company_id: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
@@ -70,9 +81,11 @@ class DocumentMetadata:
             "status": self.status.value,
             "version": self.version,
             "parent_id": self.parent_id,
-            "created_at": self.created_at.isoformat(),
-            "updated_at": self.updated_at.isoformat(),
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "metadata": self.metadata,
+            "title": self.title,
+            "company_id": self.company_id,
         }
 
 
@@ -81,6 +94,10 @@ class DocumentService:
     Document Service
 
     Manages document lifecycle with security, versioning, and audit.
+
+    P0-2: Database-backed persistence via DocumentRepository. The
+    service requires a database session; every create/update/delete/
+    get/list operation is committed to the database.
     """
 
     # Allowed file types
@@ -111,13 +128,53 @@ class DocumentService:
         rbac_service: RBACService,
         policy_engine: PolicyEngine,
         audit_service: AuditService,
+        session=None,
     ):
+        if session is None:
+            raise ValidationError(
+                "DocumentService requires a database session for persistence"
+            )
         self.rbac = rbac_service
         self.policy = policy_engine
         self.audit = audit_service
+        self.session = session
 
-        # In-memory storage (will be replaced with database in production)
-        self._documents: Dict[str, DocumentMetadata] = {}
+        from ..database.repositories.knowledge import DocumentRepository
+
+        self.repository = DocumentRepository(session)
+
+    # ------------------------------------------------------------------
+    # Model <-> dataclass conversion
+    # ------------------------------------------------------------------
+
+    def _model_to_metadata(self, model) -> DocumentMetadata:
+        """Convert DocumentModel to the API-facing DocumentMetadata."""
+        meta = dict(model.meta or {})
+        return DocumentMetadata(
+            id=str(model.id),
+            filename=model.filename,
+            file_type=model.file_type,
+            size=model.size,
+            hash=meta.get("content_hash", ""),
+            source=meta.get("source", "upload"),
+            owner_id=str(model.created_by),
+            status=DocumentStatus(model.status),
+            version=meta.get("version", 1),
+            parent_id=meta.get("parent_id"),
+            created_at=model.created_at,
+            updated_at=model.updated_at,
+            metadata=meta.get("custom", {}),
+            title=model.title,
+            content=model.content,
+            company_id=model.company_id,
+        )
+
+    @staticmethod
+    def _extract_text(content: bytes) -> str:
+        """Decode raw bytes to text for full-text storage."""
+        if isinstance(content, bytes):
+            return content.decode("utf-8", errors="replace")
+        return str(content)
 
     def validate_file(
         self,
@@ -169,7 +226,7 @@ class DocumentService:
         metadata: Optional[Dict[str, Any]] = None,
     ) -> DocumentMetadata:
         """
-        Upload a new document
+        Upload a new document (persisted to the database)
 
         Args:
             user: User uploading the document
@@ -199,22 +256,19 @@ class DocumentService:
         # Validate file
         self.validate_file(filename, file_type, size, content)
 
-        # Policy check
-        policy_context = PolicyContext(
-            user_id=user.id,
+        # Policy check (PolicyEngine is synchronous: resource/action/context)
+        policy_result = self.policy.evaluate(
+            resource="knowledge_document",
             action="upload_document",
-            resource_type="document",
-            resource_id=None,
-            metadata={
+            context={
+                "user_id": user.id,
                 "filename": filename,
                 "file_type": file_type,
                 "size": size,
                 "source": source,
             },
         )
-
-        policy_result = await self.policy.evaluate(policy_context)
-        if not policy_result.allowed:
+        if not policy_result.is_allowed():
             await self.audit.log(
                 action=AuditAction.ACCESS_DENIED,
                 user_id=user.id,
@@ -226,30 +280,44 @@ class DocumentService:
         # Compute hash
         file_hash = self.compute_hash(content)
 
-        # Check for duplicate by hash
-        existing = self._find_by_hash(file_hash)
-        if existing and existing.owner_id == user.id:
+        # Check for duplicate by hash (database lookup)
+        existing = await self._find_by_hash(file_hash)
+        if existing and existing.owner_id == str(user.id):
             # Same user uploading same content - create new version
             return await self._create_version(user, existing, filename, metadata)
 
         # Generate document ID
-        doc_id = f"doc_{datetime.now(UTC).timestamp()}_{user.id}"
+        doc_id = str(uuid4())
 
-        # Create document metadata
-        doc = DocumentMetadata(
+        meta_json = {
+            "content_hash": file_hash,
+            "source": source,
+            "version": 1,
+            "parent_id": None,
+            "custom": metadata or {},
+        }
+
+        # Persist document to the database
+        from ..database.models import DocumentModel
+
+        model = DocumentModel(
             id=doc_id,
             filename=filename,
+            title=(metadata or {}).get("title") or filename,
             file_type=file_type,
             size=size,
-            hash=file_hash,
-            source=source,
-            owner_id=user.id,
-            status=DocumentStatus.UPLOADED,
-            metadata=metadata or {},
+            content=self._extract_text(content),
+            tags=(metadata or {}).get("tags") or [],
+            meta=meta_json,
+            created_by=str(user.id),
+            company_id=str(user.tenant_id) if getattr(user, "tenant_id", None) else None,
+            content_hash=file_hash,
+            status=DocumentStatus.UPLOADED.value,
         )
+        model = await self.repository.create(model)
+        await self.session.commit()
 
-        # Store document
-        self._documents[doc_id] = doc
+        doc = self._model_to_metadata(model)
 
         # Audit log
         await self.audit.log(
@@ -267,12 +335,23 @@ class DocumentService:
 
         return doc
 
-    def _find_by_hash(self, file_hash: str) -> Optional[DocumentMetadata]:
-        """Find document by content hash"""
-        for doc in self._documents.values():
-            if doc.hash == file_hash and doc.status != DocumentStatus.ARCHIVED:
-                return doc
-        return None
+    async def _find_by_hash(self, file_hash: str) -> Optional[DocumentMetadata]:
+        """Find document by content hash (database query)"""
+        from ..database.models import DocumentModel
+
+        result = await self.session.execute(
+            select(DocumentModel)
+            .where(
+                DocumentModel.content_hash == file_hash,
+                DocumentModel.status != DocumentStatus.ARCHIVED.value,
+            )
+            .order_by(DocumentModel.created_at.desc())
+            .limit(1)
+        )
+        model = result.scalar_one_or_none()
+        if model is None:
+            return None
+        return self._model_to_metadata(model)
 
     async def _create_version(
         self,
@@ -281,31 +360,43 @@ class DocumentService:
         filename: str,
         metadata: Optional[Dict[str, Any]],
     ) -> DocumentMetadata:
-        """Create a new version of existing document"""
-        # Generate version ID
-        version_id = f"{parent.id}_v{parent.version + 1}"
+        """Create a new version of existing document (database-backed)"""
+        from ..database.models import DocumentModel
 
-        # Create new version
-        new_version = DocumentMetadata(
+        # Archive the parent document in the database
+        parent_model = await self.repository.get_by_id(parent.id)
+        if parent_model is None:
+            raise NotFoundError(f"Parent document not found: {parent.id}")
+        parent_model.status = DocumentStatus.ARCHIVED.value
+        await self.session.flush()
+
+        new_version = parent.version + 1
+        version_id = str(uuid4())
+
+        meta_json = {
+            "content_hash": parent.hash,
+            "source": parent.source,
+            "version": new_version,
+            "parent_id": parent.id,
+            "custom": metadata or parent.metadata,
+        }
+
+        model = DocumentModel(
             id=version_id,
             filename=filename,
+            title=(metadata or {}).get("title") or filename,
             file_type=parent.file_type,
             size=parent.size,
-            hash=parent.hash,
-            source=parent.source,
-            owner_id=user.id,
-            status=DocumentStatus.UPLOADED,
-            version=parent.version + 1,
-            parent_id=parent.id,
-            metadata=metadata or parent.metadata,
+            content=parent.content,
+            tags=(metadata or {}).get("tags") or [],
+            meta=meta_json,
+            created_by=str(user.id),
+            company_id=parent.company_id,
+            content_hash=parent.hash,
+            status=DocumentStatus.UPLOADED.value,
         )
-
-        # Update parent status
-        parent.status = DocumentStatus.ARCHIVED
-        parent.updated_at = datetime.now(UTC)
-
-        # Store new version
-        self._documents[version_id] = new_version
+        model = await self.repository.create(model)
+        await self.session.commit()
 
         # Audit log
         await self.audit.log(
@@ -315,12 +406,12 @@ class DocumentService:
             resource_id=parent.id,
             details={
                 "action": "create_version",
-                "new_version": new_version.version,
+                "new_version": new_version,
                 "version_id": version_id,
             },
         )
 
-        return new_version
+        return self._model_to_metadata(model)
 
     async def get_document(
         self,
@@ -328,7 +419,7 @@ class DocumentService:
         document_id: str,
     ) -> DocumentMetadata:
         """
-        Get document metadata
+        Get document metadata (database query)
 
         Args:
             user: User requesting the document
@@ -351,13 +442,13 @@ class DocumentService:
             )
             raise PermissionDeniedError("User lacks KNOWLEDGE_READ permission")
 
-        # Find document
-        doc = self._documents.get(document_id)
-        if not doc:
+        # Find document in the database
+        model = await self.repository.get_by_id(document_id)
+        if not model:
             raise NotFoundError(f"Document not found: {document_id}")
 
         # Owner or admin can access
-        if doc.owner_id != user.id and not self.rbac.is_admin(user):
+        if str(model.created_by) != str(user.id) and not self.rbac.is_admin(user):
             await self.audit.log_permission_denied(
                 user_id=user.id,
                 action="get_document",
@@ -374,21 +465,25 @@ class DocumentService:
             resource_id=document_id,
         )
 
-        return doc
+        return self._model_to_metadata(model)
 
     async def list_documents(
         self,
         user: User,
         status: Optional[DocumentStatus] = None,
         owner_id: Optional[str] = None,
+        file_type: Optional[str] = None,
+        limit: int = 100,
     ) -> List[DocumentMetadata]:
         """
-        List documents
+        List documents (database query)
 
         Args:
             user: User requesting the list
             status: Filter by status
             owner_id: Filter by owner
+            file_type: Filter by MIME file type
+            limit: Maximum number of documents
 
         Returns:
             List[DocumentMetadata]: List of documents
@@ -405,24 +500,29 @@ class DocumentService:
             )
             raise PermissionDeniedError("User lacks KNOWLEDGE_READ permission")
 
-        # Filter documents
-        docs = []
-        for doc in self._documents.values():
-            # Owner or admin can see
-            if doc.owner_id != user.id and not self.rbac.is_admin(user):
-                continue
+        from ..database.models import DocumentModel
 
-            # Status filter
-            if status and doc.status != status:
-                continue
+        conditions = []
+        # Tenant isolation: non-admin users only see their own documents
+        if not self.rbac.is_admin(user):
+            conditions.append(DocumentModel.created_by == str(user.id))
+        if status:
+            conditions.append(DocumentModel.status == status.value)
+        if owner_id:
+            conditions.append(DocumentModel.created_by == owner_id)
+        if file_type:
+            conditions.append(DocumentModel.file_type == file_type)
 
-            # Owner filter
-            if owner_id and doc.owner_id != owner_id:
-                continue
+        stmt = select(DocumentModel).order_by(DocumentModel.created_at.desc()).limit(limit)
+        if conditions:
+            from sqlalchemy import and_
 
-            docs.append(doc)
+            stmt = stmt.where(and_(*conditions))
 
-        return docs
+        result = await self.session.execute(stmt)
+        models = list(result.scalars().all())
+
+        return [self._model_to_metadata(m) for m in models]
 
     async def update_status(
         self,
@@ -430,18 +530,22 @@ class DocumentService:
         status: DocumentStatus,
     ) -> None:
         """
-        Update document status (internal use)
+        Update document status (database update)
 
         Args:
             document_id: Document ID
             status: New status
+
+        Raises:
+            NotFoundError: If document not found
         """
-        doc = self._documents.get(document_id)
-        if not doc:
+        model = await self.repository.get_by_id(document_id)
+        if not model:
             raise NotFoundError(f"Document not found: {document_id}")
 
-        doc.status = status
-        doc.updated_at = datetime.now(UTC)
+        model.status = status.value
+        await self.session.flush()
+        await self.session.commit()
 
     async def delete_document(
         self,
@@ -449,7 +553,7 @@ class DocumentService:
         document_id: str,
     ) -> None:
         """
-        Delete document (soft delete - archive)
+        Delete document (soft delete - archive, database update)
 
         Args:
             user: User deleting the document
@@ -469,13 +573,13 @@ class DocumentService:
             )
             raise PermissionDeniedError("User lacks KNOWLEDGE_WRITE permission")
 
-        # Find document
-        doc = self._documents.get(document_id)
-        if not doc:
+        # Find document in the database
+        model = await self.repository.get_by_id(document_id)
+        if not model:
             raise NotFoundError(f"Document not found: {document_id}")
 
         # Owner or admin can delete
-        if doc.owner_id != user.id and not self.rbac.is_admin(user):
+        if str(model.created_by) != str(user.id) and not self.rbac.is_admin(user):
             await self.audit.log_permission_denied(
                 user_id=user.id,
                 action="delete_document",
@@ -485,8 +589,9 @@ class DocumentService:
             raise PermissionDeniedError("User cannot delete this document")
 
         # Soft delete - archive
-        doc.status = DocumentStatus.ARCHIVED
-        doc.updated_at = datetime.now(UTC)
+        model.status = DocumentStatus.ARCHIVED.value
+        await self.session.flush()
+        await self.session.commit()
 
         # Audit log
         await self.audit.log(

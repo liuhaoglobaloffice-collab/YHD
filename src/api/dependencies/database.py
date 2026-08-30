@@ -183,6 +183,9 @@ async def init_database():
                 "embedding_storage": {
                     "embedding_model": "VARCHAR(255)",
                 },
+                "documents": {
+                    "content_hash": "VARCHAR(64)",
+                },
             }
             for table, columns in migrations.items():
                 cols = [

@@ -691,6 +691,18 @@ class RBACService:
         """
         return has_permission(user, permission)
 
+    def is_admin(self, user: User) -> bool:
+        """
+        Synchronous admin check using the standalone is_admin function.
+
+        Args:
+            user: User to check
+
+        Returns:
+            bool: Whether user is an admin (superuser or ADMIN role)
+        """
+        return is_admin(user)
+
     async def check_permission(
         self,
         user: User,

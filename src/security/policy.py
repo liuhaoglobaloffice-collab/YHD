@@ -114,6 +114,13 @@ class PolicyEngine:
             "require_approval": False,
         }
 
+        # Knowledge document operations (enabled by default; security
+        # handled by RBAC + ownership checks in DocumentService)
+        self._policies["knowledge_document"] = {
+            "enabled": True,
+            "require_approval": False,
+        }
+
         logger.info("policy_engine_initialized", policies=list(self._policies.keys()))
 
     def evaluate(

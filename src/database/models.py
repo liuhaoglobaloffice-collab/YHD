@@ -93,6 +93,9 @@ class DocumentModel(Base):
     created_by = Column(String(36), nullable=False)  # User ID
     company_id = Column(String(36))  # Company ID (optional)
 
+    # Content hash for duplicate detection (P0-2)
+    content_hash = Column(String(64), index=True)
+
     # Status
     status = Column(String(50), nullable=False)  # uploaded, processing, indexed, available
 
