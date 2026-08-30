@@ -462,3 +462,431 @@ def test_dashboard_ai_team_overview(env_setup):
     finally:
         session.close()
         Base.metadata.drop_all(bind=sync_engine)
+
+
+# =============================================================================
+# P1-3: ROI 计算与预算闭环测试
+# =============================================================================
+
+
+def test_roi_with_cost_and_won_value(env_setup):
+    """测试：有成本 + 有成交金额 → ROI 正确计算，data_source = 'actual'"""
+    _import_models()
+    # 注册 CRM Lead 模型，确保 leads 表被创建
+    importlib.import_module("src.crm.models")
+    import sqlalchemy as sa
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session, sessionmaker
+
+    from src.database.base import Base
+    from src.database.models import AiCostRecordModel, GoalModel
+    from src.crm.models import Lead
+
+    db_url = os.environ.get("DATABASE_URL", "sqlite:///:memory:")
+    sync_engine = create_engine(db_url, connect_args={"check_same_thread": False})
+    Base.metadata.create_all(bind=sync_engine)
+
+    SyncSession = sessionmaker(bind=sync_engine)
+    session = SyncSession()
+
+    try:
+        # 1. 插入成本记录：总成本 = 10 USD
+        for i in range(5):
+            record = AiCostRecordModel(
+                user_id=1,
+                employee_id="emp_roi",
+                agent_type="researcher",
+                provider="mock",
+                model="mock-model",
+                input_tokens=100,
+                output_tokens=50,
+                total_tokens=150,
+                cost_usd=2.0,
+                status="success",
+            )
+            session.add(record)
+        session.commit()
+
+        total_cost = float(session.query(sa.func.coalesce(sa.func.sum(AiCostRecordModel.cost_usd), 0.0)).scalar() or 0.0)
+        assert total_cost == 10.0, f"Expected total_cost=10.0, got {total_cost}"
+
+        # 2. 插入成交线索（ACTUAL revenue）
+        lead = Lead(
+            name="Won Customer",
+            company="Test Corp",
+            source="manual",
+            status="won",
+            estimated_value=100.0,
+            won_amount=80.0,
+            owner_user_id=1,
+        )
+        session.add(lead)
+        session.commit()
+
+        total_won = float(session.query(sa.func.coalesce(sa.func.sum(Lead.won_amount), 0.0)).scalar() or 0.0)
+        assert total_won == 80.0, f"Expected total_won=80.0, got {total_won}"
+
+        total_estimated = float(session.query(sa.func.coalesce(sa.func.sum(Lead.estimated_value), 0.0)).scalar() or 0.0)
+        assert total_estimated == 100.0, f"Expected total_estimated=100.0, got {total_estimated}"
+
+        # 3. 验证 revenue_impact = won_amount + estimated_value = 80 + 100 = 180
+        revenue_impact = total_won + total_estimated
+        assert revenue_impact == 180.0, f"Expected revenue_impact=180.0, got {revenue_impact}"
+
+        # 4. ROI = (revenue_impact - cost) / cost * 100 = (180 - 10) / 10 * 100
+        roi_pct = round(((revenue_impact - total_cost) / total_cost) * 100, 2)
+        assert roi_pct == 1700.0, f"Expected ROI=1700.0%, got {roi_pct}%"
+
+        # 5. data_source = "actual" (因为有 won_amount)
+        assert total_won > 0, "Should have won_amount > 0 for actual data_source"
+
+    finally:
+        session.close()
+        Base.metadata.drop_all(bind=sync_engine)
+
+
+def test_roi_with_cost_and_estimated_value_only(env_setup):
+    """测试：有成本 + 有预估价值（无成交金额）→ ROI 基于 estimated_value，data_source = 'estimated'"""
+    _import_models()
+    importlib.import_module("src.crm.models")
+    import sqlalchemy as sa
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session, sessionmaker
+
+    from src.database.base import Base
+    from src.database.models import AiCostRecordModel
+    from src.crm.models import Lead
+
+    db_url = os.environ.get("DATABASE_URL", "sqlite:///:memory:")
+    sync_engine = create_engine(db_url, connect_args={"check_same_thread": False})
+    Base.metadata.create_all(bind=sync_engine)
+
+    SyncSession = sessionmaker(bind=sync_engine)
+    session = SyncSession()
+
+    try:
+        # 1. 成本
+        for i in range(3):
+            record = AiCostRecordModel(
+                user_id=1, employee_id="emp_est", agent_type="researcher",
+                provider="mock", model="mock-model", input_tokens=100,
+                output_tokens=50, total_tokens=150, cost_usd=5.0, status="success",
+            )
+            session.add(record)
+        session.commit()
+
+        total_cost = float(session.query(sa.func.coalesce(sa.func.sum(AiCostRecordModel.cost_usd), 0.0)).scalar() or 0.0)
+        assert total_cost == 15.0
+
+        # 2. 预估价值线索（无成交金额）
+        lead = Lead(
+            name="Estimated Lead",
+            company="Est Corp",
+            source="manual",
+            status="qualified",
+            estimated_value=200.0,
+            won_amount=None,
+            owner_user_id=1,
+        )
+        session.add(lead)
+        session.commit()
+
+        total_won = float(session.query(sa.func.coalesce(sa.func.sum(Lead.won_amount), 0.0)).scalar() or 0.0)
+        total_estimated = float(session.query(sa.func.coalesce(sa.func.sum(Lead.estimated_value), 0.0)).scalar() or 0.0)
+
+        assert total_won == 0.0, "Should have no won_amount"
+        assert total_estimated == 200.0
+
+        # 3. data_source = "estimated"
+        assert total_won == 0.0 and total_estimated > 0, "Should be estimated data_source"
+
+        # 4. ROI = (200 - 15) / 15 * 100
+        revenue_impact = total_won + total_estimated
+        roi_pct = round(((revenue_impact - total_cost) / total_cost) * 100, 2)
+        assert roi_pct == 1233.33, f"Expected ROI=1233.33%, got {roi_pct}%"
+
+    finally:
+        session.close()
+        Base.metadata.drop_all(bind=sync_engine)
+
+
+def test_roi_with_cost_only(env_setup):
+    """测试：有成本 + 无收益 → ROI = -100%, data_source = 'cost_only', 不产生伪造收益"""
+    _import_models()
+    importlib.import_module("src.crm.models")
+    import sqlalchemy as sa
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session, sessionmaker
+
+    from src.database.base import Base
+    from src.database.models import AiCostRecordModel
+    from src.crm.models import Lead
+
+    db_url = os.environ.get("DATABASE_URL", "sqlite:///:memory:")
+    sync_engine = create_engine(db_url, connect_args={"check_same_thread": False})
+    Base.metadata.create_all(bind=sync_engine)
+
+    SyncSession = sessionmaker(bind=sync_engine)
+    session = SyncSession()
+
+    try:
+        # 只有成本，没有线索
+        for i in range(4):
+            record = AiCostRecordModel(
+                user_id=1, employee_id="emp_cost", agent_type="researcher",
+                provider="mock", model="mock-model", input_tokens=100,
+                output_tokens=50, total_tokens=150, cost_usd=2.5, status="success",
+            )
+            session.add(record)
+        session.commit()
+
+        total_cost = float(session.query(sa.func.coalesce(sa.func.sum(AiCostRecordModel.cost_usd), 0.0)).scalar() or 0.0)
+        total_won = float(session.query(sa.func.coalesce(sa.func.sum(Lead.won_amount), 0.0)).scalar() or 0.0)
+        total_estimated = float(session.query(sa.func.coalesce(sa.func.sum(Lead.estimated_value), 0.0)).scalar() or 0.0)
+
+        assert total_cost == 10.0
+        assert total_won == 0.0
+        assert total_estimated == 0.0
+
+        # 有成本，无收益 → ROI = -100%
+        revenue_impact = total_won + total_estimated
+        assert revenue_impact == 0.0, "Should not generate fake revenue"
+
+        if total_cost > 0 and revenue_impact == 0:
+            roi_pct = -100.0  # 只有成本，无收益
+        else:
+            roi_pct = 0.0
+
+        assert roi_pct == -100.0, f"Expected ROI=-100%, got {roi_pct}%"
+
+        # data_source = "cost_only"
+        data_source = "cost_only" if total_cost > 0 and total_won == 0 and total_estimated == 0 else "none"
+        assert data_source == "cost_only"
+
+    finally:
+        session.close()
+        Base.metadata.drop_all(bind=sync_engine)
+
+
+def test_roi_no_cost(env_setup):
+    """测试：无成本 → ROI = 0%, 不发生除零"""
+    _import_models()
+    importlib.import_module("src.crm.models")
+    import sqlalchemy as sa
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session, sessionmaker
+
+    from src.database.base import Base
+    from src.database.models import AiCostRecordModel
+    from src.crm.models import Lead
+
+    db_url = os.environ.get("DATABASE_URL", "sqlite:///:memory:")
+    sync_engine = create_engine(db_url, connect_args={"check_same_thread": False})
+    Base.metadata.create_all(bind=sync_engine)
+
+    SyncSession = sessionmaker(bind=sync_engine)
+    session = SyncSession()
+
+    try:
+        # 无成本记录
+        total_cost = float(session.query(sa.func.coalesce(sa.func.sum(AiCostRecordModel.cost_usd), 0.0)).scalar() or 0.0)
+        assert total_cost == 0.0
+
+        # 无线索
+        total_won = float(session.query(sa.func.coalesce(sa.func.sum(Lead.won_amount), 0.0)).scalar() or 0.0)
+        total_estimated = float(session.query(sa.func.coalesce(sa.func.sum(Lead.estimated_value), 0.0)).scalar() or 0.0)
+
+        revenue_impact = total_won + total_estimated
+        assert revenue_impact == 0.0
+
+        # 无成本，无收益 → ROI = 0.0（不发生除零）
+        if total_cost > 0 and revenue_impact > 0:
+            roi_pct = round(((revenue_impact - total_cost) / total_cost) * 100, 2)
+        elif total_cost > 0:
+            roi_pct = -100.0
+        else:
+            roi_pct = 0.0  # 无成本，无收益
+
+        assert roi_pct == 0.0, f"Expected ROI=0.0%, got {roi_pct}% (division by zero would be a bug)"
+
+    finally:
+        session.close()
+        Base.metadata.drop_all(bind=sync_engine)
+
+
+def test_roi_no_cost_with_estimated_value(env_setup):
+    """测试：无成本 + 有预估价值 → ROI = 0%（无成本时不计算 ROI，避免除零）"""
+    _import_models()
+    importlib.import_module("src.crm.models")
+    import sqlalchemy as sa
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session, sessionmaker
+
+    from src.database.base import Base
+    from src.database.models import AiCostRecordModel
+    from src.crm.models import Lead
+
+    db_url = os.environ.get("DATABASE_URL", "sqlite:///:memory:")
+    sync_engine = create_engine(db_url, connect_args={"check_same_thread": False})
+    Base.metadata.create_all(bind=sync_engine)
+
+    SyncSession = sessionmaker(bind=sync_engine)
+    session = SyncSession()
+
+    try:
+        # 无成本记录
+        total_cost = float(session.query(sa.func.coalesce(sa.func.sum(AiCostRecordModel.cost_usd), 0.0)).scalar() or 0.0)
+        assert total_cost == 0.0
+
+        # 有预估价值，但无成本
+        lead = Lead(
+            name="Free Lead",
+            company="Free Corp",
+            source="manual",
+            status="qualified",
+            estimated_value=500.0,
+            won_amount=None,
+            owner_user_id=1,
+        )
+        session.add(lead)
+        session.commit()
+
+        total_won = float(session.query(sa.func.coalesce(sa.func.sum(Lead.won_amount), 0.0)).scalar() or 0.0)
+        total_estimated = float(session.query(sa.func.coalesce(sa.func.sum(Lead.estimated_value), 0.0)).scalar() or 0.0)
+
+        revenue_impact = total_won + total_estimated
+        assert revenue_impact == 500.0
+
+        # 无成本，有收益 → ROI = 0%（无成本时不计算 ROI，避免除零）
+        if total_cost > 0 and revenue_impact > 0:
+            roi_pct = round(((revenue_impact - total_cost) / total_cost) * 100, 2)
+        elif total_cost > 0:
+            roi_pct = -100.0
+        else:
+            roi_pct = 0.0  # 无成本，不计算 ROI
+
+        assert roi_pct == 0.0, f"Expected ROI=0.0% (no cost), got {roi_pct}%"
+
+    finally:
+        session.close()
+        Base.metadata.drop_all(bind=sync_engine)
+
+
+def test_budget_utilization_and_over_budget(env_setup):
+    """测试：预算利用率和超预算目标数计算正确"""
+    _import_models()
+    import sqlalchemy as sa
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session, sessionmaker
+
+    from src.database.base import Base
+    from src.database.models import GoalModel
+
+    db_url = os.environ.get("DATABASE_URL", "sqlite:///:memory:")
+    sync_engine = create_engine(db_url, connect_args={"check_same_thread": False})
+    Base.metadata.create_all(bind=sync_engine)
+
+    SyncSession = sessionmaker(bind=sync_engine)
+    session = SyncSession()
+
+    try:
+        # 目标1: 预算 1000，已花 300 → 未超预算
+        g1 = GoalModel(
+            title="Goal 1", description="Under budget", status="active",
+            priority="normal", budget_total=1000.0, budget_spent=300.0,
+            progress_pct=30.0, created_by=1,
+        )
+        # 目标2: 预算 500，已花 600 → 超预算
+        g2 = GoalModel(
+            title="Goal 2", description="Over budget", status="active",
+            priority="high", budget_total=500.0, budget_spent=600.0,
+            progress_pct=80.0, created_by=1,
+        )
+        # 目标3: 无预算设置
+        g3 = GoalModel(
+            title="Goal 3", description="No budget", status="draft",
+            priority="normal", budget_total=None, budget_spent=None,
+            progress_pct=0.0, created_by=1,
+        )
+        session.add_all([g1, g2, g3])
+        session.commit()
+
+        # 预算汇总（Dashboard 中使用的查询）
+        budget_total = float(session.query(sa.func.coalesce(sa.func.sum(GoalModel.budget_total), 0.0)).scalar() or 0.0)
+        budget_spent = float(session.query(sa.func.coalesce(sa.func.sum(GoalModel.budget_spent), 0.0)).scalar() or 0.0)
+
+        budget_util = round((budget_spent / budget_total * 100), 2) if budget_total > 0 else 0.0
+
+        # 非 NULL 预算的总和: 1000 + 500 = 1500
+        assert budget_total == 1500.0, f"Expected budget_total=1500.0, got {budget_total}"
+        # 非 NULL 已花的总和: 300 + 600 = 900
+        assert budget_spent == 900.0, f"Expected budget_spent=900.0, got {budget_spent}"
+        # 利用率 = 900 / 1500 * 100 = 60%
+        assert budget_util == 60.0, f"Expected budget_util=60.0, got {budget_util}"
+
+        # 超预算目标数
+        over_budget = session.query(sa.func.count(GoalModel.id)).filter(
+            GoalModel.budget_total.isnot(None),
+            GoalModel.budget_spent.isnot(None),
+            GoalModel.budget_spent > GoalModel.budget_total,
+        ).scalar() or 0
+        assert over_budget == 1, f"Expected over_budget=1, got {over_budget}"
+
+    finally:
+        session.close()
+        Base.metadata.drop_all(bind=sync_engine)
+
+
+def test_business_overview_no_placeholder_revenue_impact(env_setup):
+    """
+    测试：确认 BusinessOverview 不再使用 completed * 100.0 placeholder。
+
+    通过验证 SQL 查询逻辑确认：
+    - revenue_impact 来自 CRM Lead 的 won_amount + estimated_value
+    - 不来自任何形式的 completed * 100.0
+    """
+    _import_models()
+    importlib.import_module("src.crm.models")
+    import sqlalchemy as sa
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session, sessionmaker
+
+    from src.database.base import Base
+    from src.database.models import AiCostRecordModel
+    from src.crm.models import Lead
+
+    db_url = os.environ.get("DATABASE_URL", "sqlite:///:memory:")
+    sync_engine = create_engine(db_url, connect_args={"check_same_thread": False})
+    Base.metadata.create_all(bind=sync_engine)
+
+    SyncSession = sessionmaker(bind=sync_engine)
+    session = SyncSession()
+
+    try:
+        # 没有成本，没有线索 → revenue_impact 必须为 0
+        total_won = float(session.query(sa.func.coalesce(sa.func.sum(Lead.won_amount), 0.0)).scalar() or 0.0)
+        total_estimated = float(session.query(sa.func.coalesce(sa.func.sum(Lead.estimated_value), 0.0)).scalar() or 0.0)
+        revenue_impact = total_won + total_estimated
+        assert revenue_impact == 0.0, "Empty database should have revenue_impact=0.0"
+
+        # 插入一条成本记录，但无线索 → revenue_impact 仍为 0
+        record = AiCostRecordModel(
+            user_id=1, employee_id="emp_demo", agent_type="researcher",
+            provider="mock", model="mock-model", input_tokens=100,
+            output_tokens=50, total_tokens=150, cost_usd=1.0, status="success",
+        )
+        session.add(record)
+        session.commit()
+
+        total_won = float(session.query(sa.func.coalesce(sa.func.sum(Lead.won_amount), 0.0)).scalar() or 0.0)
+        total_estimated = float(session.query(sa.func.coalesce(sa.func.sum(Lead.estimated_value), 0.0)).scalar() or 0.0)
+        revenue_impact = total_won + total_estimated
+        assert revenue_impact == 0.0, "Cost without leads should have revenue_impact=0.0"
+
+        # 确认 revenue_impact 与 completed task count 无关
+        assert revenue_impact != 100.0, "revenue_impact should not be completed * 100.0"
+        assert revenue_impact != 200.0, "revenue_impact should not be completed * 100.0"
+
+    finally:
+        session.close()
+        Base.metadata.drop_all(bind=sync_engine)

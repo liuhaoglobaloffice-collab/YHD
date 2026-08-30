@@ -376,10 +376,14 @@ def create_app() -> FastAPI:
         debug=settings.app_debug,
     )
 
-    # CORS middleware
+    # CORS middleware — read origins from config (comma-separated, default "*" for dev)
+    cors_origins_str = settings.cors_origins
+    allow_origins_list = [o.strip() for o in cors_origins_str.split(",") if o.strip()]
+    if settings.is_production and "*" in allow_origins_list:
+        logger.warning("production_cors_wildcard", message="CORS allow_origins contains '*' in production — restrict to specific origins")
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],  # Configure properly for production
+        allow_origins=allow_origins_list,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

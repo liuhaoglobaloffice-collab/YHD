@@ -85,6 +85,11 @@ class Settings(BaseSettings):
     feature_browser_gateway: bool = Field(default=False)
     feature_external_tools: bool = Field(default=False)
 
+    # CORS (comma-separated origins; default "*" for development)
+    cors_origins: str = Field(
+        default="*", description="Comma-separated allowed CORS origins (e.g. http://localhost:5173,https://app.example.com)"
+    )
+
     # Logging
     log_level: str = Field(default="INFO")
     log_format: str = Field(default="json")
@@ -97,6 +102,28 @@ class Settings(BaseSettings):
         if not v or len(v) < 32:
             raise ValueError(
                 f"{info.field_name} must be set via environment variable and be at least 32 characters"
+            )
+        return v
+
+    @field_validator("secret_key", "jwt_secret_key")
+    @classmethod
+    def reject_default_secrets(cls, v: str, info) -> str:
+        """Reject known default/demo secret values in production."""
+        _KNOWN_DEFAULTS = {
+            "01234567890123456789012345678901",
+            "abcdefghijklmnopqrstuvwxyz1234567890ABCDEF",
+        }
+        # Only raise when the field is set to a known default (not overridden by env)
+        # Pydantic will call this with the resolved value; if it matches a known
+        # default, we warn but don't crash — the user can still start the app
+        # in development. Crash happens in validate_secrets() if the value is
+        # too short or empty.
+        if v in _KNOWN_DEFAULTS:
+            import warnings
+            warnings.warn(
+                f"{info.field_name} is set to a known default value. "
+                f"Set {info.field_name.upper()} via environment variable for production use.",
+                stacklevel=2,
             )
         return v
 

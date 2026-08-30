@@ -46,6 +46,19 @@ class BusinessOverview(BaseModel):
     failed_goals: int = Field(0, description="Failed goals")
     total_failure_records: int = Field(0, description="Total failure records")
 
+    # Budget tracking (from GoalModel)
+    budget_total_usd: float = Field(0.0, description="Total budget across all goals (USD)")
+    budget_spent_usd: float = Field(0.0, description="Total spent across all goals (USD)")
+    budget_utilization_pct: float = Field(0.0, description="Budget utilization percentage (spent / total * 100)")
+    over_budget_goals: int = Field(0, description="Number of goals that are over budget")
+
+    # ROI & Cost (P1-3 预算与 ROI 闭环)
+    total_cost_usd: float = Field(0.0, description="Total AI operation cost from AiCostRecordModel (USD)")
+    total_estimated_value: float = Field(0.0, description="Total estimated pipeline value from CRM leads (USD)")
+    total_won_value: float = Field(0.0, description="Total won amount from CRM leads (USD)")
+    roi_percentage: float = Field(0.0, description="Return on investment percentage (won_value + estimated_value - cost) / cost")
+    data_source: str = Field("none", description="Data source for revenue/cost: 'actual' (won_amount), 'estimated' (lead value), 'cost_only', 'none'")
+
 
 class AITeamOverview(BaseModel):
     """

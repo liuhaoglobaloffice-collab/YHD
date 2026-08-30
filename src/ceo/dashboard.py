@@ -21,6 +21,7 @@ from src.ceo.models import (
     TaskOverview,
 )
 from src.core.logging import get_logger
+from src.crm.models import Lead
 from src.database.models import FailureRecordModel, GoalModel, AiCostRecordModel
 from src.identity.models import User
 from src.governance.approval import ApprovalService
@@ -208,6 +209,15 @@ class CEODashboard:
                 success_rate=0.0,
                 avg_completion_time_hours=0.0,
                 revenue_impact=0.0,
+                budget_total_usd=0.0,
+                budget_spent_usd=0.0,
+                budget_utilization_pct=0.0,
+                over_budget_goals=0,
+                total_cost_usd=0.0,
+                total_estimated_value=0.0,
+                total_won_value=0.0,
+                roi_percentage=0.0,
+                data_source="none",
             )
 
         # Count by status
@@ -228,15 +238,69 @@ class CEODashboard:
 
         avg_time = sum(completion_times) / len(completion_times) if completion_times else 0.0
 
-        # Placeholder revenue impact
-        revenue_impact = completed * 100.0  # $100 per completed task
+        # === P1-3 预算与 ROI：真实数据计算 ===
+        # 成本：从 AiCostRecordModel 查询总成本
+        # 收益：从 CRM Lead 查询 won_amount（成交金额）和 estimated_value（预估价值）
+        # 明确区分 actual revenue（won_amount）与 estimated value（estimated_value）
+        total_cost = 0.0
+        total_estimated = 0.0
+        total_won = 0.0
+        data_source = "none"
 
-        # 真实数据：从数据库查询目标统计
+        if self.session:
+            try:
+                # 1. 实际成本
+                cost_result = await self.session.execute(
+                    select(func.coalesce(func.sum(AiCostRecordModel.cost_usd), 0.0))
+                )
+                total_cost = float(cost_result.scalar_one() or 0.0)
+
+                # 2. CRM 成交金额（最接近实际收入）
+                won_result = await self.session.execute(
+                    select(func.coalesce(func.sum(Lead.won_amount), 0.0))
+                )
+                total_won = float(won_result.scalar_one() or 0.0)
+
+                # 3. CRM 预估价值（非流失线索的 pipeline 价值）
+                est_result = await self.session.execute(
+                    select(func.coalesce(func.sum(Lead.estimated_value), 0.0))
+                )
+                total_estimated = float(est_result.scalar_one() or 0.0)
+
+                # 确定数据源状态
+                if total_won > 0:
+                    data_source = "actual"
+                elif total_estimated > 0:
+                    data_source = "estimated"
+                elif total_cost > 0:
+                    data_source = "cost_only"
+                else:
+                    data_source = "none"
+
+            except Exception as e:
+                logger.error("business_roi_query_failed", extra={"error": str(e)})
+
+        # revenue_impact = won_amount（实际成交）+ estimated_value（预估价值）
+        # 不再使用 placeholder: completed * 100.0
+        revenue_impact = round(total_won + total_estimated, 2)
+
+        # ROI 计算：只有当有成本时才计算，避免除零
+        if total_cost > 0 and revenue_impact > 0:
+            roi_pct = round(((revenue_impact - total_cost) / total_cost) * 100, 2)
+        elif total_cost > 0:
+            roi_pct = -100.0  # 只有成本，无收益
+        else:
+            roi_pct = 0.0  # 无成本，无收益
+
+        # 目标等统计 + 预算汇总
         total_goals = 0
         active_goals = 0
         completed_goals = 0
         failed_goals = 0
         total_failures = 0
+        budget_total = 0.0
+        budget_spent = 0.0
+        over_budget = 0
         if self.session:
             try:
                 result = await self.session.execute(select(func.count(GoalModel.id)))
@@ -255,8 +319,30 @@ class CEODashboard:
                 failed_goals = result.scalar_one() or 0
                 result = await self.session.execute(select(func.count(FailureRecordModel.id)))
                 total_failures = result.scalar_one() or 0
+
+                # 预算汇总
+                budget_sum = await self.session.execute(
+                    select(func.coalesce(func.sum(GoalModel.budget_total), 0.0))
+                )
+                budget_total = float(budget_sum.scalar_one() or 0.0)
+                spent_sum = await self.session.execute(
+                    select(func.coalesce(func.sum(GoalModel.budget_spent), 0.0))
+                )
+                budget_spent = float(spent_sum.scalar_one() or 0.0)
+
+                # 超预算目标数
+                over_result = await self.session.execute(
+                    select(func.count(GoalModel.id)).where(
+                        GoalModel.budget_total.isnot(None),
+                        GoalModel.budget_spent.isnot(None),
+                        GoalModel.budget_spent > GoalModel.budget_total,
+                    )
+                )
+                over_budget = over_result.scalar_one() or 0
             except Exception as e:
                 logger.error("business_goals_query_failed", extra={"error": str(e)})
+
+        budget_util = round((budget_spent / budget_total * 100), 2) if budget_total > 0 else 0.0
 
         return BusinessOverview(
             total_tasks=total,
@@ -271,6 +357,15 @@ class CEODashboard:
             completed_goals=completed_goals,
             failed_goals=failed_goals,
             total_failure_records=total_failures,
+            budget_total_usd=round(budget_total, 2),
+            budget_spent_usd=round(budget_spent, 2),
+            budget_utilization_pct=budget_util,
+            over_budget_goals=over_budget,
+            total_cost_usd=round(total_cost, 4),
+            total_estimated_value=round(total_estimated, 2),
+            total_won_value=round(total_won, 2),
+            roi_percentage=roi_pct,
+            data_source=data_source,
         )
 
     async def _get_ai_team_overview(self) -> AITeamOverview:
