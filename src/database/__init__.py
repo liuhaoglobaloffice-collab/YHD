@@ -27,6 +27,7 @@ from .models import (
     DocumentModel,
     EmployeeCostModel,
     EmployeePerformanceModel,
+    LLMProviderConfigModel,
     MemoryModel,
     TaskModel,
     TaskResultModel,
@@ -58,6 +59,7 @@ __all__ = [
     "EmployeePerformanceModel",
     "EmployeeCostModel",
     "BusinessTaskModel",
+    "LLMProviderConfigModel",
     # Repository
     "BaseRepository",
 ]

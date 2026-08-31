@@ -386,6 +386,19 @@ class ProviderGateway:
         if provider_type in self._provider_configs:
             config = self._provider_configs[provider_type]
 
+            # Cloud providers need a real secrets manager to read API keys.
+            # The completion/streaming call sites do not inject one, so fall
+            # back to the process-wide (env + runtime) secrets manager — never
+            # a unittest Mock, which would silently send a bogus API key.
+            if secrets_manager is None and provider_type != ProviderType.OLLAMA:
+                try:
+                    from ..security.secrets import get_secrets_manager
+
+                    secrets_manager = get_secrets_manager()
+                except Exception:
+                    logger.warning("secrets_manager_unavailable_fallback_mock", provider=provider_type)
+                    secrets_manager = Mock()
+
             # Create provider from config
             if provider_type == ProviderType.OPENAI:
                 provider = OpenAIProvider(config, secrets_manager or Mock())
@@ -643,6 +656,27 @@ class ProviderGateway:
         # Return both instantiated providers and registered configs
         all_providers = set(self._providers.keys()) | set(self._provider_configs.keys())
         return list(all_providers)
+
+    def unregister_provider(self, provider_type: ProviderType) -> None:
+        """Remove a provider (instance + lazy config). Used by runtime
+        provider re-configuration (UI 添加/更新 API Key)."""
+        self._providers.pop(provider_type, None)
+        self._provider_configs.pop(provider_type, None)
+        logger.info(f"Unregistered provider: {provider_type}")
+
+    def list_real_providers(self) -> List[ProviderType]:
+        """Return registered providers that can serve REAL completions.
+
+        Excludes MockProvider instances / production sentinels. Lazy
+        ProviderConfig entries count as real (instantiated on demand).
+        """
+        real: List[ProviderType] = []
+        for ptype in self.list_providers():
+            inst = self._providers.get(ptype)
+            if inst is not None and isinstance(inst, MockProvider):
+                continue
+            real.append(ptype)
+        return real
 
     def list_models(
         self, provider: Optional[ProviderType] = None, enabled_only: bool = True

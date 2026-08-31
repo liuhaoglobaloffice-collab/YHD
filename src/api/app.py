@@ -45,6 +45,31 @@ _provider_status = {
 }
 
 
+def refresh_provider_status() -> None:
+    """Recompute the exported provider status from the live gateway.
+
+    Called after startup registration and whenever a provider is added or
+    removed at runtime via the product UI, so /provider/status and the
+    production gate reflect reality immediately.
+    """
+    global _provider_status
+    try:
+        from src.ai.gateway import get_gateway
+
+        real = [p.value for p in get_gateway().list_real_providers()]
+        settings = get_settings()
+        _provider_status = {
+            "configured": bool(real),
+            "provider": ",".join(real) if real else _provider_status.get("provider", "none"),
+            "registered_any": bool(real),
+            "using_mock": not real and not settings.is_production,
+            "production_blocked": not real and settings.is_production,
+            "environment": settings.app_env,
+        }
+    except Exception:
+        logger.warning("provider_status_refresh_failed", exc_info=True)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager"""
@@ -59,6 +84,19 @@ async def lifespan(app: FastAPI):
     # Initialize Provider Gateway and register LLM providers
     await _initialize_providers()
     logger.info("provider_gateway_initialized")
+
+    # Load providers/API keys added from the product UI (encrypted in PostgreSQL)
+    try:
+        from src.ai.provider_setup import load_persisted_providers
+        from src.api.dependencies.database import get_session_factory
+
+        async with get_session_factory()() as session:
+            ui_providers = await load_persisted_providers(session)
+        if ui_providers:
+            refresh_provider_status()
+        logger.info("runtime_providers_loaded", providers=ui_providers)
+    except Exception as e:
+        logger.warning("runtime_providers_load_failed", error=str(e))
 
     # Seed default AI employees
     await _seed_default_employees()

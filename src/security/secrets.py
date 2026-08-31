@@ -1,4 +1,4 @@
-﻿"""
+"""
 Layer 1: Security & Governance
 Secrets Management - API Keys NEVER in code/Git/logs
 """
@@ -71,7 +71,6 @@ class SecretsManager:
 
         # Get from environment
         value = os.getenv(key)
-
         if value is None:
             if required:
                 logger.error("secret_missing", key=key)
@@ -86,6 +85,22 @@ class SecretsManager:
         logger.info("secret_loaded", key=key, value_length=len(value))
 
         return value
+
+    def get(self, key: str, required: bool = True) -> Optional[str]:
+        """Alias for :meth:`get_secret` — provider implementations
+        (OpenAI/Anthropic/DeepSeek/...) call ``secrets_manager.get(...)``."""
+        return self.get_secret(key, required=required)
+
+    def set_runtime_secret(self, key: str, value: str) -> None:
+        """Inject a secret provided at runtime (e.g. API Key added via the
+        product UI). Persisted encrypted in the DB; mirrored into the process
+        environment so the env-based resolution path serves it. NEVER logged.
+        """
+        if not key or not value:
+            return
+        os.environ[key] = value
+        self._secrets_cache[key] = value
+        logger.info("runtime_secret_stored", key=key, value_length=len(value))
 
     def get_database_password(self) -> str:
         """Get database password"""

@@ -20,6 +20,9 @@ services:
     environment:
       SECRET_KEY: ${SECRET_KEY:?请在服务器 .env 中设置 SECRET_KEY 为至少 32 位随机字符串}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:?请在服务器 .env 中设置 JWT_SECRET_KEY 为至少 32 位随机字符串}
+      # 凭据静态加密（Fernet/AES）：产品内添加的 LLM API Key、平台 token 落库前加密。
+      # 未配置时 encrypt_value 会退回明文存储，生产环境必须配置（python -c "from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())"）。
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?请在服务器 .env 中设置 ENCRYPTION_KEY（Fernet 密钥，用于 API Key 静态加密）}
       DATABASE_URL: postgresql+asyncpg://liuhao_user:${POSTGRES_PASSWORD:?请在服务器 .env 中设置 POSTGRES_PASSWORD 强密码}@database:5432/liuhao_ai_os
       APP_ENV: production
       APP_HOST: 0.0.0.0

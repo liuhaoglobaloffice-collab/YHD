@@ -86,3 +86,38 @@ def generate_encryption_key() -> str:
     """生成一个新的加密密钥（用于初始化配置）。"""
     from cryptography.fernet import Fernet
     return Fernet.generate_key().decode()
+
+
+def encrypt_value(value: str) -> str:
+    """加密单个敏感字符串（如 LLM API Key）。
+
+    未配置 ENCRYPTION_KEY 时（开发模式）原样返回明文；
+    配置后返回 Fernet token 字符串，永不记录日志。
+    """
+    if not value:
+        return value
+    cipher = _get_cipher()
+    if cipher is None:
+        return value
+    try:
+        return cipher.encrypt(value.encode()).decode()
+    except Exception:
+        logger.error("加密敏感值失败，拒绝明文落库")
+        raise
+
+
+def decrypt_value(value: str | None) -> str | None:
+    """解密由 :func:`encrypt_value` 加密的字符串。
+
+    兼容开发模式明文与历史未加密数据。
+    """
+    if not value:
+        return value
+    cipher = _get_cipher()
+    if cipher is None:
+        return value
+    try:
+        return cipher.decrypt(value.encode()).decode()
+    except Exception:
+        # 未加密的明文（开发模式写入的数据）直接返回
+        return value

@@ -987,3 +987,31 @@ class FailureRecordModel(Base):
         Index("idx_failure_records_category", "failure_category"),
         Index("idx_failure_records_tenant", "tenant_id"),
     )
+
+
+# =============================================================================
+# Y1.0: 运行时 LLM Provider 配置（产品内添加模型/API Key，加密持久化）
+# =============================================================================
+
+
+class LLMProviderConfigModel(Base):
+    """LLM Provider 运行时配置 — 老板在「模型与 Provider」页面添加的
+    云端/本地模型凭据。API Key 经 Fernet 加密后落库，明文永不返回前端。
+    """
+
+    __tablename__ = "llm_provider_configs"
+
+    id = Column(String(36), primary_key=True)  # UUID as string
+    provider = Column(String(50), nullable=False, unique=True, comment="provider 类型: openai/deepseek/moonshot/anthropic/google/xai/ollama")
+    display_name = Column(String(100), nullable=True)
+    base_url = Column(String(500), nullable=False)
+    model = Column(String(100), nullable=False)
+    api_key_encrypted = Column(Text, nullable=True, comment="Fernet 加密后的 API Key；Ollama 为空")
+    enabled = Column(Boolean, nullable=False, default=True)
+    created_by = Column(Integer, nullable=True, comment="创建人ID")
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+
+    __table_args__ = (
+        Index("idx_llm_provider_configs_enabled", "enabled"),
+    )

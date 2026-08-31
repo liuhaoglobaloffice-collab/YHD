@@ -57,3 +57,78 @@ export async function fetchProviders(): Promise<ProviderInfo[]> {
   const data = await res.json();
   return data.providers ?? [];
 }
+
+// ============================================================================
+// 运行时 Provider 配置（产品内添加模型 / API Key）
+// ============================================================================
+
+export interface ProviderCatalogItem {
+  name: string;
+  display_name: string;
+  default_base_url: string;
+  default_model: string;
+  needs_key: boolean;
+}
+
+export interface ProviderConfigEntry {
+  id: string;
+  provider: string;
+  display_name: string;
+  base_url: string;
+  model: string;
+  enabled: boolean;
+  has_api_key: boolean;
+  api_key_preview: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface ProviderConfigSaveResult {
+  status: string;
+  config: ProviderConfigEntry | null;
+  health: { status: string; detail: string } | null;
+}
+
+export async function fetchProviderCatalog(): Promise<ProviderCatalogItem[]> {
+  const res = await fetch(`${API_BASE}${API_PREFIX}/provider/catalog`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`Failed to fetch provider catalog: ${res.status}`);
+  const data = await res.json();
+  return data.providers ?? [];
+}
+
+export async function fetchProviderConfigs(): Promise<ProviderConfigEntry[]> {
+  const res = await fetch(`${API_BASE}${API_PREFIX}/provider/configs`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`Failed to fetch provider configs: ${res.status}`);
+  const data = await res.json();
+  return data.configs ?? [];
+}
+
+export async function saveProviderConfig(payload: {
+  provider: string;
+  api_key?: string;
+  base_url?: string;
+  model?: string;
+  test?: boolean;
+}): Promise<ProviderConfigSaveResult> {
+  const res = await fetch(`${API_BASE}${API_PREFIX}/provider/configs`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data?.detail || `保存失败 (${res.status})`);
+  }
+  return data;
+}
+
+export async function deleteProviderConfig(provider: string): Promise<void> {
+  const res = await fetch(`${API_BASE}${API_PREFIX}/provider/configs/${encodeURIComponent(provider)}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data?.detail || `删除失败 (${res.status})`);
+  }
+}
