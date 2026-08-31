@@ -123,7 +123,7 @@ const menuSections: MenuSection[] = [
       {
         labelKey: 'accountCenter',
         children: [
-          { path: '/employees', i18nKey: 'employeeMgmt' },
+          { path: '/staff', i18nKey: 'employeeMgmt' },
           { path: '/accounts', i18nKey: 'subAccounts' },
           { path: '/imports', i18nKey: 'dataImport' },
         ],

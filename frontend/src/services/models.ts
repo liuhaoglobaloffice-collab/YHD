@@ -12,6 +12,26 @@ function authHeaders(): Record<string, string> {
   return headers;
 }
 
+/** 运行时 Provider 状态（来自 /provider/status，反映真实可用性，而非数据库注册表） */
+export interface ProviderRuntimeInfo {
+  name: string;
+  type: string;
+  status: string; // healthy | unconfigured | error
+  env_var?: string;
+  models: string[];
+}
+
+export interface ProviderStatus {
+  configured: boolean;
+  provider: string;
+  registered_any: boolean;
+  using_mock: boolean;
+  production_blocked: boolean;
+  environment: string;
+  providers: ProviderRuntimeInfo[];
+}
+
+/** 旧接口保留：Productization 数据库注册表 */
 export interface ProviderInfo {
   provider: string;
   model: string;
@@ -23,6 +43,12 @@ export interface ProviderInfo {
 export interface ModelRegistry {
   providers: ProviderInfo[];
   total: number;
+}
+
+export async function fetchProviderStatus(): Promise<ProviderStatus> {
+  const res = await fetch(`${API_BASE}${API_PREFIX}/provider/status`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`Failed to fetch provider status: ${res.status}`);
+  return res.json();
 }
 
 export async function fetchProviders(): Promise<ProviderInfo[]> {

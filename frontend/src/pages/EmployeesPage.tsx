@@ -8,6 +8,8 @@ import { AIWorkStatus, AIStatusDot, type AIStatus } from '../components/AIWorkSt
 import { AIActivityFeed, type ActivityItem } from '../components/AIActivityFeed';
 import { AIEmptyState } from '../components/AIEmptyState';
 
+const API_BASE = import.meta.env?.VITE_API_BASE ?? '';
+
 /** 后端 lifecycle 状态 → AIWorkStatus 工作状态映射 */
 const STATUS_MAP: Record<string, AIStatus> = {
   active: 'working',    // 工作中（蓝色脉冲）

@@ -130,8 +130,8 @@ export function AppRoutes() {
       <Layout>
         <Routes>
           <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/employees" element={<EmployeeManagementPage />} />
-          <Route path="/employees-old" element={<EmployeesPage />} />
+          <Route path="/employees" element={<EmployeesPage />} />
+          <Route path="/staff" element={<EmployeeManagementPage />} />
           <Route path="/workflow" element={<WorkflowPage />} />
           <Route path="/weekly-meeting" element={<WeeklyMeetingPage />} />
           <Route path="/security" element={<SecurityPage />} />

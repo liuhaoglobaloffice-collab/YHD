@@ -1,7 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useI18n } from '../i18n';
+import { getAuthToken } from '../services/auth';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '';
+
+/** 统一注入 JWT（系统鉴权基于 Authorization 头，而非 cookie） */
+function authHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const token = getAuthToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
+}
 
 interface Goal {
   id: number;
@@ -135,7 +144,7 @@ export function GoalCenterPage() {
     try {
       setLoading(true);
       const url = `${API_BASE}/api/v1/goals${filterStatus ? `?status=${filterStatus}` : ''}`;
-      const resp = await fetch(url, { credentials: 'include' });
+      const resp = await fetch(url, { headers: authHeaders() });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json();
       setGoals(data.items || []);
@@ -148,7 +157,7 @@ export function GoalCenterPage() {
 
   const loadFailures = useCallback(async () => {
     try {
-      const resp = await fetch(`${API_BASE}/api/v1/goals/failures`, { credentials: 'include' });
+      const resp = await fetch(`${API_BASE}/api/v1/goals/failures`, { headers: authHeaders() });
       if (!resp.ok) return;
       const data = await resp.json();
       setGoalFailures(data.items || []);
@@ -168,8 +177,7 @@ export function GoalCenterPage() {
     try {
       const resp = await fetch(`${API_BASE}/api/v1/goals/from-text`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
+        headers: authHeaders(),
         body: JSON.stringify({ text: nlText.trim() }),
       });
       if (!resp.ok) {
@@ -203,8 +211,7 @@ export function GoalCenterPage() {
 
       const resp = await fetch(`${API_BASE}/api/v1/goals`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
+        headers: authHeaders(),
         body: JSON.stringify(body),
       });
       if (!resp.ok) {
@@ -231,7 +238,7 @@ export function GoalCenterPage() {
     try {
       const resp = await fetch(`${API_BASE}/api/v1/goals/${goalId}/activate`, {
         method: 'POST',
-        credentials: 'include',
+        headers: authHeaders(),
       });
       if (!resp.ok) {
         const err = await resp.json();
@@ -247,7 +254,7 @@ export function GoalCenterPage() {
     try {
       await fetch(`${API_BASE}/api/v1/goals/${goalId}/cancel`, {
         method: 'POST',
-        credentials: 'include',
+        headers: authHeaders(),
       });
       await loadGoals();
     } catch (e) {
@@ -258,7 +265,7 @@ export function GoalCenterPage() {
   const handleSelectGoal = async (goal: Goal) => {
     setSelectedGoal(goal);
     try {
-      const resp = await fetch(`${API_BASE}/api/v1/goals/${goal.id}/failures`, { credentials: 'include' });
+      const resp = await fetch(`${API_BASE}/api/v1/goals/${goal.id}/failures`, { headers: authHeaders() });
       if (resp.ok) {
         const data = await resp.json();
         setGoalFailures(data.items || []);
@@ -272,8 +279,7 @@ export function GoalCenterPage() {
     try {
       const resp = await fetch(`${API_BASE}/api/v1/goals/failures/${recordId}/execute-strategy`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
+        headers: authHeaders(),
         body: JSON.stringify({ context: {} }),
       });
       const data = await resp.json();
@@ -282,7 +288,7 @@ export function GoalCenterPage() {
       await loadGoals();
       await loadFailures();
       if (selectedGoal) {
-        const fResp = await fetch(`${API_BASE}/api/v1/goals/${selectedGoal.id}/failures`, { credentials: 'include' });
+        const fResp = await fetch(`${API_BASE}/api/v1/goals/${selectedGoal.id}/failures`, { headers: authHeaders() });
         if (fResp.ok) {
           const fData = await fResp.json();
           setGoalFailures(fData.items || []);
@@ -299,8 +305,7 @@ export function GoalCenterPage() {
     try {
       await fetch(`${API_BASE}/api/v1/goals/failures/${recordId}/boss-decision`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
+        headers: authHeaders(),
         body: JSON.stringify({ decision }),
       });
       await loadFailures();
@@ -311,7 +316,7 @@ export function GoalCenterPage() {
     try {
       await fetch(`${API_BASE}/api/v1/goals/${goalId}/complete`, {
         method: 'POST',
-        credentials: 'include',
+        headers: authHeaders(),
       });
       await loadGoals();
     } catch (e) {

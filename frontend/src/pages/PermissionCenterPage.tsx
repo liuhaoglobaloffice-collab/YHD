@@ -102,7 +102,7 @@ export function PermissionCenterPage() {
       <div className="page-header-row">
         <h1>权限中心</h1>
         <div style={{ display: 'flex', gap: 8 }}>
-          <Link to="/employees" className="btn btn-submit">员工权限管理</Link>
+          <Link to="/staff" className="btn btn-submit">员工权限管理</Link>
           <Link to="/approvals" className="btn">审批队列</Link>
         </div>
       </div>
