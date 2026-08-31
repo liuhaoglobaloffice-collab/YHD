@@ -30,16 +30,68 @@ export interface LiveTask {
   title: string;
   status: string;
   updated_at: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
   summary: string;
   error: string | null;
+  employee_id?: string | null;
   employee_name: string | null;
+  provider?: string | null;
+  model?: string | null;
+  workflow_id?: string | null;
+  workflow_name?: string | null;
+  goal_id?: number | null;
+  goal_title?: string | null;
+}
+
+/** 「AI 正在工作」：运行中的任务 / 工作流（真实 Execution 数据）。 */
+export interface LiveWorkingItem {
+  kind: 'task' | 'workflow';
+  id: string;
+  title: string;
+  status: string;
+  employee_id?: string | null;
+  employee_name?: string | null;
+  position?: string | null;
+  provider?: string | null;
+  model?: string | null;
+  goal_id?: number | null;
+  goal_title?: string | null;
+  goal_progress?: number | null;
+  workflow_id?: string | null;
+  workflow_name?: string | null;
+  execution_id?: string;
+  current_step?: string | null;
+  /** 真实进度百分比；null 表示后端未记录进度，前端必须显示不确定态，不得伪造。 */
+  progress?: number | null;
+  started_at?: string | null;
+}
+
+/** 「AI CEO 建议」：全部由真实信号派生。 */
+export interface LiveRecommendation {
+  id: string;
+  type: string;
+  priority: 'high' | 'medium' | 'low';
+  title: string;
+  problem: string;
+  impact: string;
+  analysis: string;
+  suggestion: string;
+  action_label: string;
+  action_url: string;
+  created_at: string;
 }
 
 export interface LiveWorkflow {
   execution_id: string;
+  workflow_id?: string | null;
+  workflow_name?: string | null;
   status: string;
   started_at: string | null;
+  completed_at?: string | null;
   error: string | null;
+  goal_id?: number | null;
+  goal_title?: string | null;
 }
 
 export interface LiveGoal {
@@ -82,6 +134,11 @@ export interface LiveActivity {
   active_employees: number;
   total_employees: number;
   running_tasks: number;
+  blocked_tasks?: number;
+  failed_tasks?: number;
+  today?: { completed: number; failed: number };
+  working_now?: LiveWorkingItem[];
+  recommendations?: LiveRecommendation[];
   recent_tasks: LiveTask[];
   workflows: LiveWorkflow[];
   goals: LiveGoal[];

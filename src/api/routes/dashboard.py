@@ -48,11 +48,54 @@ async def get_live_activity(
         DocumentModel,
         GoalModel,
         WorkflowExecutionModel,
+        WorkflowModel,
     )
     from src.database.models import AiCostRecordModel
     from src.identity.models import AuditLog
 
     limit = max(1, min(limit, 30))
+    now = datetime.now(UTC)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    def _first_assignee(assigned_to) -> str | None:
+        """assigned_to 是 JSON 列表列（List[agent_id]），取第一个负责人。"""
+        if not assigned_to:
+            return None
+        if isinstance(assigned_to, list):
+            return str(assigned_to[0]) if assigned_to else None
+        return str(assigned_to)
+
+    def _task_summary(result_data) -> str:
+        """从真实 result_data 提取执行结果摘要（不伪造）。"""
+        if not result_data:
+            return ""
+        if isinstance(result_data, dict):
+            out = result_data.get("output") or result_data.get("result") or result_data.get("summary") or ""
+            if out:
+                return str(out)[:120]
+            # 结构化结果（如线索/报价数量）尽量给出真实数字
+            for key in ("leads_count", "count", "total", "quotes_count"):
+                if result_data.get(key) is not None:
+                    return f"{key}={result_data.get(key)}"
+        return str(result_data)[:120]
+
+    def _real_progress(task) -> float | None:
+        """仅当任务/结果中真实记录了进度时返回百分比，否则 None（前端显示不确定态，不伪造）。"""
+        for container in (getattr(task, "meta", None), getattr(task, "result_data", None)):
+            if isinstance(container, dict):
+                p = container.get("progress") or container.get("progress_pct")
+                if isinstance(p, (int, float)) and 0 <= p <= 100:
+                    return float(p)
+        return None
+
+    def _real_step(task) -> str | None:
+        """仅当任务/结果中真实记录了当前步骤时返回。"""
+        for container in (getattr(task, "meta", None), getattr(task, "result_data", None)):
+            if isinstance(container, dict):
+                step = container.get("current_step") or container.get("step")
+                if step:
+                    return str(step)[:120]
+        return None
 
     # 1. AI 员工
     emp_rows = (
@@ -82,97 +125,37 @@ async def get_live_activity(
         for r in emp_rows
     ]
     active_employees = sum(1 for e in employees if e["status"] == "active")
-
-    # 2. 最近任务（含成败摘要）
-    task_rows = (
-        await db.execute(
-            select(
-                TaskModel.id,
-                TaskModel.title,
-                TaskModel.status,
-                TaskModel.updated_at,
-                TaskModel.result_data,
-                TaskModel.error,
-                TaskModel.assigned_to,
-            )
-            .order_by(TaskModel.updated_at.desc())
-            .limit(limit)
-        )
-    ).all()
-    task_map = {str(r.id): r for r in task_rows}
-
-    def _task_summary(result_data) -> str:
-        if not result_data:
-            return ""
-        if isinstance(result_data, dict):
-            out = result_data.get("output") or ""
-            name = result_data.get("employee_name") or ""
-            if out:
-                return f"{name}: {str(out)[:80]}" if name else str(out)[:80]
-        return str(result_data)[:80]
-
+    emp_by_id = {e["id"]: e for e in employees}
     emp_name_by_id = {e["id"]: e["name"] for e in employees}
-    recent_tasks = [
-        {
-            "id": str(r.id),
-            "title": r.title,
-            "status": r.status,
-            "updated_at": r.updated_at.isoformat() if r.updated_at else None,
-            "summary": _task_summary(r.result_data),
-            "error": (r.error or "")[:120] if r.error else None,
-            "employee_name": emp_name_by_id.get(str(r.assigned_to)) if r.assigned_to else None,
-        }
-        for r in task_rows
-    ]
 
-    running_tasks = (
-        await db.execute(select(func.count(TaskModel.id)).where(TaskModel.status == "running"))
-    ).scalar() or 0
-
-    # 3. 最近工作流执行
-    wf_rows = (
-        await db.execute(
-            select(
-                WorkflowExecutionModel.id,
-                WorkflowExecutionModel.status,
-                WorkflowExecutionModel.started_at,
-                WorkflowExecutionModel.error,
-            )
-            .order_by(WorkflowExecutionModel.started_at.desc())
-            .limit(5)
-        )
+    # 1b. 工作流定义名称表
+    wf_def_rows = (
+        await db.execute(select(WorkflowModel.id, WorkflowModel.name))
     ).all()
-    workflows = [
-        {
-            "execution_id": str(r.id),
-            "status": r.status,
-            "started_at": r.started_at.isoformat() if r.started_at else None,
-            "error": (r.error or "")[:120] if r.error else None,
-        }
-        for r in wf_rows
-    ]
+    wf_name_by_id = {str(r.id): r.name for r in wf_def_rows}
 
-    # 4. 目标进度
-    goal_rows = (
+    # 1c. 目标表（goal 通过 workflow_id 与 workflow/task 关联）
+    goal_all_rows = (
         await db.execute(
             select(
                 GoalModel.id,
                 GoalModel.title,
                 GoalModel.status,
                 GoalModel.progress_pct,
+                GoalModel.workflow_id,
                 GoalModel.kpi_name,
                 GoalModel.kpi_current,
                 GoalModel.kpi_target,
                 GoalModel.budget_total,
                 GoalModel.budget_spent,
                 GoalModel.updated_at,
-            )
-            .order_by(GoalModel.updated_at.desc())
-            .limit(5)
+            ).order_by(GoalModel.updated_at.desc())
         )
     ).all()
-    goals = [
-        {
+    goal_by_wf: Dict[str, object] = {}
+    goals = []
+    for r in goal_all_rows:
+        g = {
             "id": r.id,
             "title": r.title,
             "status": r.status,
@@ -182,9 +165,249 @@ async def get_live_activity(
             "kpi_target": r.kpi_target,
             "budget_total": r.budget_total,
             "budget_spent": r.budget_spent,
+            "workflow_id": str(r.workflow_id) if r.workflow_id else None,
         }
-        for r in goal_rows
-    ]
+        goals.append(g)
+        if r.workflow_id and str(r.workflow_id) not in goal_by_wf:
+            goal_by_wf[str(r.workflow_id)] = g
+
+    def _goal_for_workflow(workflow_id):
+        if not workflow_id:
+            return None
+        return goal_by_wf.get(str(workflow_id))
+
+    # 2. 最近任务（含成败摘要 + 员工/目标/工作流关联）
+    task_rows = (
+        await db.execute(
+            select(TaskModel)
+            .order_by(TaskModel.updated_at.desc())
+            .limit(limit)
+        )
+    ).scalars().all()
+
+    recent_tasks = []
+    for r in task_rows:
+        assignee_id = _first_assignee(r.assigned_to)
+        emp = emp_by_id.get(assignee_id) if assignee_id else None
+        goal = _goal_for_workflow(r.workflow_id)
+        recent_tasks.append({
+            "id": str(r.id),
+            "title": r.title,
+            "status": r.status,
+            "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+            "started_at": r.started_at.isoformat() if r.started_at else None,
+            "completed_at": r.completed_at.isoformat() if r.completed_at else None,
+            "summary": _task_summary(r.result_data),
+            "error": (r.error or "")[:160] if r.error else None,
+            "employee_id": assignee_id,
+            "employee_name": (emp or {}).get("name") if emp else None,
+            "provider": (emp or {}).get("provider") if emp else None,
+            "model": (emp or {}).get("model") if emp else None,
+            "workflow_id": str(r.workflow_id) if r.workflow_id else None,
+            "workflow_name": wf_name_by_id.get(str(r.workflow_id)) if r.workflow_id else None,
+            "goal_id": (goal or {}).get("id") if goal else None,
+            "goal_title": (goal or {}).get("title") if goal else None,
+        })
+
+    running_task_count = (
+        await db.execute(select(func.count(TaskModel.id)).where(TaskModel.status == "running"))
+    ).scalar() or 0
+
+    # 2b. 今日任务统计（真实时间窗，UTC 当日）
+    async def _count_today(status: str) -> int:
+        c = (
+            await db.execute(
+                select(func.count(TaskModel.id)).where(
+                    TaskModel.status == status,
+                    func.coalesce(TaskModel.completed_at, TaskModel.updated_at) >= today_start,
+                )
+            )
+        ).scalar()
+        return int(c or 0)
+
+    completed_today = await _count_today("completed")
+    failed_today = await _count_today("failed")
+
+    # 2c. 「AI 正在工作」：运行中的任务（真实 Execution 数据，无伪造进度）
+    from sqlalchemy import nulls_last
+    running_rows = (
+        await db.execute(
+            select(TaskModel)
+            .where(TaskModel.status == "running")
+            .order_by(nulls_last(TaskModel.started_at.desc()))
+            .limit(10)
+        )
+    ).scalars().all()
+    working_now = []
+    for r in running_rows:
+        assignee_id = _first_assignee(r.assigned_to)
+        emp = emp_by_id.get(assignee_id) if assignee_id else None
+        goal = _goal_for_workflow(r.workflow_id)
+        working_now.append({
+            "kind": "task",
+            "id": str(r.id),
+            "title": r.title,
+            "status": "running",
+            "employee_id": assignee_id,
+            "employee_name": (emp or {}).get("name") if emp else None,
+            "position": (emp or {}).get("position") if emp else None,
+            "provider": (emp or {}).get("provider") if emp else None,
+            "model": (emp or {}).get("model") if emp else None,
+            "goal_id": (goal or {}).get("id") if goal else None,
+            "goal_title": (goal or {}).get("title") if goal else None,
+            "goal_progress": (goal or {}).get("progress_pct") if goal else None,
+            "workflow_id": str(r.workflow_id) if r.workflow_id else None,
+            "workflow_name": wf_name_by_id.get(str(r.workflow_id)) if r.workflow_id else None,
+            "current_step": _real_step(r),
+            "progress": _real_progress(r),
+            "started_at": r.started_at.isoformat() if r.started_at else (r.updated_at.isoformat() if r.updated_at else None),
+        })
+
+    # 3. 最近工作流执行 + 运行中的工作流
+    wf_rows = (
+        await db.execute(
+            select(WorkflowExecutionModel)
+            .order_by(nulls_last(WorkflowExecutionModel.started_at.desc()))
+            .limit(8)
+        )
+    ).scalars().all()
+    workflows = []
+    for r in wf_rows:
+        wf_status = (r.status or "").lower()
+        goal = _goal_for_workflow(r.workflow_id)
+        item = {
+            "execution_id": str(r.id),
+            "workflow_id": str(r.workflow_id) if r.workflow_id else None,
+            "workflow_name": wf_name_by_id.get(str(r.workflow_id)) if r.workflow_id else None,
+            "status": r.status,
+            "started_at": r.started_at.isoformat() if r.started_at else None,
+            "completed_at": r.completed_at.isoformat() if r.completed_at else None,
+            "error": (r.error or "")[:160] if r.error else None,
+            "goal_id": (goal or {}).get("id") if goal else None,
+            "goal_title": (goal or {}).get("title") if goal else None,
+        }
+        workflows.append(item)
+        if wf_status == "running":
+            working_now.append({
+                "kind": "workflow",
+                "id": str(r.id),
+                "title": wf_name_by_id.get(str(r.workflow_id), f"工作流 {str(r.workflow_id)[:8]}") if r.workflow_id else "工作流执行",
+                "status": "running",
+                "employee_name": None,
+                "provider": None,
+                "model": None,
+                "goal_id": (goal or {}).get("id") if goal else None,
+                "goal_title": (goal or {}).get("title") if goal else None,
+                "goal_progress": (goal or {}).get("progress_pct") if goal else None,
+                "workflow_id": str(r.workflow_id) if r.workflow_id else None,
+                "workflow_name": wf_name_by_id.get(str(r.workflow_id)) if r.workflow_id else None,
+                "current_step": None,
+                "progress": (goal or {}).get("progress_pct") if goal else None,
+                "started_at": r.started_at.isoformat() if r.started_at else None,
+                "execution_id": str(r.id),
+            })
+
+    # 3b. 阻塞中任务（等待审批/人工介入）
+    blocked_count = (
+        await db.execute(select(func.count(TaskModel.id)).where(TaskModel.status == "blocked"))
+    ).scalar() or 0
+    failed_count = (
+        await db.execute(select(func.count(TaskModel.id)).where(TaskModel.status == "failed"))
+    ).scalar() or 0
+
+    # 4. 「AI CEO 建议」——全部由真实信号派生，无信号时返回空列表（前端显示无待办）
+    recommendations: List[Dict] = []
+
+    # 4a. 失败任务 → 建议重新调度（真实失败记录）
+    failed_tasks_rows = (
+        await db.execute(
+            select(TaskModel)
+            .where(TaskModel.status == "failed")
+            .order_by(TaskModel.updated_at.desc())
+            .limit(3)
+        )
+    ).scalars().all()
+    for t in failed_tasks_rows:
+        assignee_id = _first_assignee(t.assigned_to)
+        emp_name = emp_name_by_id.get(assignee_id) if assignee_id else None
+        recommendations.append({
+            "id": f"rec-task-failed-{t.id}",
+            "type": "task_failed",
+            "priority": "high",
+            "title": f"任务执行失败：{t.title}",
+            "problem": (t.error or "任务执行未成功完成")[:160],
+            "impact": f"该任务由 {emp_name or 'AI 员工'} 执行，失败会阻塞相关业务目标推进。",
+            "analysis": "Failure Recovery Chain 已记录本次失败。建议查看失败原因，确认是模型/网络问题还是业务逻辑问题后重新调度。",
+            "suggestion": "查看执行详情，确认原因后重新调度任务。",
+            "action_label": "查看并处理",
+            "action_url": f"/workflow?task={t.id}",
+            "created_at": (t.updated_at or now).isoformat() if t.updated_at else now.isoformat(),
+        })
+
+    # 4b. 阻塞任务 → 等待审批/人工介入
+    if blocked_count > 0:
+        recommendations.append({
+            "id": "rec-task-blocked",
+            "type": "task_blocked",
+            "priority": "high",
+            "title": f"{blocked_count} 个任务阻塞，等待处理",
+            "problem": f"当前有 {blocked_count} 个任务处于 blocked 状态，可能等待审批或人工决策。",
+            "impact": "阻塞任务会导致对应工作流无法继续，影响目标交付时效。",
+            "analysis": "阻塞通常意味着需要人工审批或外部输入。请在审批队列中查看待办事项。",
+            "suggestion": "前往审批队列处理阻塞项。",
+            "action_label": "前往审批",
+            "action_url": "/approvals",
+            "created_at": now.isoformat(),
+        })
+
+    # 4c. 业务异常（线索下降/客户流失/供应商高风险，来自真实业务数据扫描）
+    try:
+        from src.modules.ceo_dashboard_module import CEODashboardModule
+
+        anomaly_alerts = await CEODashboardModule().scan_business_anomalies(db)
+        action_map = {
+            "lead_decline": ("/leads", "查看线索"),
+            "customer_churn": ("/leads", "查看客户"),
+            "supplier_risk_change": ("/supplier-analysis", "查看供应商风险"),
+        }
+        for a in anomaly_alerts:
+            url, label = action_map.get(a.get("type"), ("/metrics", "查看详情"))
+            recommendations.append({
+                "id": f"rec-{a.get('id', a.get('type'))}",
+                "type": a.get("type", "business_anomaly"),
+                "priority": "high" if a.get("level") == "critical" else "medium",
+                "title": a.get("title", "业务异常"),
+                "problem": a.get("message", "")[:160],
+                "impact": "该异常可能影响业务目标达成，建议及时关注。",
+                "analysis": "由 CEO 经营异常扫描基于真实业务数据检测得出。",
+                "suggestion": "进入对应业务页面核实并采取行动。",
+                "action_label": label,
+                "action_url": url,
+                "created_at": a.get("timestamp") or now.isoformat(),
+            })
+    except Exception as e:
+        logger.warning("dashboard_recommendations_anomaly_scan_failed", error=str(e))
+
+    # 4d. 团队尚未配置 → 引导上手
+    if len(employees) == 0:
+        recommendations.append({
+            "id": "rec-no-employees",
+            "type": "onboarding",
+            "priority": "medium",
+            "title": "AI 团队尚未配置",
+            "problem": "系统中还没有 AI 员工。",
+            "impact": "没有 AI 员工则无法自动执行任务与工作流。",
+            "analysis": "完成上手向导后即可创建 AI 员工并分配目标。",
+            "suggestion": "前往上手向导创建第一个 AI 员工。",
+            "action_label": "开始上手",
+            "action_url": "/onboarding",
+            "created_at": now.isoformat(),
+        })
+
+    # 按优先级排序（high > medium > low）
+    _priority_rank = {"high": 0, "medium": 1, "low": 2}
+    recommendations.sort(key=lambda x: _priority_rank.get(x.get("priority", "low"), 3))
+    recommendations = recommendations[:6]
 
     # 5. 最近模型调用（真实成本记录）
     model_rows = (
@@ -266,10 +489,18 @@ async def get_live_activity(
         "employees": employees,
         "active_employees": active_employees,
         "total_employees": len(employees),
-        "running_tasks": running_tasks,
+        "running_tasks": running_task_count,
+        "blocked_tasks": int(blocked_count or 0),
+        "failed_tasks": int(failed_count or 0),
+        "today": {
+            "completed": completed_today,
+            "failed": failed_today,
+        },
+        "working_now": working_now,
+        "recommendations": recommendations,
         "recent_tasks": recent_tasks,
         "workflows": workflows,
-        "goals": goals,
+        "goals": goals[:6],
         "model_calls": model_calls,
         "knowledge": {"documents": doc_count, "memory_activity": memory_activity},
         "audit_activity": audit_activity,

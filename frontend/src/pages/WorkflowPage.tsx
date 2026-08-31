@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { fetchWorkflows, Workflow } from '../services/workflows';
 import { useI18n } from '../i18n';
 import { AIWorkStatus, type AIStatus } from '../components/AIWorkStatus';
@@ -11,6 +12,12 @@ import {
   type TradeTemplate,
   type InstantiateResult,
 } from '../services/trade';
+import {
+  fetchLiveActivity,
+  type LiveActivity,
+  type LiveTask,
+  type LiveWorkflow,
+} from '../services/live';
 
 const statusLabels: Record<string, string> = {
   active: '运行中', inactive: '已停止', draft: '草稿',
@@ -33,13 +40,57 @@ const CATEGORY_LABELS: Record<string, string> = {
   customer_dev: '客户开发', supplier_procurement: '供应商采购', deal_closure: '报价成交',
 };
 
+/** 任务/执行状态 → 颜色/文案/图标（真实状态，无伪造） */
+function execStatusMeta(status: string): { color: string; label: string; icon: string } {
+  const s = (status || '').toLowerCase();
+  if (s === 'completed' || s === 'success')
+    return { color: '#4ade80', label: '已完成', icon: '🟢' };
+  if (s === 'failed' || s === 'failure' || s === 'error')
+    return { color: '#ff6b6b', label: '失败', icon: '🔴' };
+  if (s === 'running' || s === 'processing')
+    return { color: '#4cc9f0', label: '执行中', icon: '🔵' };
+  if (s === 'blocked') return { color: '#facc15', label: '阻塞', icon: '🟡' };
+  if (s === 'pending' || s === 'queued')
+    return { color: '#facc15', label: '等待中', icon: '🟡' };
+  if (s === 'cancelled' || s === 'canceled')
+    return { color: 'rgba(255,255,255,0.45)', label: '已取消', icon: '⚪' };
+  return { color: 'rgba(255,255,255,0.55)', label: status || '未知', icon: '⚪' };
+}
+
+function timeAgo(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso.endsWith('Z') || iso.includes('+') ? iso : iso + 'Z');
+  const diff = Date.now() - d.getTime();
+  if (Number.isNaN(diff)) return '';
+  const sec = Math.floor(diff / 1000);
+  if (sec < 60) return '刚刚';
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min} 分钟前`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr} 小时前`;
+  return `${Math.floor(hr / 24)} 天前`;
+}
+
+function fullTime(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const d = new Date(iso.endsWith('Z') || iso.includes('+') ? iso : iso + 'Z');
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleString('zh-CN', { hour12: false });
+}
+
 export function WorkflowPage() {
   const { t } = useI18n();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [templates, setTemplates] = useState<TradeTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [apiError, setApiError] = useState(false);
+
+  // 真实执行记录（DB 持久化，来自 /dashboard/live-activity）
+  const [live, setLive] = useState<LiveActivity | null>(null);
+  const [detailTask, setDetailTask] = useState<LiveTask | null>(null);
+  const [detailWf, setDetailWf] = useState<LiveWorkflow | null>(null);
 
   // 模板执行
   const [execTemplate, setExecTemplate] = useState<TradeTemplate | null>(null);
@@ -49,8 +100,42 @@ export function WorkflowPage() {
   const [execError, setExecError] = useState('');
 
   useEffect(() => {
-    Promise.all([loadWorkflows(), loadTemplates()]);
+    Promise.all([loadWorkflows(), loadTemplates(), loadLive()]);
   }, []);
+
+  // 从驾驶舱跳转：?task=<id> 打开任务执行详情；?execution=<id> 打开工作流执行详情
+  useEffect(() => {
+    if (!live) return;
+    const taskId = searchParams.get('task');
+    const executionId = searchParams.get('execution');
+    if (taskId) {
+      const task = live.recent_tasks?.find((x) => x.id === taskId);
+      if (task) setDetailTask(task);
+    } else if (executionId) {
+      const wf = live.workflows?.find((x) => x.execution_id === executionId);
+      if (wf) setDetailWf(wf);
+    }
+    // 仅在 live 首次到达时处理一次
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [live]);
+
+  const closeDetail = () => {
+    setDetailTask(null);
+    setDetailWf(null);
+    if (searchParams.has('task') || searchParams.has('execution')) {
+      setSearchParams({}, { replace: true });
+    }
+  };
+
+  const loadLive = async () => {
+    try {
+      const data = await fetchLiveActivity(30);
+      setLive(data);
+    } catch (e) {
+      // 执行记录为增强信息，失败不阻塞页面主体
+      console.error('Failed to load live executions', e);
+    }
+  };
 
   const loadWorkflows = async () => {
     try {
@@ -103,16 +188,39 @@ export function WorkflowPage() {
     );
   }
 
-  // 模拟工作流执行活动（演示）
-  const demoActivities: ActivityItem[] = workflows.length > 0
-    ? workflows.map((wf, i) => ({
-        id: `wf-${wf.id}`,
-        time: new Date(wf.updated_at || wf.created_at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
-        aiName: wf.name,
-        action: wf.status === 'active' ? '工作流运行中' : '工作流已停止',
-        status: (wf.status === 'active' ? 'running' : 'pending') as 'running' | 'pending',
-      }))
-    : [];
+  // 真实工作流执行活动（来自 DB 的 workflow_executions，非演示推导）
+  const realActivities: ActivityItem[] = (live?.workflows ?? []).map((wf) => {
+    const s = (wf.status || '').toLowerCase();
+    const status: ActivityItem['status'] =
+      s === 'completed' || s === 'success'
+        ? 'success'
+        : s === 'failed' || s === 'failure'
+          ? 'failed'
+          : s === 'running' || s === 'processing'
+            ? 'running'
+            : 'pending';
+    const actionText =
+      status === 'success'
+        ? '工作流执行完成'
+        : status === 'failed'
+          ? `工作流执行失败${wf.error ? `：${wf.error.slice(0, 40)}` : ''}`
+          : status === 'running'
+            ? '工作流执行中'
+            : '工作流等待执行';
+    const d = new Date(wf.completed_at || wf.started_at || '');
+    return {
+      id: `wf-exec-${wf.execution_id}`,
+      time: wf.completed_at || wf.started_at
+        ? d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+        : '--:--',
+      aiName: wf.workflow_name || '工作流引擎',
+      action: wf.goal_title ? `${actionText}（目标：${wf.goal_title}）` : actionText,
+      status,
+    };
+  });
+
+  // 最近 AI 任务执行（DB 持久化，驾驶舱「最近 AI 执行」同源数据）
+  const recentExecutions: LiveTask[] = live?.recent_tasks ?? [];
 
   return (
     <>
@@ -137,6 +245,71 @@ export function WorkflowPage() {
           <div className="cost-label">模板</div>
           <div className="cost-value" style={{ color: '#4cc9f0' }}>{templates.length}</div>
         </div>
+      </div>
+
+      {/* 最近 AI 执行（DB 真实记录；点击行查看执行详情） */}
+      <div className="import-panel" style={{ marginBottom: 20 }}>
+        <div className="executions-header">
+          <strong>最近 AI 执行</strong>
+          <span className="executions-count">{recentExecutions.length} 条</span>
+        </div>
+        {recentExecutions.length === 0 ? (
+          <p className="card-desc" style={{ marginTop: 8 }}>
+            暂无 AI 执行记录。AI 员工执行任务后，结果会实时出现在这里。
+          </p>
+        ) : (
+          <div style={{ marginTop: 8 }}>
+            {recentExecutions.slice(0, 10).map((task) => {
+              const meta = execStatusMeta(task.status);
+              return (
+                <div
+                  key={task.id}
+                  onClick={() => setDetailTask(task)}
+                  style={{
+                    display: 'flex', alignItems: 'flex-start', gap: 10,
+                    padding: '10px 8px', borderRadius: 8, cursor: 'pointer',
+                    borderBottom: '1px solid rgba(110,130,255,0.1)',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(76,201,240,0.06)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <span style={{ fontSize: 14, marginTop: 2 }}>{meta.icon}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13 }}>
+                      <strong style={{ color: '#dce9ff' }}>{task.employee_name || 'AI 员工'}</strong>
+                      <span style={{ color: 'rgba(255,255,255,0.8)' }}> · {task.title}</span>
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+                      {task.goal_title && (
+                        <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, background: 'rgba(123,97,255,0.12)', border: '1px solid rgba(123,97,255,0.35)', color: '#c3b4ff' }}>
+                          🎯 {task.goal_title}
+                        </span>
+                      )}
+                      {task.workflow_name && (
+                        <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, background: 'rgba(76,201,240,0.1)', border: '1px solid rgba(76,201,240,0.25)', color: '#9fdcff' }}>
+                          🔗 {task.workflow_name}
+                        </span>
+                      )}
+                      <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, color: meta.color, border: `1px solid ${meta.color}55`, background: `${meta.color}14` }}>
+                        {meta.label}
+                      </span>
+                    </div>
+                    {task.status === 'failed' && task.error ? (
+                      <div style={{ fontSize: 12, color: '#ff9d9d', marginTop: 3 }}>⚠ {task.error}</div>
+                    ) : task.summary ? (
+                      <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        📄 {task.summary}
+                      </div>
+                    ) : null}
+                  </div>
+                  <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', whiteSpace: 'nowrap' }}>
+                    {timeAgo(task.completed_at || task.updated_at)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* 左侧：外贸业务模板 + 工作流列表 / 右侧：活动时间线 */}
@@ -229,14 +402,43 @@ export function WorkflowPage() {
           </div>
         </div>
 
-        {/* 右侧：AI 工作流活动 */}
+        {/* 右侧：AI 工作流活动（真实执行记录） */}
         <div>
           <AIActivityFeed
-            activities={demoActivities}
+            activities={realActivities}
             title="工作流执行活动"
             maxItems={8}
             emptyMessage="暂无工作流执行记录"
           />
+          {(live?.workflows ?? []).length > 0 && (
+            <div className="card" style={{ marginTop: 12, padding: 12 }}>
+              <div className="cost-label" style={{ marginBottom: 8 }}>执行记录</div>
+              {(live?.workflows ?? []).slice(0, 5).map((wf) => {
+                const meta = execStatusMeta(wf.status);
+                return (
+                  <div
+                    key={wf.execution_id}
+                    onClick={() => setDetailWf(wf)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 8, padding: '6px 4px',
+                      cursor: 'pointer', borderRadius: 6, fontSize: 12,
+                      color: 'rgba(255,255,255,0.75)',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(76,201,240,0.06)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <span>{meta.icon}</span>
+                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {wf.workflow_name || '工作流执行'}
+                    </span>
+                    <span style={{ color: 'rgba(255,255,255,0.4)', whiteSpace: 'nowrap' }}>
+                      {timeAgo(wf.completed_at || wf.started_at)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           {/* AI 生成工作流 */}
           <div className="card" style={{ marginTop: 16, borderLeft: '3px solid #4cc9f0' }}>
@@ -377,6 +579,93 @@ export function WorkflowPage() {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* 执行详情弹窗（任务 / 工作流执行，全部为真实 DB 数据） */}
+      {(detailTask || detailWf) && (
+        <div className="modal-overlay" onClick={closeDetail}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 620 }}>
+            {detailTask && (() => {
+              const meta = execStatusMeta(detailTask.status);
+              return (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                    <h2 style={{ margin: 0, fontSize: 17 }}>
+                      {meta.icon} 任务执行详情
+                    </h2>
+                    <span style={{ fontSize: 12, padding: '3px 12px', borderRadius: 999, color: meta.color, background: `${meta.color}18`, border: `1px solid ${meta.color}55`, fontWeight: 700 }}>
+                      {meta.label}
+                    </span>
+                  </div>
+                  <p className="card-desc" style={{ marginTop: 8, fontSize: 14, color: '#dce9ff' }}>
+                    {detailTask.title}
+                  </p>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 12, fontSize: 13 }}>
+                    <div><span style={{ color: 'rgba(255,255,255,0.5)' }}>执行员工：</span>{detailTask.employee_name || '—'}</div>
+                    <div><span style={{ color: 'rgba(255,255,255,0.5)' }}>Provider：</span>{detailTask.provider || '—'}{detailTask.model ? ` · ${detailTask.model}` : ''}</div>
+                    <div style={{ gridColumn: '1 / -1' }}><span style={{ color: 'rgba(255,255,255,0.5)' }}>所属目标：</span>{detailTask.goal_title || '—'}</div>
+                    <div style={{ gridColumn: '1 / -1' }}><span style={{ color: 'rgba(255,255,255,0.5)' }}>所属工作流：</span>{detailTask.workflow_name || '—'}</div>
+                    <div><span style={{ color: 'rgba(255,255,255,0.5)' }}>开始时间：</span>{fullTime(detailTask.started_at || detailTask.updated_at)}</div>
+                    <div><span style={{ color: 'rgba(255,255,255,0.5)' }}>完成时间：</span>{fullTime(detailTask.completed_at)}</div>
+                  </div>
+                  {detailTask.status === 'failed' && detailTask.error && (
+                    <div className="card" style={{ marginTop: 12, padding: 10, borderLeft: '3px solid #ff6b6b' }}>
+                      <div className="cost-label" style={{ color: '#ff9d9d' }}>失败原因</div>
+                      <div style={{ fontSize: 13, color: '#ffb3b3', marginTop: 4, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                        {detailTask.error}
+                      </div>
+                    </div>
+                  )}
+                  {detailTask.summary && (
+                    <div className="card" style={{ marginTop: 12, padding: 10, borderLeft: '3px solid #4ade80' }}>
+                      <div className="cost-label" style={{ color: '#9ff0bd' }}>执行结果</div>
+                      <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.8)', marginTop: 4, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                        {detailTask.summary}
+                      </div>
+                    </div>
+                  )}
+                  <div className="modal-actions" style={{ marginTop: 16 }}>
+                    <button className="btn btn-submit" onClick={closeDetail}>关闭</button>
+                  </div>
+                </>
+              );
+            })()}
+            {detailWf && (() => {
+              const meta = execStatusMeta(detailWf.status);
+              return (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                    <h2 style={{ margin: 0, fontSize: 17 }}>
+                      {meta.icon} 工作流执行详情
+                    </h2>
+                    <span style={{ fontSize: 12, padding: '3px 12px', borderRadius: 999, color: meta.color, background: `${meta.color}18`, border: `1px solid ${meta.color}55`, fontWeight: 700 }}>
+                      {meta.label}
+                    </span>
+                  </div>
+                  <p className="card-desc" style={{ marginTop: 8, fontSize: 14, color: '#dce9ff' }}>
+                    {detailWf.workflow_name || '工作流执行'}
+                  </p>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 12, fontSize: 13 }}>
+                    <div style={{ gridColumn: '1 / -1' }}><span style={{ color: 'rgba(255,255,255,0.5)' }}>所属目标：</span>{detailWf.goal_title || '—'}</div>
+                    <div><span style={{ color: 'rgba(255,255,255,0.5)' }}>开始时间：</span>{fullTime(detailWf.started_at)}</div>
+                    <div><span style={{ color: 'rgba(255,255,255,0.5)' }}>完成时间：</span>{fullTime(detailWf.completed_at)}</div>
+                  </div>
+                  {detailWf.error && (
+                    <div className="card" style={{ marginTop: 12, padding: 10, borderLeft: '3px solid #ff6b6b' }}>
+                      <div className="cost-label" style={{ color: '#ff9d9d' }}>失败原因</div>
+                      <div style={{ fontSize: 13, color: '#ffb3b3', marginTop: 4, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                        {detailWf.error}
+                      </div>
+                    </div>
+                  )}
+                  <div className="modal-actions" style={{ marginTop: 16 }}>
+                    <button className="btn btn-submit" onClick={closeDetail}>关闭</button>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </div>
       )}

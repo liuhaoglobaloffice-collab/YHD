@@ -17,7 +17,7 @@ from src.ai.goal_service import GoalService
 from src.ai.recovery import RecoveryChain
 from src.ai.recovery_executor import RecoveryExecutor
 from src.database.models import FailureRecordModel
-from src.identity.models import User
+from src.identity.models import AccountType, User
 
 router = APIRouter(prefix="/goals", tags=["Goals"])
 
@@ -198,11 +198,17 @@ async def list_goals(
     current_user: User = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """获取目标列表。"""
+    # V4 可见性：主账号/管理员看全部目标（CEO 驾驶舱 drill-down 一致）；子账号/普通用户只看自己创建的
+    is_owner = (
+        current_user.account_type == AccountType.OWNER
+        or getattr(current_user, "is_superuser", False)
+        or str(getattr(current_user, "role", "")).upper() == "ADMIN"
+    )
     service = GoalService(session)
     return await service.list_goals(
         status=status,
         priority=priority,
-        created_by=current_user.id,
+        created_by=None if is_owner else current_user.id,
         page=page,
         page_size=page_size,
     )
