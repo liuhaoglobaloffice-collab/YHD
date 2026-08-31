@@ -10,6 +10,7 @@
 .git
 .gitignore
 .gitattributes
+.github/
 
 # Python
 __pycache__
@@ -25,13 +26,17 @@ env/
 .coverage
 htmlcov/
 coverage/
+.ruff_cache/
+.benchmarks/
 
 # Node / frontend（前端镜像由 frontend/Dockerfile 自行构建）
 node_modules
 **/node_modules
 frontend/dist
+frontend/storybook-static
+frontend/.storybook
 
-# Database / logs / temp
+# Database / logs / temp / backups
 *.db
 *.db-journal
 *.sqlite3
@@ -42,9 +47,25 @@ temp/
 *.tmp
 *.swp
 *.zip
+backup/
+blobs/
 
-# IDE / OS
+# Documentation / IDE / OS
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
+*.md
+!README.md
+README.md  # 注：保留用于镜像内参考
+docs/
+scripts/
+tests/
+audit_package/
+compliance/
+manifests/
+data/
+
+# Misc
+alembic.ini
+.env.example
