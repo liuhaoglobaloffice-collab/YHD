@@ -1,45 +1,18 @@
-import { useEffect, useState } from 'react';
-import { fetchLiveActivity, summarizeActivity, type LiveActivity } from '../services/live';
+import { useState } from 'react';
+import { summarizeActivity, type LiveActivity } from '../services/live';
 
 /**
  * GlobalAIStatusBar — 全局「AI 正在工作」状态条（Y1.0）。
  *
  * 挂载在 Layout 中，出现在每一个核心页面顶部：
- * - 轮询 /dashboard/live-activity（默认 20s）
+ * - 数据由 Layout 统一轮询 /dashboard/live-activity 后通过 props 注入（全站单一数据源，不再自行轮询）
  * - 展示：在岗 AI 员工数 / 执行中任务 / 最近成败 / 模型调用活动 / 知识记忆活动
  * - 让用户在任何页面都能感知「这是一个正在工作的 AI 企业操作系统」
  */
-const POLL_INTERVAL_MS = 20000;
-
-export function GlobalAIStatusBar() {
-  const [live, setLive] = useState<LiveActivity | null>(null);
-  const [failed, setFailed] = useState(false);
+export function GlobalAIStatusBar({ live }: { live: LiveActivity | null }) {
   const [expanded, setExpanded] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const load = async () => {
-      try {
-        const data = await fetchLiveActivity();
-        if (!cancelled) {
-          setLive(data);
-          setFailed(false);
-        }
-      } catch {
-        if (!cancelled) setFailed(true);
-      }
-    };
-
-    load();
-    const timer = setInterval(load, POLL_INTERVAL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, []);
-
-  if (failed && !live) {
+  if (!live) {
     return (
       <div className="ai-live-bar ai-live-bar-error" role="status">
         <span className="ai-live-dot" style={{ background: '#ff6b6b' }} />
@@ -47,7 +20,6 @@ export function GlobalAIStatusBar() {
       </div>
     );
   }
-  if (!live) return null;
 
   const { headline, detail, tone } = summarizeActivity(live);
   const toneColor =

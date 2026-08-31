@@ -27,6 +27,11 @@ const STATUS_CONFIG: Record<AIStatus, { label: string; color: string; bg: string
   offline:   { label: '离线',     color: '#666',    bg: 'rgba(102,102,102,0.08)', pulse: false },
 };
 
+/** 获取状态配置（颜色/标签/脉冲），供 AI Core 等 chip 类组件复用同一套视觉。 */
+export function getAIStatusConfig(status: AIStatus) {
+  return STATUS_CONFIG[status] ?? STATUS_CONFIG.offline;
+}
+
 export function AIWorkStatus({ name, status, currentTask, todayCompleted, recentActivity, suggestion, position, model, trust_score, capability_score, risk_score, compact }: AIWorkStatusProps) {
   const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.offline;
 

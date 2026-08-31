@@ -155,6 +155,80 @@ export async function fetchLiveActivity(limit = 12): Promise<LiveActivity> {
   return res.json();
 }
 
+// ============================================================
+// AI Core（AI 总控）状态机 —— 全站统一的 AI 运行状态派生
+// 数据源：/dashboard/live-activity（真实数据库记录，绝不伪造）
+// 状态优先级：执行中 > 异常 > 等待审批 > 已完成 > 待机
+// ============================================================
+
+/** AI Core 状态码（与 AIWorkStatus 的 AIStatus 结构一致，可直接喂给 AIStatusDot） */
+export type AICoreStatus = 'working' | 'error' | 'waiting' | 'completed' | 'idle' | 'offline';
+
+export interface AICoreState {
+  status: AICoreStatus;
+  /** 状态标签，如「执行中 · 2 项任务」 */
+  label: string;
+  /** AI 当前正在做什么（第一条执行中任务的描述，无则为空） */
+  detail: string;
+}
+
+/**
+ * 从真实实时数据派生 AI Core 运行状态。
+ * - working        执行中：有任务/工作流正在运行
+ * - error          异常：存在失败任务且当前无任务执行
+ * - waiting        等待审批：存在阻塞任务待人工处理
+ * - completed      已完成：今日有完成任务且当前无执行/异常/阻塞
+ * - idle           待机：一切平静，AI 员工就绪
+ * - offline        离线：API 不可达（live 为 null）
+ */
+export function deriveAICoreState(live: LiveActivity | null | undefined): AICoreState {
+  if (!live) return { status: 'offline', label: '连接中断', detail: '' };
+
+  const working = live.working_now?.length ?? 0;
+  const failed = live.failed_tasks ?? 0;
+  const blocked = live.blocked_tasks ?? 0;
+  const doneToday = live.today?.completed ?? 0;
+
+  if (working > 0) {
+    const first = live.working_now?.[0];
+    return {
+      status: 'working',
+      label: `执行中 · ${working} 项任务`,
+      detail: first
+        ? `${first.kind === 'workflow' ? first.workflow_name || '工作流' : first.employee_name || 'AI 员工'}：${first.title}`
+        : '',
+    };
+  }
+  if (failed > 0) {
+    const failedTask = live.recent_tasks?.find((t) => t.status === 'failed');
+    return {
+      status: 'error',
+      label: `异常 · ${failed} 个任务失败`,
+      detail: failedTask ? `失败：${failedTask.title}${failedTask.error ? `（${failedTask.error}）` : ''}` : '',
+    };
+  }
+  if (blocked > 0) {
+    return {
+      status: 'waiting',
+      label: `等待审批 · ${blocked} 项`,
+      detail: '存在被阻塞的任务，需要人工处理',
+    };
+  }
+  if (doneToday > 0) {
+    const lastDone = live.recent_tasks?.find((t) => t.status === 'completed');
+    return {
+      status: 'completed',
+      label: `今日已完成 ${doneToday} 项`,
+      detail: lastDone ? `最近完成：${lastDone.title}` : '',
+    };
+  }
+  return {
+    status: 'idle',
+    label: `待机 · ${live.active_employees} 名 AI 就绪`,
+    detail: 'AI 员工空闲，可前往目标中心下发任务',
+  };
+}
+
 /** 把实时数据压缩成状态条的一句话摘要。 */
 export function summarizeActivity(live: LiveActivity): {
   headline: string;

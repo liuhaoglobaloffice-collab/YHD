@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { clearAuthToken } from '../services/auth';
 import { useI18n } from '../i18n';
+import { AIStatusDot, getAIStatusConfig } from './AIWorkStatus';
+import type { AICoreState } from '../services/live';
 
 interface MenuLeaf {
   path: string;
@@ -145,7 +147,7 @@ function LeafLink({ leaf, level }: { leaf: MenuLeaf; level: number }) {
   );
 }
 
-export function Sidebar() {
+export function Sidebar({ aiCore }: { aiCore?: AICoreState }) {
   const { t } = useI18n();
   const location = useLocation();
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
@@ -235,9 +237,30 @@ export function Sidebar() {
       </nav>
 
       <div className="sidebar-footer">
-        <div className="hologram-chip">
-          <span className="hologram-pulse" />
-          {t('systemOnline')}
+        <div
+          className="hologram-chip"
+          title={aiCore?.detail || aiCore?.label || t('systemOnline')}
+          role="status"
+          aria-label={`AI Core 状态：${aiCore?.label ?? t('systemOnline')}`}
+          style={
+            aiCore
+              ? (() => {
+                  const cfg = getAIStatusConfig(aiCore.status);
+                  return {
+                    color: cfg.color,
+                    borderColor: `${cfg.color}40`,
+                    background: `${cfg.color}12`,
+                  };
+                })()
+              : undefined
+          }
+        >
+          {aiCore ? (
+            <AIStatusDot status={aiCore.status} size={8} />
+          ) : (
+            <span className="hologram-pulse" />
+          )}
+          {aiCore ? aiCore.label : t('systemOnline')}
         </div>
         <button className="btn btn-sm btn-cancel sidebar-logout" onClick={handleLogout}>
           {t('logout')}

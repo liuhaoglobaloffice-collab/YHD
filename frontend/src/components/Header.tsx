@@ -1,7 +1,9 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import { useI18n } from '../i18n';
+import { AIStatusDot } from './AIWorkStatus';
+import type { AICoreState } from '../services/live';
 
-export function Header() {
+export function Header({ aiCore }: { aiCore?: AICoreState }) {
   const { lang, setLang, t } = useI18n();
   const location = useLocation();
 
@@ -29,8 +31,17 @@ export function Header() {
         <span className="header-title">{pageTitle}</span>
       </div>
       <div className="header-actions">
-        <span className="health-dot" />
-        <span className="header-status">{t('systemOnline')}</span>
+        {aiCore && (
+          <span
+            className="ai-core-chip"
+            title={aiCore.detail || aiCore.label}
+            role="status"
+            aria-label={`AI Core 状态：${aiCore.label}`}
+          >
+            <AIStatusDot status={aiCore.status} size={8} />
+            <span className="ai-core-label">{aiCore.label}</span>
+          </span>
+        )}
         <div className="lang-switch">
           <button
             className={`lang-btn ${lang === 'zh' ? 'active' : ''}`}

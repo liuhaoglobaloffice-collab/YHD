@@ -331,28 +331,41 @@ body::before {
   text-shadow: 0 0 30px rgba(123, 97, 255, 0.25);
 }
 
-.header-status {
-  color: #7bffb4;
-  font-weight: 700;
-  font-size: 12px;
-  letter-spacing: 1px;
-  text-shadow: 0 0 8px rgba(123, 255, 180, 0.6);
-}
-
 .header-actions {
   display: flex;
   align-items: center;
   gap: 14px;
 }
 
-.health-dot {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #7bffb4;
-  box-shadow: 0 0 10px #7bffb4, 0 0 22px rgba(123, 255, 180, 0.5);
-  animation: pulse 2s ease-in-out infinite;
+/* ====== AI Core 状态指示（Header，真实数据驱动）====== */
+.ai-core-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(76, 201, 240, 0.06);
+  border: 1px solid rgba(110, 130, 255, 0.18);
+  cursor: default;
+}
+
+.ai-core-label {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.72);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+/* 窄屏：只保留状态点，收起文字，避免挤压面包屑 */
+@media (max-width: 760px) {
+  .ai-core-label {
+    display: none;
+  }
+  .ai-core-chip {
+    padding: 5px 8px;
+  }
 }
 
 /* ====== 语言切换 ====== */

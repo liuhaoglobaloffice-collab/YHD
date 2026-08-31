@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   fetchLiveActivity,
+  deriveAICoreState,
   type LiveActivity,
   type LiveWorkingItem,
   type LiveRecommendation,
@@ -9,6 +10,7 @@ import {
 } from '../services/live';
 import { fetchCostSummary, type CostSummary } from '../services/costs';
 import { AIEmptyState } from '../components/AIEmptyState';
+import { AIStatusDot } from '../components/AIWorkStatus';
 
 const PROVIDER_LABELS: Record<string, string> = {
   openai: 'OpenAI',
@@ -77,7 +79,6 @@ const DASH_CSS = `
 .ceo-head h1 { margin: 0; font-size: 22px; }
 .ceo-sub { font-size: 12px; color: rgba(255,255,255,0.45); margin-top: 4px; }
 .ceo-live { display: flex; align-items: center; gap: 8px; font-size: 12px; color: rgba(255,255,255,0.6); background: rgba(15,23,51,0.7); border: 1px solid rgba(110,130,255,0.2); padding: 6px 12px; border-radius: 999px; }
-.ceo-live-dot { width: 8px; height: 8px; border-radius: 50%; background: #4ade80; box-shadow: 0 0 8px #4ade80; animation: ceo-pulse 2s infinite; }
 @keyframes ceo-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
 .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
 .kpi-card { cursor: pointer; padding: 16px 18px; position: relative; overflow: hidden; }
@@ -217,6 +218,8 @@ export function DashboardPage() {
   const recentTasks: LiveTask[] = live.recent_tasks ?? [];
   const recentlyDone = recentTasks.filter((t) => t.status === 'completed').slice(0, 4);
   const goals = live.goals ?? [];
+  // AI Core 统一状态（与 Header/Sidebar 同一状态机派生，来自本页已加载的真实数据）
+  const aiCore = deriveAICoreState(live);
 
   const goTask = (t: LiveTask) => navigate(`/workflow?task=${t.id}`);
   const goWorking = (w: LiveWorkingItem) => {
@@ -234,9 +237,9 @@ export function DashboardPage() {
           <h1>CEO 驾驶舱</h1>
           <div className="ceo-sub">AI 企业操作系统 · 团队实时态势（数据每 15 秒自动刷新）</div>
         </div>
-        <div className="ceo-live">
-          <span className="ceo-live-dot" />
-          实时数据 · 更新于 {lastUpdated ? lastUpdated.toLocaleTimeString('zh-CN') : '--'}
+        <div className="ceo-live" title={aiCore.detail || aiCore.label}>
+          <AIStatusDot status={aiCore.status} size={8} />
+          AI {aiCore.label} · 更新于 {lastUpdated ? lastUpdated.toLocaleTimeString('zh-CN') : '--'}
         </div>
       </div>
 
@@ -245,9 +248,9 @@ export function DashboardPage() {
         <div className="card kpi-card" onClick={() => navigate('/employees')}>
           <span className="kpi-bar" style={{ background: COLORS.cyan }} />
           <div className="kpi-icon">👥</div>
-          <div className="kpi-label">AI 员工在线</div>
+          <div className="kpi-label">AI 员工就绪</div>
           <div className="kpi-value" style={{ color: COLORS.cyan }}>{onlineEmployees}</div>
-          <div className="kpi-sub">共 {totalEmployees} 名员工 · 在岗待命</div>
+          <div className="kpi-sub">共 {totalEmployees} 名 · 随时可派发任务</div>
         </div>
         <div className="card kpi-card" onClick={() => navigate('/workflow')}>
           <span className="kpi-bar" style={{ background: COLORS.violet }} />
@@ -298,7 +301,7 @@ export function DashboardPage() {
                 <span className="empty-icon">🌙</span>
                 当前没有 AI 正在执行
                 <div style={{ marginTop: 6, fontSize: 12 }}>
-                  AI 团队 {onlineEmployees} 名员工在岗待命，可前往目标中心下发任务
+                  AI 团队 {onlineEmployees} 名员工已就绪，可前往目标中心下发任务
                 </div>
               </div>
               {recentlyDone.length > 0 && (
