@@ -336,10 +336,22 @@ class ModelRegistry:
                 logger.warning(f"Failed to load persisted model registry: {e}")
 
     def _persist(self):
+        """Persist the model registry atomically.
+
+        Write to a temporary file in the same directory and atomically replace the
+        target file. After writing, attempt to read back the JSON to verify the
+        write succeeded. This reduces risk of partial writes and improves G5
+        persistence reliability.
+        """
         if not getattr(self, "_persist_file", None):
             return
         try:
             import json
+            from pathlib import Path
+
+            data_dir = Path(self._persist_file).parent
+            data_dir.mkdir(parents=True, exist_ok=True)
+
             serial = {
                 "models": [],
                 "active": {},
@@ -360,10 +372,27 @@ class ModelRegistry:
                     "metadata": m.metadata,
                 })
             for p, mid in self._active_model_by_provider.items():
-                serial["active"][p.value] = mid
-            with open(self._persist_file, "w", encoding="utf-8") as f:
+                # persist provider by its canonical value
+                serial["active"][p.value if hasattr(p, 'value') else str(p)] = mid
+
+            tmp_path = data_dir / (self._persist_file.name + ".tmp")
+            # write to temp file, flush and fsync to ensure durability
+            with open(tmp_path, "w", encoding="utf-8") as f:
                 json.dump(serial, f, ensure_ascii=False, indent=2)
-            logger.info("Persisted ModelRegistry state")
+                f.flush()
+                try:
+                    os.fsync(f.fileno())
+                except Exception:
+                    # os.fsync may not be available on some platforms/FS; ignore if it fails
+                    pass
+
+            # verify by reading back
+            with open(tmp_path, "r", encoding="utf-8") as f:
+                _ = json.load(f)
+
+            # atomic replace
+            os.replace(str(tmp_path), str(self._persist_file))
+            logger.info("Persisted ModelRegistry state (atomic)")
         except Exception as e:
             logger.warning(f"Failed to persist model registry: {e}")
 
