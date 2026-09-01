@@ -29,6 +29,8 @@ def test_model_manager_switches_active_model():
     switched = manager.switch_model(ProviderType.OPENAI, "gpt-4.1-mini")
     assert switched.model_id == "gpt-4.1-mini"
     assert manager.get_active_model(ProviderType.OPENAI) == "gpt-4.1-mini"
+    provider_models = gateway.list_provider_models(ProviderType.OPENAI, enabled_only=True)
+    assert {m.model_id for m in provider_models} == {"gpt-4o-mini", "gpt-4.1-mini"}
 
 
 def test_model_manager_requires_registered_provider():

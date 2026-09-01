@@ -711,6 +711,11 @@ class ProviderGateway:
         """List available models."""
         return self._model_registry.list_models(provider, enabled_only)
 
+    def list_provider_models(self, provider: ProviderType, enabled_only: bool = True) -> List[ModelConfig]:
+        """Return the model catalog for a provider in a stable, API-friendly order."""
+        models = self._model_registry.list_models(provider, enabled_only=enabled_only)
+        return sorted(models, key=lambda model: model.model_id)
+
     def get_active_model(self, provider: ProviderType) -> Optional[str]:
         """Return the active model ID for a provider."""
         return self._model_registry.get_active_model(provider)

@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.ai.gateway import get_gateway
 from src.ai.provider_setup import (
     PROVIDER_CATALOG,
     apply_provider_runtime,
@@ -23,6 +24,7 @@ from src.ai.provider_setup import (
     test_provider_connection,
     unregister_provider_runtime,
 )
+from src.ai.providers import ProviderType
 from src.api.dependencies import get_current_user
 from src.api.dependencies.permissions import require_permission
 from src.api.provider_catalog import get_system_provider_status
@@ -41,6 +43,10 @@ class ProviderConfigRequest(BaseModel):
     base_url: str | None = Field(None, description="API Base URL，留空使用官方默认")
     model: str | None = Field(None, description="默认模型 ID，留空使用 catalog 默认")
     test: bool = Field(False, description="是否立即执行真实连接测试")
+
+
+class ActiveModelRequest(BaseModel):
+    model_id: str = Field(..., min_length=1, description="The active model ID to bind for the selected provider.")
 
 
 async def run_provider_health_checks() -> list:
@@ -154,6 +160,51 @@ async def provider_catalog(
 ):
     """List supported providers with default base URL / model for the UI form."""
     return {"providers": catalog_for_api()}
+
+
+@router.get("/models")
+async def provider_models(
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(require_permission("system", "read")),
+):
+    """List provider/model inventory and the current active model for each provider."""
+    gateway = get_gateway()
+    records = []
+    for provider in sorted(gateway.list_real_providers(), key=lambda p: p.value):
+        models = gateway.list_provider_models(provider, enabled_only=True)
+        records.append({
+            "provider": provider.value,
+            "active_model": gateway.get_active_model(provider),
+            "available_models": [m.model_id for m in models],
+        })
+    return {"providers": records, "tenant_id": getattr(current_user, "tenant_id", None)}
+
+
+@router.post("/models/{provider}/active")
+async def set_provider_active_model(
+    provider: str,
+    payload: ActiveModelRequest,
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(require_permission("system", "write")),
+):
+    """Set the active runtime model for a provider.
+
+    This exposes the runtime model switching required by the Y1 model-manager
+    blueprint without forcing a restart or rewriting the agent/provider config.
+    """
+    try:
+        provider_type = ProviderType(provider.lower())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Unsupported provider: {provider}") from exc
+
+    gateway = get_gateway()
+    model = gateway.switch_model(provider_type, payload.model_id)
+    return {
+        "provider": provider_type.value,
+        "tenant_id": getattr(current_user, "tenant_id", None),
+        "active_model": model.model_id,
+        "available_models": [m.model_id for m in gateway.list_provider_models(provider_type, enabled_only=True)],
+    }
 
 
 @router.get("/configs")
