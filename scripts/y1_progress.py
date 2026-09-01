@@ -71,9 +71,10 @@ EVIDENCE_MAP = {
     "Model Manager": {
         "code": ["src/ai/model_manager.py", "src/ai/providers.py"],
         "unit_tests": ["tests/ai/test_model_manager.py"],
-        "integration_tests": [],
-        "persistence_tests": [],
+        "integration_tests": ["tests/integration/test_model_manager_persistence.py", "tests/integration/test_model_manager_switch_and_agent.py", "tests/integration/test_model_manager_concurrency.py"],
+        "persistence_tests": ["tests/integration/test_model_manager_persistence.py"],
     },
+
     "Communication": {
         "code": ["src/integrations/**"],
         "unit_tests": ["tests/integration/test_platform_execution_mode.py"],
