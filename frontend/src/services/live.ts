@@ -224,8 +224,8 @@ export function deriveAICoreState(live: LiveActivity | null | undefined): AICore
   }
   return {
     status: 'idle',
-    label: `待机 · ${live.active_employees} 名 AI 就绪`,
-    detail: 'AI 员工空闲，可前往目标中心下发任务',
+    label: `待机 · ${live.active_employees} 名 AI 在线`,
+    detail: 'AI 员工在线，可前往目标中心下发任务',
   };
 }
 

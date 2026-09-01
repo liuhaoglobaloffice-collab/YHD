@@ -248,9 +248,12 @@ export function DashboardPage() {
         <div className="card kpi-card" onClick={() => navigate('/employees')}>
           <span className="kpi-bar" style={{ background: COLORS.cyan }} />
           <div className="kpi-icon">👥</div>
-          <div className="kpi-label">AI 员工就绪</div>
+          <div className="kpi-label">AI 员工在线</div>
           <div className="kpi-value" style={{ color: COLORS.cyan }}>{onlineEmployees}</div>
-          <div className="kpi-sub">共 {totalEmployees} 名 · 随时可派发任务</div>
+          <div className="kpi-sub">
+            共 {totalEmployees} 名 · 在线 {onlineEmployees} · 执行中 {workingCount}
+            {workingCount > 0 ? ` · 可派发 ${Math.max(0, onlineEmployees - workingCount)}` : ' · 全部可派发'}
+          </div>
         </div>
         <div className="card kpi-card" onClick={() => navigate('/workflow')}>
           <span className="kpi-bar" style={{ background: COLORS.violet }} />
@@ -259,7 +262,11 @@ export function DashboardPage() {
           <div className="kpi-value" style={{ color: workingCount > 0 ? COLORS.violet : COLORS.muted }}>
             {workingCount}
           </div>
-          <div className="kpi-sub">{workingCount > 0 ? 'AI 正在执行任务' : '当前没有执行中的任务'}</div>
+          <div className="kpi-sub">
+            {workingCount > 0
+              ? `${workingCount} 项任务/工作流运行中`
+              : '当前没有执行中的任务'}
+          </div>
         </div>
         <div className="card kpi-card" onClick={() => navigate('/workflow')}>
           <span className="kpi-bar" style={{ background: COLORS.green }} />
@@ -301,7 +308,7 @@ export function DashboardPage() {
                 <span className="empty-icon">🌙</span>
                 当前没有 AI 正在执行
                 <div style={{ marginTop: 6, fontSize: 12 }}>
-                  AI 团队 {onlineEmployees} 名员工已就绪，可前往目标中心下发任务
+                  AI 团队 {onlineEmployees} 名员工在线，可前往目标中心下发任务
                 </div>
               </div>
               {recentlyDone.length > 0 && (

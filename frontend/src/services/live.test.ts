@@ -98,10 +98,10 @@ describe('deriveAICoreState — AI Core 统一状态机（真实数据派生）'
     expect(s.detail).toContain('客户跟进邮件');
   });
 
-  it('全部为零 → idle 待机，label 带就绪人数', () => {
+  it('全部为零 → idle 待机，label 带在线人数', () => {
     const s = deriveAICoreState(makeLive({ active_employees: 11 }));
     expect(s.status).toBe('idle');
-    expect(s.label).toBe('待机 · 11 名 AI 就绪');
+    expect(s.label).toBe('待机 · 11 名 AI 在线');
     expect(s.detail).toContain('目标中心');
   });
 
