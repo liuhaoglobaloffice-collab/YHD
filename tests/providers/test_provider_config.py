@@ -741,6 +741,45 @@ def test_http_ollama_save_without_key_ok(api_client):
     assert r.json()["config"]["has_api_key"] is False
 
 
+@pytest.mark.asyncio
+async def test_persisted_provider_configs_are_scoped_to_tenant(provider_db_env):
+    """同一 provider 在不同租户下必须分离，避免串客/跨租户泄露。"""
+    from src.ai.provider_setup import list_persisted_configs, persist_provider_config
+    from src.api.dependencies.database import get_session_factory, init_database
+
+    await init_database()
+
+    async with get_session_factory()() as session:
+        await persist_provider_config(
+            session,
+            name="deepseek",
+            base_url="https://api.deepseek.com/v1",
+            model="deepseek-chat",
+            api_key="tenant-a-key",
+            created_by=1,
+            tenant_id="tenant-a",
+        )
+        await persist_provider_config(
+            session,
+            name="deepseek",
+            base_url="https://api.deepseek.com/v1",
+            model="deepseek-chat",
+            api_key="tenant-b-key",
+            created_by=2,
+            tenant_id="tenant-b",
+        )
+
+        tenant_a = await list_persisted_configs(session, tenant_id="tenant-a")
+        tenant_b = await list_persisted_configs(session, tenant_id="tenant-b")
+        all_rows = await list_persisted_configs(session)
+
+        assert len(tenant_a) == 1 and tenant_a[0]["tenant_id"] == "tenant-a"
+        assert len(tenant_b) == 1 and tenant_b[0]["tenant_id"] == "tenant-b"
+        assert {row["tenant_id"] for row in all_rows} == {"tenant-a", "tenant-b"}
+        assert tenant_a[0]["api_key_preview"].endswith("-key")
+        assert tenant_b[0]["api_key_preview"].endswith("-key")
+
+
 def test_http_delete_config_removes_row_and_404_for_unknown(api_client):
     client, headers = api_client
     # 先保存一个

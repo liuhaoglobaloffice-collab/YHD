@@ -25,7 +25,7 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.encryption import decrypt_value, encrypt_value
@@ -318,6 +318,7 @@ async def persist_provider_config(
     model: Optional[str],
     api_key: Optional[str],
     created_by: Optional[int] = None,
+    tenant_id: Optional[str] = None,
 ) -> LLMProviderConfigModel:
     """Upsert a provider config row. Empty ``api_key`` keeps the stored one."""
     meta = PROVIDER_CATALOG.get((name or "").lower())
@@ -327,39 +328,49 @@ async def persist_provider_config(
     base_url = (base_url or meta["default_base_url"]).rstrip("/")
     model = model or meta["default_model"]
     if meta["needs_key"] and not api_key:
-        existing = await session.scalar(
-            select(LLMProviderConfigModel).where(LLMProviderConfigModel.provider == name)
-        )
+        query = select(LLMProviderConfigModel).where(LLMProviderConfigModel.provider == name)
+        if tenant_id is not None:
+            query = query.where(LLMProviderConfigModel.tenant_id == tenant_id)
+        existing = await session.scalar(query)
         if not existing or not existing.api_key_encrypted:
             raise ValueError(f"{meta['display_name']} 需要 API Key")
 
-    row = await session.scalar(
-        select(LLMProviderConfigModel).where(LLMProviderConfigModel.provider == name)
-    )
+    query = select(LLMProviderConfigModel).where(LLMProviderConfigModel.provider == name)
+    if tenant_id is not None:
+        query = query.where(LLMProviderConfigModel.tenant_id == tenant_id)
+    row = await session.scalar(query)
     if row is None:
         row = LLMProviderConfigModel(
             id=str(uuid.uuid4()),
             provider=name,
             created_by=created_by,
+            tenant_id=tenant_id,
+            owner_id=created_by,
         )
         session.add(row)
     row.display_name = meta["display_name"]
     row.base_url = base_url
     row.model = model
     row.enabled = True
+    row.created_by = created_by
+    row.tenant_id = tenant_id
+    row.owner_id = created_by
     if api_key:
         row.api_key_encrypted = encrypt_value(api_key)
     await session.commit()
     return row
 
 
-async def list_persisted_configs(session: AsyncSession) -> List[Dict[str, Any]]:
+async def list_persisted_configs(
+    session: AsyncSession,
+    tenant_id: Optional[str] = None,
+) -> List[Dict[str, Any]]:
     """List persisted configs with MASKED key info (never the plaintext)."""
-    rows = (
-        await session.scalars(
-            select(LLMProviderConfigModel).order_by(LLMProviderConfigModel.created_at)
-        )
-    ).all()
+    query = select(LLMProviderConfigModel)
+    if tenant_id is not None:
+        query = query.where(LLMProviderConfigModel.tenant_id == tenant_id)
+    query = query.order_by(LLMProviderConfigModel.created_at)
+    rows = (await session.scalars(query)).all()
     result: List[Dict[str, Any]] = []
     for row in rows:
         has_key = bool(row.api_key_encrypted)
@@ -378,6 +389,8 @@ async def list_persisted_configs(session: AsyncSession) -> List[Dict[str, Any]]:
                 "base_url": row.base_url,
                 "model": row.model,
                 "enabled": row.enabled,
+                "tenant_id": row.tenant_id,
+                "owner_id": row.owner_id,
                 "has_api_key": has_key,
                 "api_key_preview": key_preview,
                 "created_at": row.created_at.isoformat() if row.created_at else None,
@@ -387,11 +400,16 @@ async def list_persisted_configs(session: AsyncSession) -> List[Dict[str, Any]]:
     return result
 
 
-async def delete_persisted_config(session: AsyncSession, name: str) -> bool:
+async def delete_persisted_config(
+    session: AsyncSession,
+    name: str,
+    tenant_id: Optional[str] = None,
+) -> bool:
     """Delete a persisted provider config row. Returns True if a row existed."""
-    row = await session.scalar(
-        select(LLMProviderConfigModel).where(LLMProviderConfigModel.provider == (name or "").lower())
-    )
+    query = select(LLMProviderConfigModel).where(LLMProviderConfigModel.provider == (name or "").lower())
+    if tenant_id is not None:
+        query = query.where(LLMProviderConfigModel.tenant_id == tenant_id)
+    row = await session.scalar(query)
     if row is None:
         return False
     await session.delete(row)
@@ -399,7 +417,7 @@ async def delete_persisted_config(session: AsyncSession, name: str) -> bool:
     return True
 
 
-async def load_persisted_providers(session: AsyncSession) -> List[str]:
+async def load_persisted_providers(session: AsyncSession, tenant_id: Optional[str] = None) -> List[str]:
     """Startup hook: apply all enabled persisted provider configs.
 
     Called from the FastAPI lifespan after env-based registration so that
@@ -407,11 +425,10 @@ async def load_persisted_providers(session: AsyncSession) -> List[str]:
     """
     loaded: List[str] = []
     try:
-        rows = (
-            await session.scalars(
-                select(LLMProviderConfigModel).where(LLMProviderConfigModel.enabled.is_(True))
-            )
-        ).all()
+        query = select(LLMProviderConfigModel).where(LLMProviderConfigModel.enabled.is_(True))
+        if tenant_id is not None:
+            query = query.where(LLMProviderConfigModel.tenant_id == tenant_id)
+        rows = (await session.scalars(query)).all()
     except Exception as e:  # table may not exist in fresh test DBs
         logger.warning("persisted_providers_load_skipped", error=str(e))
         return loaded

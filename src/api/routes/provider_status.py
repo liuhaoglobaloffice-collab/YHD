@@ -158,11 +158,13 @@ async def provider_catalog(
 
 @router.get("/configs")
 async def list_provider_configs(
-    _: User = Depends(require_permission("system", "read")),
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(require_permission("system", "read")),
     session: AsyncSession = Depends(get_db_session),
 ):
     """List persisted provider configs. API keys are MASKED (never returned)."""
-    configs = await list_persisted_configs(session)
+    tenant_id = getattr(current_user, "tenant_id", None)
+    configs = await list_persisted_configs(session, tenant_id=tenant_id)
     return {"configs": configs, "total": len(configs)}
 
 
@@ -187,13 +189,15 @@ async def upsert_provider_config(
     base_url = (payload.base_url or meta["default_base_url"]).rstrip("/")
     model = payload.model or meta["default_model"]
 
+    tenant_id = getattr(current_user, "tenant_id", None)
+
     # Optional real connectivity test BEFORE persisting (fail-closed)
     health = None
     if payload.test:
         key_for_test = payload.api_key
         if not key_for_test and meta["needs_key"]:
             from src.core.encryption import decrypt_value
-            existing = await list_persisted_configs(session)
+            existing = await list_persisted_configs(session, tenant_id=tenant_id)
             for cfg in existing:
                 if cfg["provider"] == name and cfg["has_api_key"]:
                     # Re-probe stored key: fetch row and decrypt
@@ -201,7 +205,9 @@ async def upsert_provider_config(
                     from src.database.models import LLMProviderConfigModel
 
                     row = await session.scalar(
-                        _select(LLMProviderConfigModel).where(LLMProviderConfigModel.provider == name)
+                        _select(LLMProviderConfigModel)
+                        .where(LLMProviderConfigModel.provider == name)
+                        .where(LLMProviderConfigModel.tenant_id == tenant_id)
                     )
                     key_for_test = decrypt_value(row.api_key_encrypted) if row else None
                     break
@@ -230,6 +236,7 @@ async def upsert_provider_config(
             model=model,
             api_key=payload.api_key,
             created_by=getattr(current_user, "id", None),
+            tenant_id=tenant_id,
         )
         from src.core.encryption import decrypt_value
 
@@ -259,7 +266,7 @@ async def upsert_provider_config(
         details={"model": model, "base_url": base_url, "tested": bool(payload.test)},
     )
 
-    configs = await list_persisted_configs(session)
+    configs = await list_persisted_configs(session, tenant_id=tenant_id)
     saved = next((c for c in configs if c["provider"] == name), None)
     return {"status": "configured", "config": saved, "health": health}
 
@@ -273,7 +280,8 @@ async def remove_provider_config(
 ):
     """Delete a persisted provider config and unregister it at runtime."""
     name = (name or "").lower()
-    existed = await delete_persisted_config(session, name)
+    tenant_id = getattr(current_user, "tenant_id", None)
+    existed = await delete_persisted_config(session, name, tenant_id=tenant_id)
     if not existed:
         raise HTTPException(status_code=404, detail=f"未找到 Provider 配置: {name}")
 
