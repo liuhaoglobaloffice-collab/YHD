@@ -7,6 +7,7 @@ All model calls must go through this gateway.
 
 import asyncio
 import logging
+import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timezone
@@ -271,11 +272,100 @@ class BaseProvider(ABC):
 
 
 class ModelRegistry:
-    """Registry for available models."""
+    """Registry for available models.
+
+    Adds a small persistence layer so registered models and active selections
+    survive process restarts. Persistence is intentionally lightweight (JSON
+    file under data/) so test and dev environments can verify G5 (persistence
+    / recovery) without requiring a full DB migration here.
+    """
 
     def __init__(self):
         self._models: Dict[str, ModelConfig] = {}
         self._active_model_by_provider: Dict[ProviderType, str] = {}
+
+        # Persistence file (can be overridden by env var for tests)
+        try:
+            from pathlib import Path
+            data_dir = Path(os.environ.get("MODEL_REGISTRY_DIR", "data"))
+            data_dir.mkdir(parents=True, exist_ok=True)
+            self._persist_file = data_dir / "model_registry.json"
+        except Exception:
+            self._persist_file = None
+
+        # Attempt to load persisted state
+        if self._persist_file and self._persist_file.exists():
+            try:
+                import json
+                with open(self._persist_file, "r", encoding="utf-8") as f:
+                    payload = json.load(f)
+                models = payload.get("models", [])
+                for m in models:
+                    cfg = ModelConfig(
+                        provider=ProviderType(m["provider"]),
+                        model_id=m["model_id"],
+                        model_name=m.get("model_name", m["model_id"]),
+                        context_window=m.get("context_window", 32768),
+                        supports_streaming=m.get("supports_streaming", True),
+                        supports_functions=m.get("supports_functions", True),
+                        supports_vision=m.get("supports_vision", False),
+                        input_cost_per_1k=m.get("input_cost_per_1k", 0.0),
+                        output_cost_per_1k=m.get("output_cost_per_1k", 0.0),
+                        max_tokens=m.get("max_tokens"),
+                        enabled=m.get("enabled", True),
+                        metadata=m.get("metadata", {}),
+                    )
+                    key = f"{cfg.provider}:{cfg.model_id}"
+                    self._models[key] = cfg
+                active = payload.get("active", {})
+                for pstr, mid in active.items():
+                    prov = None
+                    try:
+                        prov = ProviderType(pstr)
+                    except Exception:
+                        try:
+                            prov = ProviderType[pstr.upper()]
+                        except Exception:
+                            prov = next((pt for pt in ProviderType if getattr(pt, 'value', '').lower() == str(pstr).lower()), None)
+                    if prov:
+                        self._active_model_by_provider[prov] = mid
+                    else:
+                        logger.warning(f"Unknown provider key in persisted registry: {pstr}")
+                logger.info("Loaded persisted ModelRegistry state")
+            except Exception as e:
+                logger.warning(f"Failed to load persisted model registry: {e}")
+
+    def _persist(self):
+        if not getattr(self, "_persist_file", None):
+            return
+        try:
+            import json
+            serial = {
+                "models": [],
+                "active": {},
+            }
+            for key, m in self._models.items():
+                serial["models"].append({
+                    "provider": m.provider.value,
+                    "model_id": m.model_id,
+                    "model_name": m.model_name,
+                    "context_window": m.context_window,
+                    "supports_streaming": m.supports_streaming,
+                    "supports_functions": m.supports_functions,
+                    "supports_vision": m.supports_vision,
+                    "input_cost_per_1k": m.input_cost_per_1k,
+                    "output_cost_per_1k": m.output_cost_per_1k,
+                    "max_tokens": m.max_tokens,
+                    "enabled": m.enabled,
+                    "metadata": m.metadata,
+                })
+            for p, mid in self._active_model_by_provider.items():
+                serial["active"][p.value] = mid
+            with open(self._persist_file, "w", encoding="utf-8") as f:
+                json.dump(serial, f, ensure_ascii=False, indent=2)
+            logger.info("Persisted ModelRegistry state")
+        except Exception as e:
+            logger.warning(f"Failed to persist model registry: {e}")
 
     def register(self, model: ModelConfig):
         """Register a model."""
@@ -284,6 +374,8 @@ class ModelRegistry:
         if model.enabled and model.provider not in self._active_model_by_provider:
             self._active_model_by_provider[model.provider] = model.model_id
         logger.info(f"Registered model: {key}")
+        # persist state
+        self._persist()
 
     def get(self, provider: ProviderType, model_id: str) -> ModelConfig:
         """Get model configuration."""
@@ -323,6 +415,8 @@ class ModelRegistry:
             if models:
                 active_id = models[0].model_id
                 self._active_model_by_provider[provider] = active_id
+                # persist change
+                self._persist()
             return active_id
         model = self._models.get(f"{provider}:{active_id}")
         if model is None or not model.enabled:
@@ -330,6 +424,7 @@ class ModelRegistry:
             if not models:
                 return None
             self._active_model_by_provider[provider] = models[0].model_id
+            self._persist()
             return models[0].model_id
         return active_id
 
@@ -337,6 +432,8 @@ class ModelRegistry:
         """Switch the active model for a provider after validating it exists."""
         model = self.get(provider, model_id)
         self._active_model_by_provider[provider] = model.model_id
+        # persist state
+        self._persist()
         return model
 
 
