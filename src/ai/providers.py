@@ -275,11 +275,14 @@ class ModelRegistry:
 
     def __init__(self):
         self._models: Dict[str, ModelConfig] = {}
+        self._active_model_by_provider: Dict[ProviderType, str] = {}
 
     def register(self, model: ModelConfig):
         """Register a model."""
         key = f"{model.provider}:{model.model_id}"
         self._models[key] = model
+        if model.enabled and model.provider not in self._active_model_by_provider:
+            self._active_model_by_provider[model.provider] = model.model_id
         logger.info(f"Registered model: {key}")
 
     def get(self, provider: ProviderType, model_id: str) -> ModelConfig:
@@ -311,6 +314,30 @@ class ModelRegistry:
     def list_by_provider(self, provider: ProviderType) -> List[ModelConfig]:
         """List all models for a specific provider."""
         return [m for m in self._models.values() if m.provider == provider]
+
+    def get_active_model(self, provider: ProviderType) -> Optional[str]:
+        """Return the currently active model for a provider, if any."""
+        active_id = self._active_model_by_provider.get(provider)
+        if active_id is None:
+            models = self.list_models(provider, enabled_only=True)
+            if models:
+                active_id = models[0].model_id
+                self._active_model_by_provider[provider] = active_id
+            return active_id
+        model = self._models.get(f"{provider}:{active_id}")
+        if model is None or not model.enabled:
+            models = self.list_models(provider, enabled_only=True)
+            if not models:
+                return None
+            self._active_model_by_provider[provider] = models[0].model_id
+            return models[0].model_id
+        return active_id
+
+    def switch_active_model(self, provider: ProviderType, model_id: str) -> ModelConfig:
+        """Switch the active model for a provider after validating it exists."""
+        model = self.get(provider, model_id)
+        self._active_model_by_provider[provider] = model.model_id
+        return model
 
 
 class ProviderGateway:
@@ -683,6 +710,23 @@ class ProviderGateway:
     ) -> List[ModelConfig]:
         """List available models."""
         return self._model_registry.list_models(provider, enabled_only)
+
+    def get_active_model(self, provider: ProviderType) -> Optional[str]:
+        """Return the active model ID for a provider."""
+        return self._model_registry.get_active_model(provider)
+
+    def switch_model(self, provider: ProviderType, model_id: str) -> ModelConfig:
+        """Select a model as the active model for a provider.
+
+        This provides the real model-switching behavior the Y1 blueprint expects:
+        one provider can host multiple models, and the runtime must be able to
+        switch among them without rewriting the provider or agent binding.
+        """
+        if provider not in self.list_providers() and not self._model_registry.list_by_provider(provider):
+            raise ResourceNotFoundError(
+                f"Provider not registered: {provider}", resource=f"provider:{provider}"
+            )
+        return self._model_registry.switch_active_model(provider, model_id)
 
 
 # ============================================================================

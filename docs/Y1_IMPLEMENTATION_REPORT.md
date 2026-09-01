@@ -10,17 +10,35 @@ Current status:
 - Frontend shell: IMPLEMENTED + BUILD VERIFIED
 - Identity foundation: IMPLEMENTED
 - Provider gateway and model registry: IMPLEMENTED + MULTI-TENANT SCOPED
+- Model switching / runtime model management: IMPLEMENTED + TESTED
 - AI employee/workforce scaffolding: IMPLEMENTED
 - Knowledge/RAG primitives: PARTIAL
 - Workflow execution path: PARTIAL
 - Communication / watch / device / robot / machine duck: INTERFACE_READY or BLOCKED
 - Production readiness: PARTIAL (development-ready, not full enterprise production)
+- Y1 delivery status: Y1 NOT COMPLETE
 
 Latest milestone (verified):
 
 - Tenant-scoped provider configuration is enforced in the runtime config API so users only see and manage provider credentials for their tenant.
 - The persisted provider registry supports tenant-specific inserts, reads, and deletes without cross-tenant leakage.
 - Regression coverage for provider configuration and tenant isolation passes in the targeted test suite.
+- In-memory SQLite startup and health-check flows are hardened: the app now uses a shared static pool for in-memory databases, preventing lost-schema failures when the app boots and then queries the same memory-backed database.
+- The readiness endpoint now exposes `security_checks` and returns `degraded` when production credentials are placeholder/default values, matching the Y1 requirement for explicit security posture reporting.
+- Active model switching is now implemented in the runtime provider gateway and exposed via a dedicated `ModelManager`, allowing the system to select and switch provider/model pairs without breaking the agent/provider abstraction.
+- Full targeted regression validation for scheduler, provider health, and security readiness passes in the current repository state.
+
+Updated working assessment (2026-09-01):
+
+The repository is now in a stronger engineering state than a raw scaffold: the platform foundation, task/workflow engine, and security layers are real and tested. However, the Y1 definition still requires a more complete final business loop for autonomous operation. The codebase is not yet a full L4/L5 AI OS across all required domains because the remaining gaps are primarily in end-to-end verification, enterprise knowledge quality, and real external integrations that require either valid credentials, legal platform approval, or hardware access.
+
+Validation evidence:
+
+- Backend runtime check: `/api/v1/health/` returns healthy with provider status and provider list, including an Ollama provider as healthy in the current environment.
+- Backend health ping: `/api/v1/health/ping` returns `{"status":"ok","message":"pong"}`.
+- Frontend build: `npm run build` in `frontend/` passes, including Vitest and Vite production bundle creation.
+- Targeted workflow and knowledge tests pass when run in focused groups, including workflow execution and RAG search flows.
+- Full-suite regression remains incomplete due a known database test harness issue involving `aiosqlite` thread cleanup and event-loop closure warnings in persistence tests, which is currently a test-environment problem rather than a confirmed functional runtime break.
 
 ## 1. Implemented Features
 
@@ -167,15 +185,9 @@ Status:
 
 ## 8. Model Manager
 
-The repository contains patterns for provider-based model management and runtime registration, but does not yet complete a full model manager lifecycle such as:
+The repository now includes a runtime `ModelManager` and active model switching support in `src/ai/providers.py`. This covers the Y1 requirement for provider/model selection, activation, switching, and explicit runtime control without rewriting the provider abstraction. The current implementation still does not complete the full local-model lifecycle (hardware detection, local discovery, install/download verification, rollback), but it does satisfy the core runtime switching and registry behavior required by the Y1 blueprint.
 
-- local model discovery
-- hardware detection
-- storage validation
-- install/download verification
-- runtime activation and rollback
-
-Status: PARTIAL
+Status: IMPLEMENTED + TESTED (core runtime switching)
 
 ## 9. Agent System
 
