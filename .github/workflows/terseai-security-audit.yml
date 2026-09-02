@@ -1,0 +1,68 @@
+name: TerseAI security & license audit
+
+on:
+  workflow_dispatch:
+    inputs:
+      target-path:
+        description: 'Path to third-party package (relative to repo root)'
+        required: false
+        default: 'third_party/terseai'
+  push:
+    paths:
+      - 'third_party/terseai/**'
+
+jobs:
+  audit:
+    name: Audit third-party package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install npm production deps (locked)
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARGET=${{ github.event.inputs.target-path }}
+          if [ ! -d "$TARGET" ]; then echo "Target $TARGET not found"; exit 1; fi
+          cd "$TARGET"
+          # Prefer CI install when package-lock exists, fall back to install
+          if [ -f package-lock.json ]; then npm ci --prefer-offline; else npm install --prefer-offline; fi
+
+      - name: Run npm audit (JSON)
+        shell: bash
+        run: |
+          cd "${{ github.event.inputs.target-path }}"
+          npm audit --json > npm-audit.json || true
+          echo "Saved npm-audit.json"
+
+      - name: Run license-checker (production)
+        shell: bash
+        run: |
+          cd "${{ github.event.inputs.target-path }}"
+          npx license-checker --production --summary --json > license-summary.json || true
+          echo "Saved license-summary.json"
+
+      - name: Upload audit artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: terseai-audit-artifacts
+          path: |
+            ${{ github.event.inputs.target-path }}/npm-audit.json
+            ${{ github.event.inputs.target-path }}/license-summary.json
+
+      - name: Print short summary
+        shell: bash
+        run: |
+          echo "Audit artifacts uploaded. Download artifacts from the workflow run to inspect full JSON outputs."
+
+# Notes:
+# - This workflow does not modify repository files or push results back; inspecting and accepting third-party code must remain a manual step.
+# - To append audit output to docs/THIRD_PARTY_TERSEAI_EVALUATION.md automatically would require CI to push a commit; avoid that unless explicitly authorized.
