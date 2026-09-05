@@ -1,4 +1,3 @@
-from src.kernel.capabilities import CapabilityError
 from src.kernel.models import (
     ActionRequest,
     Capability,
@@ -34,15 +33,11 @@ def make_kernel() -> KernelService:
             risk=RiskLevel.LOW,
         )
     )
-    kernel.capabilities.grant(
-        kernel.identity.get("agent-1"),
-        "browser.read",
-        granted_by="owner-1",
-    )
+    kernel.grant_capability("agent-1", "browser.read", granted_by="owner-1")
     return kernel
 
 
-def request(**overrides):
+def request(**overrides) -> ActionRequest:
     values = {
         "action_id": "action-1",
         "actor_id": "agent-1",
@@ -57,7 +52,8 @@ def request(**overrides):
 
 
 def test_default_deny_when_no_policy_matches() -> None:
-    result = make_kernel().authorize(request())
+    kernel = make_kernel()
+    result = kernel.authorize(request())
     assert result.decision.decision is Decision.DENY
     assert result.audit_event_id
 
@@ -90,7 +86,7 @@ def test_suspended_agent_cannot_execute_even_with_policy() -> None:
             actions=frozenset({"browser.read"}),
         )
     )
-    kernel.identity.suspend("agent-1")
+    kernel.suspend_principal("agent-1", actor_id="owner-1")
     result = kernel.authorize(request())
     assert result.decision.decision is Decision.DENY
     assert "inactive" in result.decision.reason
@@ -122,3 +118,13 @@ def test_agent_requires_owner_identity() -> None:
         pass
     else:
         raise AssertionError("agent without owner must be rejected")
+
+
+def test_security_events_are_emitted_through_kernel_facade() -> None:
+    kernel = make_kernel()
+    event_types = {event.event_type.value for event in kernel.events.list()}
+    assert "PrincipalCreated" in event_types
+    assert "CapabilityGranted" in event_types
+
+    kernel.revoke_capability("agent-1", "browser.read", revoked_by="owner-1")
+    assert any(event.event_type.value == "CapabilityRevoked" for event in kernel.events.list())

@@ -3,7 +3,14 @@ from __future__ import annotations
 from .capabilities import CapabilityRegistry
 from .events import EventStore, EventType, KernelEvent
 from .identity import IdentityService
-from .models import ActionRequest, AuthorizationResult, Decision, Principal, PrincipalType
+from .models import (
+    ActionRequest,
+    AuthorizationDecision,
+    AuthorizationResult,
+    Decision,
+    Principal,
+    PrincipalType,
+)
 from .policy import PolicyEngine, PolicyRule
 
 
@@ -44,8 +51,78 @@ class KernelService:
         )
         return principal
 
+    def suspend_principal(self, principal_id: str, actor_id: str) -> Principal:
+        principal = self.identity.suspend(principal_id)
+        self.events.append(
+            KernelEvent.create(
+                EventType.PRINCIPAL_SUSPENDED,
+                actor_id=actor_id,
+                subject_id=principal_id,
+                payload={"state": principal.state.value},
+            )
+        )
+        return principal
+
+    def revoke_principal(self, principal_id: str, actor_id: str) -> Principal:
+        principal = self.identity.revoke(principal_id)
+        self.events.append(
+            KernelEvent.create(
+                EventType.PRINCIPAL_REVOKED,
+                actor_id=actor_id,
+                subject_id=principal_id,
+                payload={"state": principal.state.value},
+            )
+        )
+        return principal
+
+    def terminate_principal(self, principal_id: str, actor_id: str) -> Principal:
+        principal = self.identity.terminate(principal_id)
+        self.events.append(
+            KernelEvent.create(
+                EventType.PRINCIPAL_TERMINATED,
+                actor_id=actor_id,
+                subject_id=principal_id,
+                payload={"state": principal.state.value},
+            )
+        )
+        return principal
+
     def add_policy(self, rule: PolicyRule) -> PolicyRule:
         return self.policies.add_rule(rule)
+
+    def grant_capability(
+        self,
+        principal_id: str,
+        capability_id: str,
+        granted_by: str,
+        scope: str = "self",
+    ):
+        grant = self.capabilities.grant(
+            self.identity.get(principal_id),
+            capability_id,
+            granted_by=granted_by,
+            scope=scope,
+        )
+        self.events.append(
+            KernelEvent.create(
+                EventType.CAPABILITY_GRANTED,
+                actor_id=granted_by,
+                subject_id=principal_id,
+                payload={"capability_id": capability_id, "scope": scope},
+            )
+        )
+        return grant
+
+    def revoke_capability(self, principal_id: str, capability_id: str, revoked_by: str) -> None:
+        self.capabilities.revoke(principal_id, capability_id)
+        self.events.append(
+            KernelEvent.create(
+                EventType.CAPABILITY_REVOKED,
+                actor_id=revoked_by,
+                subject_id=principal_id,
+                payload={"capability_id": capability_id},
+            )
+        )
 
     def authorize(self, request: ActionRequest) -> AuthorizationResult:
         try:
@@ -54,25 +131,30 @@ class KernelService:
             actor = None
 
         if actor is None or not actor.can_execute():
-            decision = self._decision(request, Decision.DENY, "inactive or unknown principal")
-            capability = None
-            return self._audit_result(request, actor, decision, capability)
+            decision = AuthorizationDecision(
+                decision=Decision.DENY,
+                reason="inactive or unknown principal",
+            )
+            return self._audit_result(request, actor, decision, None)
 
         granted, capability = self.capabilities.authorize_capability(request)
         if not granted:
-            reason = "capability missing or incompatible with request risk"
-            decision = self._decision(request, Decision.DENY, reason)
+            decision = AuthorizationDecision(
+                decision=Decision.DENY,
+                reason="capability missing or incompatible with request risk",
+            )
             return self._audit_result(request, actor, decision, capability)
 
         policy_decision = self.policies.evaluate(request, actor)
         return self._audit_result(request, actor, policy_decision, capability)
 
-    def _decision(self, request: ActionRequest, decision: Decision, reason: str):
-        from .models import AuthorizationDecision
-
-        return AuthorizationDecision(decision=decision, reason=reason)
-
-    def _audit_result(self, request, actor, decision, capability):
+    def _audit_result(
+        self,
+        request: ActionRequest,
+        actor: Principal | None,
+        decision: AuthorizationDecision,
+        capability,
+    ) -> AuthorizationResult:
         event = self.events.append(
             KernelEvent.create(
                 EventType.POLICY_DECISION,
